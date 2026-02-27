@@ -155,8 +155,8 @@ page {
 }
 
 .timer-pill {
-  font-variant-numeric: tabular-nums;
-  font-family: "SFMono-Regular", Menlo, Monaco, "Courier New", monospace;
+  display: flex;
+  align-items: center;
 }
 
 .stat-num-pill {
@@ -171,7 +171,9 @@ page {
 
 .timer-pill-text {
   display: inline-block;
-  transform: translateY(1px);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
 }
 
 

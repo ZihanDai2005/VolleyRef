@@ -1,8 +1,8 @@
 <view class="entry-container">
   <view class="entry-shell">
     <view class="entry-section">
-      <text class="title">创建裁判团队</text>
-      <text class="subtitle">请设置6位数字密码</text>
+      <text class="title">开始一场比赛</text>
+      <text class="subtitle">请设置6位房间密码，房间号码将自动分配</text>
 
       <view class="pin-input-wrap">
         <input
@@ -23,8 +23,8 @@
     <view class="section-divider"></view>
 
     <view class="entry-section">
-      <text class="title">加入裁判团队</text>
-      <text class="subtitle">请输入6位数字裁判团队号码和密码</text>
+      <text class="title">加入一场比赛</text>
+      <text class="subtitle">请输入6位房间号码和密码</text>
 
       <view class="pin-input-wrap">
         <input
@@ -56,7 +56,7 @@
       <button class="paste-link-btn" bindtap="onPasteInviteAndJoin">
         <view class="link-content">
           <view class="paste-icon"></view>
-          <text>粘贴邀请直接加入</text>
+          <text>粘贴邀请信息直接加入</text>
         </view>
       </button>
     </view>

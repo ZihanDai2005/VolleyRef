@@ -278,7 +278,11 @@ Page({
       showBlockHint("缺少房间号");
       return;
     }
-    wx.setNavigationBarTitle({ title: "裁判团队编号 " + roomId });
+    const initialRoom = getRoom(roomId);
+    const initialPassword = String((initialRoom && initialRoom.password) || "").replace(/\D/g, "").slice(0, 6);
+    wx.setNavigationBarTitle({
+      title: "房间号码 " + roomId + "   |   密码 " + initialPassword,
+    });
     this.setData({ roomId: roomId });
     this.syncSafePadding();
     if ((wx as any).onWindowResize) {
@@ -456,7 +460,10 @@ Page({
     const liveTimerMs = timerStartAt > 0 ? timerElapsedMs + (Date.now() - timerStartAt) : timerElapsedMs;
     const timerText = formatDurationMMSS(liveTimerMs);
     this.lastRenderedTimerText = timerText;
-    wx.setNavigationBarTitle({ title: "裁判团队编号 " + roomId });
+    const password = String(room.password || "").replace(/\D/g, "").slice(0, 6);
+    wx.setNavigationBarTitle({
+      title: "房间号码 " + roomId + "   |   密码 " + password,
+    });
     this.setData({
       participantCount: getParticipantCount(roomId),
       teamAName: room.teamA.name,

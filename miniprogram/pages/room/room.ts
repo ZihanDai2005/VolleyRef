@@ -57,6 +57,22 @@ function createInitialPlayers(): PlayerSlot[] {
   ];
 }
 
+function normalizeLiberoSlots(players: PlayerSlot[]): PlayerSlot[] {
+  const next = players.slice();
+  const l1 = next[6];
+  const l2 = next[7];
+  if (!l1 || !l2) {
+    return next;
+  }
+  const l1No = normalizeNumberInput(l1.number);
+  const l2No = normalizeNumberInput(l2.number);
+  if ((!l1No || l1No === "?") && l2No && l2No !== "?") {
+    next[6] = { pos: l1.pos, number: l2No };
+    next[7] = { pos: l2.pos, number: "?" };
+  }
+  return next;
+}
+
 function buildMainGrid(players: PlayerSlot[], order: Position[]): DisplayPlayerSlot[][] {
   const byPos: Record<string, PlayerSlot> = {};
   players.forEach(function (p) {
@@ -140,23 +156,27 @@ function validateTeamPlayers(players: PlayerSlot[], teamName: string): string | 
   return null;
 }
 
-function findDuplicateNumber(players: PlayerSlot[]): string | null {
-  const seen: Record<string, boolean> = {};
-  for (let i = 0; i < players.length; i += 1) {
-    const n = (players[i].number || "").trim();
-    if (!n || n === "?") {
-      continue;
-    }
-    if (seen[n]) {
-      return n;
-    }
-    seen[n] = true;
+function normalizeNumberInput(value: string): string {
+  const digits = String(value || "").replace(/\D/g, "").slice(0, 2);
+  if (!digits) {
+    return "";
   }
-  return null;
+  return String(Number(digits));
 }
 
-function normalizeNumberInput(value: string): string {
-  return String(value || "").replace(/\D/g, "").slice(0, 2);
+function getTeamNameError(teamANameRaw: string, teamBNameRaw: string): string | null {
+  const teamAName = String(teamANameRaw || "").trim();
+  const teamBName = String(teamBNameRaw || "").trim();
+  if (teamAName.length > 8) {
+    return "团队名称最多8个字";
+  }
+  if (teamBName.length > 8) {
+    return "团队名称最多8个字";
+  }
+  if (teamAName && teamBName && teamAName === teamBName) {
+    return "甲乙队名称不能相同";
+  }
+  return null;
 }
 
 function hexToRgbString(hex: string): string {
@@ -230,7 +250,7 @@ Page({
     const createMode = query.create === "1";
     const editMode = query.edit === "1";
     if (createMode) {
-      wx.setNavigationBarTitle({ title: "创建裁判团队 " + roomId });
+      wx.setNavigationBarTitle({ title: "房间号码 " + roomId });
     }
     this.setData({ roomId: roomId, editMode: editMode, createMode: createMode });
     if (createMode) {
@@ -445,13 +465,44 @@ Page({
 
   onTeamNameBlur(e: WechatMiniprogram.InputBlur) {
     const field = ((e.currentTarget || {}).dataset as { field?: string }).field;
+    const rawA = this.data.teamAName || "";
+    const rawB = this.data.teamBName || "";
+    const wasTooLongA = rawA.length > 8;
+    const wasTooLongB = rawB.length > 8;
     if (field === "teamAName") {
-      this.setData({ teamANameFocused: false });
+      const next = rawA.slice(0, 8);
+      this.setData({ teamANameFocused: false, teamAName: next });
+    } else if (field === "teamBName") {
+      const next = rawB.slice(0, 8);
+      this.setData({ teamBNameFocused: false, teamBName: next });
+    }
+    if (wasTooLongA) {
+      showToastHint("团队名称最多8个字");
+    } else if (wasTooLongB) {
+      showToastHint("团队名称最多8个字");
+    }
+    const err = getTeamNameError(rawA.slice(0, 8), rawB.slice(0, 8));
+    if (err) {
+      showToastHint(err);
+    }
+    this.persistDraft();
+  },
+
+  onCaptainNoBlur(e: WechatMiniprogram.InputBlur) {
+    const field = ((e.currentTarget || {}).dataset as { field?: string }).field;
+    if (field !== "teamACaptainNo" && field !== "teamBCaptainNo") {
       return;
     }
-    if (field === "teamBName") {
-      this.setData({ teamBNameFocused: false });
+    const raw = field === "teamACaptainNo" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
+    const normalized = normalizeNumberInput(raw);
+    if (field === "teamACaptainNo") {
+      if (normalized !== this.data.teamACaptainNo) {
+        this.setData({ teamACaptainNo: normalized });
+      }
+    } else if (normalized !== this.data.teamBCaptainNo) {
+      this.setData({ teamBCaptainNo: normalized });
     }
+    this.persistDraft();
   },
 
   onTeamColorSelect(e: WechatMiniprogram.TouchEvent) {
@@ -519,15 +570,63 @@ Page({
   },
 
   onPlayerNumberBlur(e: WechatMiniprogram.TouchEvent) {
-    const dataset = e.currentTarget.dataset as { team: TeamCode };
+    const dataset = e.currentTarget.dataset as { team: TeamCode; index: number };
     const team = dataset.team;
-    const players = team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers;
-    const duplicate = findDuplicateNumber(players);
-    if (!duplicate) {
+    const index = Number(dataset.index);
+    let players = (team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers).slice();
+    if (!Number.isFinite(index) || index < 0 || index >= players.length) {
       return;
     }
-    const teamName = team === "A" ? (this.data.teamAName.trim() || "甲") : (this.data.teamBName.trim() || "乙");
-    showToastHint(teamName + "队号码" + duplicate + "重复");
+    const current = normalizeNumberInput(players[index].number);
+    const normalized = current || "?";
+    if (players[index].number !== normalized) {
+      const slot = players[index];
+      players[index] = { pos: slot.pos, number: normalized };
+      if (team === "A") {
+        this.setData({
+          teamAPlayers: players,
+          teamAMainGrid: buildMainGrid(players, TEAM_A_MAIN_ORDER),
+          teamALibero: buildLibero(players),
+        });
+        this.persistDraft(players, this.data.teamBPlayers);
+      } else {
+        this.setData({
+          teamBPlayers: players,
+          teamBMainGrid: buildMainGrid(players, TEAM_B_MAIN_ORDER),
+          teamBLibero: buildLibero(players),
+        });
+        this.persistDraft(this.data.teamAPlayers, players);
+      }
+    }
+    // Only auto-shift L2->L1 after user finishes editing (blur), not during typing.
+    const shifted = normalizeLiberoSlots(players);
+    const shiftedChanged =
+      shifted[6].number !== players[6].number || shifted[7].number !== players[7].number;
+    if (shiftedChanged) {
+      players = shifted;
+      if (team === "A") {
+        this.setData({
+          teamAPlayers: players,
+          teamAMainGrid: buildMainGrid(players, TEAM_A_MAIN_ORDER),
+          teamALibero: buildLibero(players),
+        });
+        this.persistDraft(players, this.data.teamBPlayers);
+      } else {
+        this.setData({
+          teamBPlayers: players,
+          teamBMainGrid: buildMainGrid(players, TEAM_B_MAIN_ORDER),
+          teamBLibero: buildLibero(players),
+        });
+        this.persistDraft(this.data.teamAPlayers, players);
+      }
+    }
+    if (!current || current === "?") {
+      return;
+    }
+    const duplicateCount = players.filter((p) => normalizeNumberInput(p.number) === current).length;
+    if (duplicateCount > 1) {
+      showToastHint("球员号码重复");
+    }
   },
 
   onTeamServeButton(e: WechatMiniprogram.TouchEvent) {
@@ -696,11 +795,24 @@ Page({
     const teamBName = this.data.teamBName.trim() || "乙";
     const roomPassword = this.data.roomPassword.trim();
     const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
-    let teamACaptainNo = this.data.teamACaptainNo.trim();
-    let teamBCaptainNo = this.data.teamBCaptainNo.trim();
+    let teamACaptainNo = normalizeNumberInput(this.data.teamACaptainNo);
+    let teamBCaptainNo = normalizeNumberInput(this.data.teamBCaptainNo);
 
     if (roomPassword.length !== 6) {
       showBlockHint("房间密码需6位数字");
+      return;
+    }
+    const teamNameErr = getTeamNameError(this.data.teamAName, this.data.teamBName);
+    if (teamNameErr) {
+      showBlockHint(teamNameErr);
+      return;
+    }
+    if (!teamACaptainNo) {
+      showBlockHint("请填写甲队队长号码");
+      return;
+    }
+    if (!teamBCaptainNo) {
+      showBlockHint("请填写乙队队长号码");
       return;
     }
     if (this.data.teamAColor === this.data.teamBColor) {
