@@ -6,6 +6,7 @@ import {
   leaveRoom,
   TEAM_COLOR_OPTIONS,
 } from "../../utils/room-service";
+import { showBlockHint, showToastHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
 type TeamCode = "A" | "B";
@@ -262,7 +263,7 @@ Page({
     }
     const roomId = query.roomId || "";
     if (!roomId) {
-      wx.showToast({ title: "缺少房间号", icon: "none" });
+      showBlockHint("缺少房间号");
       return;
     }
     wx.setNavigationBarTitle({ title: "比赛房间 " + roomId });
@@ -375,7 +376,7 @@ Page({
     const room = getRoom(roomId);
     if (!room) {
       if (force) {
-        wx.showToast({ title: "房间不存在", icon: "none" });
+        showBlockHint("房间不存在");
       }
       return;
     }
@@ -471,13 +472,14 @@ Page({
       return;
     }
     if (this.data.isMatchFinished) {
-      wx.showToast({ title: "比赛已结束，请重置或重新配置", icon: "none" });
+      showToastHint("比赛已结束，请重置或重新配置");
       return;
     }
     const roomId = this.data.roomId;
     let setEndedMessage = "";
     let matchEndedMessage = "";
     let matchWinnerName = "";
+    let matchFinalSetScore = "";
     let rotatedTeam: TeamCode | "" = "";
     let needDecidingSetSwitchChoice = false;
 
@@ -556,6 +558,7 @@ Page({
           if (reachedWins) {
             room.match.isFinished = true;
             matchWinnerName = setWinner === "A" ? room.teamA.name : room.teamB.name;
+            matchFinalSetScore = String(room.match.aSetWins) + ":" + String(room.match.bSetWins);
             appendMatchLog(
               room,
               "match_end",
@@ -568,7 +571,7 @@ Page({
                 " 获胜",
               setWinner
             );
-            matchEndedMessage = "整场比赛" + matchWinnerName + "胜，比赛结束";
+            matchEndedMessage = "整场比分 " + matchFinalSetScore + "，" + matchWinnerName + "获胜";
           } else {
             room.match.setNo += 1;
             room.match.aScore = 0;
@@ -589,8 +592,11 @@ Page({
 
     const showMessages = () => {
       if (setEndedMessage) {
-        const title = matchEndedMessage ? setEndedMessage + "\n" + matchEndedMessage : setEndedMessage;
-        wx.showToast({ title: title, icon: "none" });
+        if (matchEndedMessage) {
+          showBlockHint(setEndedMessage + "；" + matchEndedMessage + "；比赛结束");
+        } else {
+          showToastHint(setEndedMessage);
+        }
       }
     };
 
@@ -651,7 +657,7 @@ Page({
 
   onSwitchSides() {
     if (this.data.isMatchFinished) {
-      wx.showToast({ title: "比赛已结束，无法换边", icon: "none" });
+      showToastHint("比赛已结束，无法换边");
       return;
     }
     const roomId = this.data.roomId;
@@ -678,7 +684,7 @@ Page({
 
   onRotateTeam(e: WechatMiniprogram.TouchEvent) {
     if (this.data.isMatchFinished) {
-      wx.showToast({ title: "比赛已结束，无法轮转", icon: "none" });
+      showToastHint("比赛已结束，无法轮转");
       return;
     }
     const dataset = e.currentTarget.dataset as { team: TeamCode };
@@ -806,7 +812,7 @@ Page({
       return;
     }
     if (!undone) {
-      wx.showToast({ title: "暂无可撤回积分", icon: "none" });
+      showToastHint("暂无可撤回积分");
       return;
     }
     this.loadRoom(roomId, true);

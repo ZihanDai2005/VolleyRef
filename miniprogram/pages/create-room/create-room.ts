@@ -5,6 +5,7 @@ import {
   reserveRoomId,
   verifyRoomPassword,
 } from "../../utils/room-service";
+import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
 Page({
@@ -74,28 +75,33 @@ Page({
     return Math.floor(100000 + Math.random() * 900000).toString();
   },
 
-  generateAvailableRoomId() {
+  allocateRoomId(clientId: string): string {
     let attempts = 0;
-    let roomId = this.generateRoomId();
-    while (isRoomIdBlocked(roomId) && attempts < 1000) {
-      roomId = this.generateRoomId();
+    while (attempts < 5000) {
+      const roomId = this.generateRoomId();
       attempts += 1;
+      if (isRoomIdBlocked(roomId)) {
+        continue;
+      }
+      if (reserveRoomId(roomId, clientId)) {
+        return roomId;
+      }
     }
-    return roomId;
+    return "";
   },
 
   onCreateRoomSubmit() {
     const clientId = getApp<IAppOption>().globalData.clientId;
-    const roomId = this.generateAvailableRoomId();
     const password = this.data.createPassword.trim();
 
     if (password.length !== 6) {
-      wx.showToast({ title: "请输入6位数字密码", icon: "none" });
+      showBlockHint("请输入6位数字密码");
       return;
     }
 
-    if (!reserveRoomId(roomId, clientId)) {
-      wx.showToast({ title: "编号分配冲突，请重试", icon: "none" });
+    const roomId = this.allocateRoomId(clientId);
+    if (!roomId) {
+      showBlockHint("系统繁忙，请稍后重试");
       return;
     }
 
@@ -110,24 +116,24 @@ Page({
     const password = this.data.joinPassword.trim();
 
     if (roomId.length !== 6) {
-      wx.showToast({ title: "请输入6位房间号", icon: "none" });
+      showBlockHint("请输入6位房间号");
       return;
     }
     if (password.length !== 6) {
-      wx.showToast({ title: "请输入6位数字密码", icon: "none" });
+      showBlockHint("请输入6位数字密码");
       return;
     }
 
     const check = verifyRoomPassword(roomId, password);
     if (!check.ok) {
-      wx.showToast({ title: check.message, icon: "none" });
+      showBlockHint(check.message);
       return;
     }
 
     heartbeatRoom(roomId, clientId);
     const room = getRoom(roomId);
     if (!room) {
-      wx.showToast({ title: "房间不存在", icon: "none" });
+      showBlockHint("房间不存在");
       return;
     }
     const target = room.status === "match" ? "match" : "room";

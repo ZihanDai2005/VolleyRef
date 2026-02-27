@@ -8,6 +8,7 @@ import {
   releaseRoomId,
   TEAM_COLOR_OPTIONS,
 } from "../../utils/room-service";
+import { showBlockHint, showToastHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
 type TeamCode = "A" | "B";
@@ -201,7 +202,7 @@ Page({
     }
     const roomId = query.roomId || "";
     if (!roomId) {
-      wx.showToast({ title: "房间号无效", icon: "none" });
+      showBlockHint("房间号无效");
       return;
     }
     const createMode = query.create === "1";
@@ -294,7 +295,7 @@ Page({
     const room = getRoom(roomId);
     if (!room) {
       if (force) {
-        wx.showToast({ title: "房间不存在", icon: "none" });
+        showBlockHint("房间不存在");
       }
       return;
     }
@@ -404,13 +405,13 @@ Page({
     }
     if (team === "A") {
       if (color === this.data.teamBColor) {
-        wx.showToast({ title: "甲/乙队颜色不能相同", icon: "none" });
+        showToastHint("甲/乙队颜色不能相同");
         return;
       }
       this.setData({ teamAColor: color });
     } else {
       if (color === this.data.teamAColor) {
-        wx.showToast({ title: "甲/乙队颜色不能相同", icon: "none" });
+        showToastHint("甲/乙队颜色不能相同");
         return;
       }
       this.setData({ teamBColor: color });
@@ -463,7 +464,7 @@ Page({
       return;
     }
     const teamName = team === "A" ? (this.data.teamAName.trim() || "甲") : (this.data.teamBName.trim() || "乙");
-    wx.showToast({ title: teamName + "队号码" + duplicate + "重复", icon: "none" });
+    showToastHint(teamName + "队号码" + duplicate + "重复");
   },
 
   onTeamServeButton(e: WechatMiniprogram.TouchEvent) {
@@ -506,12 +507,12 @@ Page({
             }
             const value = normalizeNumberInput(String(res.content || ""));
             if (!/^\d{1,2}$/.test(value)) {
-              wx.showToast({ title: "请输入1-2位数字号码", icon: "none" });
+              showToastHint("请输入1-2位数字号码");
               ask();
               return;
             }
             if (!this.isNumberOnCourt(players, value)) {
-              wx.showToast({ title: "该号码不在场上", icon: "none" });
+              showToastHint("该号码不在场上");
               ask();
               return;
             }
@@ -599,23 +600,23 @@ Page({
     let teamBCaptainNo = this.data.teamBCaptainNo.trim();
 
     if (roomPassword.length !== 6) {
-      wx.showToast({ title: "房间密码需6位数字", icon: "none" });
+      showBlockHint("房间密码需6位数字");
       return;
     }
     if (this.data.teamAColor === this.data.teamBColor) {
-      wx.showToast({ title: "甲/乙队颜色不能相同", icon: "none" });
+      showBlockHint("甲/乙队颜色不能相同");
       return;
     }
 
     const errA = validateTeamPlayers(this.data.teamAPlayers, teamAName);
     if (errA) {
-      wx.showToast({ title: errA, icon: "none" });
+      showBlockHint(errA);
       return;
     }
 
     const errB = validateTeamPlayers(this.data.teamBPlayers, teamBName);
     if (errB) {
-      wx.showToast({ title: errB, icon: "none" });
+      showBlockHint(errB);
       return;
     }
 
@@ -634,7 +635,7 @@ Page({
 
     if (createMode) {
       if (getRoom(roomId)) {
-        wx.showToast({ title: "房间号已存在", icon: "none" });
+        showBlockHint("房间号已存在");
         return;
       }
       const created = createRoom({
@@ -662,7 +663,7 @@ Page({
         return room;
       });
       if (!nextCreated) {
-        wx.showToast({ title: "创建失败", icon: "none" });
+        showBlockHint("创建失败");
         return;
       }
       const clientId = getApp<IAppOption>().globalData.clientId;
@@ -699,7 +700,7 @@ Page({
     });
 
     if (!next) {
-      wx.showToast({ title: "房间不存在", icon: "none" });
+      showBlockHint("房间不存在");
       return;
     }
 
