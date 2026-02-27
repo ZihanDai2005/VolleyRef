@@ -1,65 +1,58 @@
 <view class="entry-container">
-  <view class="entry-card">
-    <text class="title">创建裁判团队</text>
+  <view class="entry-shell">
+    <view class="entry-section">
+      <text class="title">创建裁判团队</text>
+      <text class="subtitle">请设置6位数字密码</text>
 
-    <view class="pin-input-wrap">
-      <input
-        class="pin-native-input"
-        type="text"
-        maxlength="6"
-        value="{{createRoomId}}"
-        bindinput="onCreateRoomIdInput"
-      />
-      <view class="pin-display">
-        <text>{{createRoomId}}{{createRoomIdDots}}</text>
+      <view class="pin-input-wrap">
+        <input
+          class="pin-native-input"
+          type="text"
+          maxlength="6"
+          value="{{createPassword}}"
+          bindinput="onCreatePasswordInput"
+        />
+        <view class="pin-display">
+          <text>{{createPassword}}{{createPasswordDots}}</text>
+        </view>
       </view>
+
+      <button class="enter-btn" bindtap="onCreateRoomSubmit">创建</button>
     </view>
 
-    <view class="pin-input-wrap">
-      <input
-        class="pin-native-input"
-        type="text"
-        maxlength="6"
-        value="{{createPassword}}"
-        bindinput="onCreatePasswordInput"
-      />
-      <view class="pin-display">
-        <text>{{createPassword}}{{createPasswordDots}}</text>
+    <view class="section-divider"></view>
+
+    <view class="entry-section">
+      <text class="title">加入裁判团队</text>
+      <text class="subtitle">请输入6位数字裁判团队号码和密码</text>
+
+      <view class="pin-input-wrap">
+        <input
+          class="pin-native-input"
+          type="text"
+          maxlength="6"
+          value="{{joinRoomId}}"
+          bindinput="onJoinRoomIdInput"
+        />
+        <view class="pin-display">
+          <text>{{joinRoomId}}{{joinRoomIdDots}}</text>
+        </view>
       </view>
-    </view>
 
-    <button class="enter-btn" bindtap="onCreateRoomSubmit">创建裁判团队</button>
-  </view>
-
-  <view class="entry-card join-card">
-    <text class="title">加入裁判团队</text>
-
-    <view class="pin-input-wrap">
-      <input
-        class="pin-native-input"
-        type="text"
-        maxlength="6"
-        value="{{joinRoomId}}"
-        bindinput="onJoinRoomIdInput"
-      />
-      <view class="pin-display">
-        <text>{{joinRoomId}}{{joinRoomIdDots}}</text>
+      <view class="pin-input-wrap">
+        <input
+          class="pin-native-input"
+          type="text"
+          maxlength="6"
+          value="{{joinPassword}}"
+          bindinput="onJoinPasswordInput"
+        />
+        <view class="pin-display">
+          <text>{{joinPassword}}{{joinPasswordDots}}</text>
+        </view>
       </view>
-    </view>
 
-    <view class="pin-input-wrap">
-      <input
-        class="pin-native-input"
-        type="text"
-        maxlength="6"
-        value="{{joinPassword}}"
-        bindinput="onJoinPasswordInput"
-      />
-      <view class="pin-display">
-        <text>{{joinPassword}}{{joinPasswordDots}}</text>
-      </view>
+      <button class="enter-btn join-btn" bindtap="onJoinRoomSubmit">加入</button>
     </view>
-
-    <button class="enter-btn join-btn" bindtap="onJoinRoomSubmit">加入裁判团队</button>
   </view>
 </view>

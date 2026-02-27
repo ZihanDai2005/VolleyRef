@@ -5,12 +5,15 @@ import {
   heartbeatRoom,
   getParticipantCount,
   leaveRoom,
+  releaseRoomId,
   TEAM_COLOR_OPTIONS,
 } from "../../utils/room-service";
+import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
 type TeamCode = "A" | "B";
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
+type DisplayPlayerSlot = PlayerSlot & { index: number };
 type MatchModeOption = {
   label: string;
   sets: number;
@@ -25,6 +28,64 @@ const MATCH_MODE_OPTIONS: MatchModeOption[] = [
   { label: "1局1胜(15分)", sets: 1, wins: 1, maxScore: 15, tiebreakScore: 15 },
   { label: "1局1胜(25分)", sets: 1, wins: 1, maxScore: 25, tiebreakScore: 25 },
 ];
+
+const PLAYER_INDEX_BY_POS: Record<Position, number> = {
+  I: 0,
+  II: 1,
+  III: 2,
+  IV: 3,
+  V: 4,
+  VI: 5,
+  L1: 6,
+  L2: 7,
+};
+
+const TEAM_A_MAIN_ORDER: Position[] = ["V", "IV", "VI", "III", "I", "II"];
+const TEAM_B_MAIN_ORDER: Position[] = ["II", "I", "III", "VI", "IV", "V"];
+
+function createInitialPlayers(): PlayerSlot[] {
+  return [
+    { pos: "I", number: "?" },
+    { pos: "II", number: "?" },
+    { pos: "III", number: "?" },
+    { pos: "IV", number: "?" },
+    { pos: "V", number: "?" },
+    { pos: "VI", number: "?" },
+    { pos: "L1", number: "?" },
+    { pos: "L2", number: "?" },
+  ];
+}
+
+function buildMainGrid(players: PlayerSlot[], order: Position[]): DisplayPlayerSlot[][] {
+  const byPos: Record<string, PlayerSlot> = {};
+  players.forEach(function (p) {
+    byPos[p.pos] = p;
+  });
+  const ordered = order.map(function (pos) {
+    const slot = byPos[pos] || { pos: pos, number: "?" };
+    return {
+      pos: slot.pos,
+      number: slot.number,
+      index: PLAYER_INDEX_BY_POS[pos],
+    };
+  });
+  return [ordered.slice(0, 2), ordered.slice(2, 4), ordered.slice(4, 6)];
+}
+
+function buildLibero(players: PlayerSlot[]): DisplayPlayerSlot[] {
+  const byPos: Record<string, PlayerSlot> = {};
+  players.forEach(function (p) {
+    byPos[p.pos] = p;
+  });
+  return (["L1", "L2"] as Position[]).map(function (pos) {
+    const slot = byPos[pos] || { pos: pos, number: "?" };
+    return {
+      pos: slot.pos,
+      number: slot.number,
+      index: PLAYER_INDEX_BY_POS[pos],
+    };
+  });
+}
 
 function getMatchModeIndexBySettings(
   sets: number,
@@ -93,35 +154,51 @@ function findDuplicateNumber(players: PlayerSlot[]): string | null {
   return null;
 }
 
+function normalizeNumberInput(value: string): string {
+  return String(value || "").replace(/\D/g, "").slice(0, 2);
+}
+
 Page({
   data: {
     roomId: "",
     participantCount: 0,
     roomPassword: "",
     createMode: false,
+    createCommitted: false,
     editMode: false,
     matchModes: MATCH_MODE_OPTIONS,
     matchModeIndex: 0,
     passwordFocused: false,
+    teamANameFocused: false,
+    teamBNameFocused: false,
     teamAName: "",
     teamBName: "",
+    teamACaptainNo: "",
+    teamBCaptainNo: "",
+    servingTeam: "A" as TeamCode,
+    teamASide: "A" as TeamCode,
     teamAColor: TEAM_COLOR_OPTIONS[0].value,
     teamBColor: TEAM_COLOR_OPTIONS[1].value,
     colorOptions: TEAM_COLOR_OPTIONS,
     teamAPlayers: [] as PlayerSlot[],
     teamBPlayers: [] as PlayerSlot[],
-    teamARowTop: [] as PlayerSlot[],
-    teamARowMid: [] as PlayerSlot[],
-    teamARowLibero: [] as PlayerSlot[],
-    teamBRowTop: [] as PlayerSlot[],
-    teamBRowMid: [] as PlayerSlot[],
-    teamBRowLibero: [] as PlayerSlot[],
+    teamAMainGrid: [] as DisplayPlayerSlot[][],
+    teamALibero: [] as DisplayPlayerSlot[],
+    teamBMainGrid: [] as DisplayPlayerSlot[][],
+    teamBLibero: [] as DisplayPlayerSlot[],
     updatedAt: 0,
   },
 
   pollTimer: 0 as number,
+  themeOff: null as null | (() => void),
 
   onLoad(query: Record<string, string>) {
+    this.applyNavigationTheme();
+    if (!this.themeOff) {
+      this.themeOff = bindThemeChange(() => {
+        this.applyNavigationTheme();
+      });
+    }
     const roomId = query.roomId || "";
     if (!roomId) {
       wx.showToast({ title: "房间号无效", icon: "none" });
@@ -132,61 +209,25 @@ Page({
     this.setData({ roomId: roomId, editMode: editMode, createMode: createMode });
     if (createMode) {
       const presetPassword = String(query.password || "").replace(/\D/g, "").slice(0, 6);
+      const initialA = createInitialPlayers();
+      const initialB = createInitialPlayers();
       this.setData({
         participantCount: 0,
         roomPassword: presetPassword,
         teamAName: "",
         teamBName: "",
+        teamACaptainNo: "",
+        teamBCaptainNo: "",
+        servingTeam: "A",
+        teamASide: "A",
         teamAColor: TEAM_COLOR_OPTIONS[0].value,
         teamBColor: TEAM_COLOR_OPTIONS[1].value,
-        teamAPlayers: [
-          { pos: "I", number: "?" },
-          { pos: "II", number: "?" },
-          { pos: "III", number: "?" },
-          { pos: "IV", number: "?" },
-          { pos: "V", number: "?" },
-          { pos: "VI", number: "?" },
-          { pos: "L1", number: "?" },
-          { pos: "L2", number: "?" },
-        ],
-        teamBPlayers: [
-          { pos: "I", number: "?" },
-          { pos: "II", number: "?" },
-          { pos: "III", number: "?" },
-          { pos: "IV", number: "?" },
-          { pos: "V", number: "?" },
-          { pos: "VI", number: "?" },
-          { pos: "L1", number: "?" },
-          { pos: "L2", number: "?" },
-        ],
-        teamARowTop: [
-          { pos: "I", number: "?" },
-          { pos: "II", number: "?" },
-          { pos: "III", number: "?" },
-        ],
-        teamARowMid: [
-          { pos: "IV", number: "?" },
-          { pos: "V", number: "?" },
-          { pos: "VI", number: "?" },
-        ],
-        teamARowLibero: [
-          { pos: "L1", number: "?" },
-          { pos: "L2", number: "?" },
-        ],
-        teamBRowTop: [
-          { pos: "I", number: "?" },
-          { pos: "II", number: "?" },
-          { pos: "III", number: "?" },
-        ],
-        teamBRowMid: [
-          { pos: "IV", number: "?" },
-          { pos: "V", number: "?" },
-          { pos: "VI", number: "?" },
-        ],
-        teamBRowLibero: [
-          { pos: "L1", number: "?" },
-          { pos: "L2", number: "?" },
-        ],
+        teamAPlayers: initialA,
+        teamBPlayers: initialB,
+        teamAMainGrid: buildMainGrid(initialA, TEAM_A_MAIN_ORDER),
+        teamALibero: buildLibero(initialA),
+        teamBMainGrid: buildMainGrid(initialB, TEAM_B_MAIN_ORDER),
+        teamBLibero: buildLibero(initialB),
       });
       return;
     }
@@ -194,6 +235,7 @@ Page({
   },
 
   onShow() {
+    this.applyNavigationTheme();
     if (this.data.createMode) {
       return;
     }
@@ -205,13 +247,25 @@ Page({
   },
 
   onUnload() {
+    if (this.themeOff) {
+      this.themeOff();
+      this.themeOff = null;
+    }
     this.stopPolling();
     if (this.data.createMode) {
+      if (!this.data.createCommitted) {
+        const clientId = getApp<IAppOption>().globalData.clientId;
+        releaseRoomId(this.data.roomId, clientId);
+      }
       return;
     }
     const roomId = this.data.roomId;
     const clientId = getApp<IAppOption>().globalData.clientId;
     leaveRoom(roomId, clientId);
+  },
+
+  applyNavigationTheme() {
+    applyNavigationBarTheme();
   },
 
   startPolling() {
@@ -268,16 +322,18 @@ Page({
       ),
       teamAName: room.teamA.name,
       teamBName: room.teamB.name,
+      teamACaptainNo: String((room.teamA as any).captainNo || ""),
+      teamBCaptainNo: String((room.teamB as any).captainNo || ""),
+      servingTeam: room.match.servingTeam === "B" ? "B" : "A",
+      teamASide: room.match.isSwapped ? "B" : "A",
       teamAColor: room.teamA.color || TEAM_COLOR_OPTIONS[0].value,
       teamBColor: room.teamB.color || TEAM_COLOR_OPTIONS[1].value,
       teamAPlayers: teamAPlayers,
       teamBPlayers: teamBPlayers,
-      teamARowTop: teamAPlayers.slice(0, 3),
-      teamARowMid: teamAPlayers.slice(3, 6),
-      teamARowLibero: teamAPlayers.slice(6, 8),
-      teamBRowTop: teamBPlayers.slice(0, 3),
-      teamBRowMid: teamBPlayers.slice(3, 6),
-      teamBRowLibero: teamBPlayers.slice(6, 8),
+      teamAMainGrid: buildMainGrid(teamAPlayers, TEAM_A_MAIN_ORDER),
+      teamALibero: buildLibero(teamAPlayers),
+      teamBMainGrid: buildMainGrid(teamBPlayers, TEAM_B_MAIN_ORDER),
+      teamBLibero: buildLibero(teamBPlayers),
       updatedAt: room.updatedAt,
     });
   },
@@ -289,6 +345,10 @@ Page({
       this.setData({ teamAName: value });
     } else if (field === "teamBName") {
       this.setData({ teamBName: value });
+    } else if (field === "teamACaptainNo") {
+      this.setData({ teamACaptainNo: normalizeNumberInput(value) });
+    } else if (field === "teamBCaptainNo") {
+      this.setData({ teamBCaptainNo: normalizeNumberInput(value) });
     } else if (field === "roomPassword") {
       this.setData({ roomPassword: (value || "").replace(/\D/g, "").slice(0, 6) });
     }
@@ -313,6 +373,28 @@ Page({
     this.setData({ passwordFocused: false });
   },
 
+  onTeamNameFocus(e: WechatMiniprogram.InputFocus) {
+    const field = ((e.currentTarget || {}).dataset as { field?: string }).field;
+    if (field === "teamAName") {
+      this.setData({ teamANameFocused: true });
+      return;
+    }
+    if (field === "teamBName") {
+      this.setData({ teamBNameFocused: true });
+    }
+  },
+
+  onTeamNameBlur(e: WechatMiniprogram.InputBlur) {
+    const field = ((e.currentTarget || {}).dataset as { field?: string }).field;
+    if (field === "teamAName") {
+      this.setData({ teamANameFocused: false });
+      return;
+    }
+    if (field === "teamBName") {
+      this.setData({ teamBNameFocused: false });
+    }
+  },
+
   onTeamColorSelect(e: WechatMiniprogram.TouchEvent) {
     const dataset = e.currentTarget.dataset as { team: TeamCode; color: string };
     const team = dataset.team;
@@ -322,13 +404,13 @@ Page({
     }
     if (team === "A") {
       if (color === this.data.teamBColor) {
-        wx.showToast({ title: "A/B队颜色不能相同", icon: "none" });
+        wx.showToast({ title: "甲/乙队颜色不能相同", icon: "none" });
         return;
       }
       this.setData({ teamAColor: color });
     } else {
       if (color === this.data.teamAColor) {
-        wx.showToast({ title: "A/B队颜色不能相同", icon: "none" });
+        wx.showToast({ title: "甲/乙队颜色不能相同", icon: "none" });
         return;
       }
       this.setData({ teamBColor: color });
@@ -352,9 +434,8 @@ Page({
       players[index] = { pos: current.pos, number: number };
       this.setData({
         teamAPlayers: players,
-        teamARowTop: players.slice(0, 3),
-        teamARowMid: players.slice(3, 6),
-        teamARowLibero: players.slice(6, 8),
+        teamAMainGrid: buildMainGrid(players, TEAM_A_MAIN_ORDER),
+        teamALibero: buildLibero(players),
       });
       this.persistDraft(players, this.data.teamBPlayers);
     } else {
@@ -366,9 +447,8 @@ Page({
       players[index] = { pos: current.pos, number: number };
       this.setData({
         teamBPlayers: players,
-        teamBRowTop: players.slice(0, 3),
-        teamBRowMid: players.slice(3, 6),
-        teamBRowLibero: players.slice(6, 8),
+        teamBMainGrid: buildMainGrid(players, TEAM_B_MAIN_ORDER),
+        teamBLibero: buildLibero(players),
       });
       this.persistDraft(this.data.teamAPlayers, players);
     }
@@ -382,8 +462,98 @@ Page({
     if (!duplicate) {
       return;
     }
-    const teamName = team === "A" ? (this.data.teamAName.trim() || "A") : (this.data.teamBName.trim() || "B");
+    const teamName = team === "A" ? (this.data.teamAName.trim() || "甲") : (this.data.teamBName.trim() || "乙");
     wx.showToast({ title: teamName + "队号码" + duplicate + "重复", icon: "none" });
+  },
+
+  onTeamServeButton(e: WechatMiniprogram.TouchEvent) {
+    const dataset = e.currentTarget.dataset as { team: TeamCode };
+    const team = dataset.team;
+    const current = this.data.servingTeam;
+    const next = current === team ? (team === "A" ? "B" : "A") : team;
+    this.setData({ servingTeam: next });
+    this.persistDraft();
+  },
+
+  onToggleTeamSide() {
+    this.setData({ teamASide: this.data.teamASide === "A" ? "B" : "A" });
+    this.persistDraft();
+  },
+
+  isNumberOnCourt(players: PlayerSlot[], number: string): boolean {
+    const target = normalizeNumberInput(number);
+    if (!target) {
+      return false;
+    }
+    return players.some(function (item) {
+      return normalizeNumberInput(item.number) === target;
+    });
+  },
+
+  promptOnCourtCaptain(teamLabel: string, players: PlayerSlot[]): Promise<string | null> {
+    return new Promise((resolve) => {
+      const ask = () => {
+        (wx as any).showModal({
+          title: teamLabel + "队场上队长",
+          content: "",
+          editable: true,
+          confirmText: "确定",
+          cancelText: "取消",
+          success: (res: any) => {
+            if (!res || res.cancel) {
+              resolve(null);
+              return;
+            }
+            const value = normalizeNumberInput(String(res.content || ""));
+            if (!/^\d{1,2}$/.test(value)) {
+              wx.showToast({ title: "请输入1-2位数字号码", icon: "none" });
+              ask();
+              return;
+            }
+            if (!this.isNumberOnCourt(players, value)) {
+              wx.showToast({ title: "该号码不在场上", icon: "none" });
+              ask();
+              return;
+            }
+            resolve(value);
+          },
+        });
+      };
+      ask();
+    });
+  },
+
+  async ensureOnCourtCaptains(
+    teamAPlayers: PlayerSlot[],
+    teamBPlayers: PlayerSlot[]
+  ): Promise<{ teamACaptainNo: string; teamBCaptainNo: string } | null> {
+    let teamACaptainNo = normalizeNumberInput(this.data.teamACaptainNo);
+    let teamBCaptainNo = normalizeNumberInput(this.data.teamBCaptainNo);
+    const aOk = this.isNumberOnCourt(teamAPlayers, teamACaptainNo);
+    const bOk = this.isNumberOnCourt(teamBPlayers, teamBCaptainNo);
+
+    if (!aOk) {
+      const enteredA = await this.promptOnCourtCaptain("甲", teamAPlayers);
+      if (!enteredA) {
+        return null;
+      }
+      teamACaptainNo = enteredA;
+    }
+    if (!bOk) {
+      const enteredB = await this.promptOnCourtCaptain("乙", teamBPlayers);
+      if (!enteredB) {
+        return null;
+      }
+      teamBCaptainNo = enteredB;
+    }
+    this.setData({
+      teamACaptainNo: teamACaptainNo,
+      teamBCaptainNo: teamBCaptainNo,
+    });
+    return {
+      teamACaptainNo: teamACaptainNo,
+      teamBCaptainNo: teamBCaptainNo,
+    };
   },
 
   persistDraft(teamAPlayersArg?: PlayerSlot[], teamBPlayersArg?: PlayerSlot[]) {
@@ -403,31 +573,37 @@ Page({
         tiebreakScore: mode.tiebreakScore,
       };
       room.teamA = {
-        name: this.data.teamAName.trim() || "A",
+        name: this.data.teamAName.trim() || "甲",
+        captainNo: this.data.teamACaptainNo.trim(),
         color: this.data.teamAColor,
         players: teamAPlayers.slice(),
       };
       room.teamB = {
-        name: this.data.teamBName.trim() || "B",
+        name: this.data.teamBName.trim() || "乙",
+        captainNo: this.data.teamBCaptainNo.trim(),
         color: this.data.teamBColor,
         players: teamBPlayers.slice(),
       };
+      room.match.servingTeam = this.data.servingTeam;
+      room.match.isSwapped = this.data.teamASide === "B";
       return room;
     });
   },
 
-  onSaveAndStart() {
-    const teamAName = this.data.teamAName.trim() || "A";
-    const teamBName = this.data.teamBName.trim() || "B";
+  async onSaveAndStart() {
+    const teamAName = this.data.teamAName.trim() || "甲";
+    const teamBName = this.data.teamBName.trim() || "乙";
     const roomPassword = this.data.roomPassword.trim();
     const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
+    let teamACaptainNo = this.data.teamACaptainNo.trim();
+    let teamBCaptainNo = this.data.teamBCaptainNo.trim();
 
     if (roomPassword.length !== 6) {
       wx.showToast({ title: "房间密码需6位数字", icon: "none" });
       return;
     }
     if (this.data.teamAColor === this.data.teamBColor) {
-      wx.showToast({ title: "A/B队颜色不能相同", icon: "none" });
+      wx.showToast({ title: "甲/乙队颜色不能相同", icon: "none" });
       return;
     }
 
@@ -446,6 +622,16 @@ Page({
     const roomId = this.data.roomId;
     const editMode = this.data.editMode;
     const createMode = this.data.createMode;
+
+    if (!editMode) {
+      const captainResolved = await this.ensureOnCourtCaptains(this.data.teamAPlayers, this.data.teamBPlayers);
+      if (!captainResolved) {
+        return;
+      }
+      teamACaptainNo = captainResolved.teamACaptainNo;
+      teamBCaptainNo = captainResolved.teamBCaptainNo;
+    }
+
     if (createMode) {
       if (getRoom(roomId)) {
         wx.showToast({ title: "房间号已存在", icon: "none" });
@@ -461,14 +647,18 @@ Page({
           tiebreakScore: mode.tiebreakScore,
         },
         teamAName: teamAName,
+        teamACaptainNo: teamACaptainNo,
         teamAColor: this.data.teamAColor,
         teamAPlayers: this.data.teamAPlayers.slice(),
         teamBName: teamBName,
+        teamBCaptainNo: teamBCaptainNo,
         teamBColor: this.data.teamBColor,
         teamBPlayers: this.data.teamBPlayers.slice(),
       });
       const nextCreated = updateRoom(created.roomId, (room) => {
         room.status = "match";
+        room.match.servingTeam = this.data.servingTeam;
+        room.match.isSwapped = this.data.teamASide === "B";
         return room;
       });
       if (!nextCreated) {
@@ -476,6 +666,8 @@ Page({
         return;
       }
       const clientId = getApp<IAppOption>().globalData.clientId;
+      releaseRoomId(created.roomId, clientId);
+      this.setData({ createCommitted: true });
       heartbeatRoom(created.roomId, clientId);
       wx.navigateTo({ url: "/pages/match/match?roomId=" + created.roomId });
       return;
@@ -491,14 +683,18 @@ Page({
       };
       room.teamA = {
         name: teamAName,
+        captainNo: teamACaptainNo,
         color: this.data.teamAColor,
         players: this.data.teamAPlayers.slice(),
       };
       room.teamB = {
         name: teamBName,
+        captainNo: teamBCaptainNo,
         color: this.data.teamBColor,
         players: this.data.teamBPlayers.slice(),
       };
+      room.match.servingTeam = this.data.servingTeam;
+      room.match.isSwapped = this.data.teamASide === "B";
       return room;
     });
 

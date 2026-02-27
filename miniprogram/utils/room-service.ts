@@ -14,6 +14,7 @@ export interface MatchSettings {
 
 export interface TeamState {
   name: string;
+  captainNo: string;
   color: string;
   players: PlayerSlot[];
 }
@@ -23,6 +24,7 @@ export interface MatchState {
   bScore: number;
   servingTeam: "A" | "B";
   isSwapped: boolean;
+  decidingSetEightHandled: boolean;
   setNo: number;
   aSetWins: number;
   bSetWins: number;
@@ -33,6 +35,8 @@ export interface MatchState {
     servingTeam: "A" | "B";
     teamAPlayers: PlayerSlot[];
     teamBPlayers: PlayerSlot[];
+    isSwapped?: boolean;
+    decidingSetEightHandled?: boolean;
     setNo?: number;
     aSetWins?: number;
     bSetWins?: number;
@@ -65,8 +69,10 @@ interface RoomStore {
 }
 
 const ROOMS_KEY = "volleyball.rooms.v1";
+const ROOM_LOCKS_KEY = "volleyball.roomLocks.v1";
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 20 * 1000;
+const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
 const POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
 const DEFAULT_TEAM_A_COLOR = "#6C63BE";
 const DEFAULT_TEAM_B_COLOR = "#66B97A";
@@ -76,7 +82,7 @@ export const TEAM_COLOR_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "浅蓝", value: "#6FAEDC" },
   { label: "深蓝", value: "#3E6FB6" },
   { label: "紫色", value: "#6C63BE" },
-  { label: "绿色", value: "#66B97A" },
+  { label: "浅绿", value: "#66B97A" },
   { label: "深绿", value: "#2F6F4A" },
   { label: "青色", value: "#3FA89C" },
   { label: "红色", value: "#C95A5A" },
@@ -104,6 +110,33 @@ function saveStore(store: RoomStore): void {
   wx.setStorageSync(ROOMS_KEY, store);
 }
 
+function loadRoomLocks(): Record<string, { owner: string; ts: number }> {
+  const raw = wx.getStorageSync(ROOM_LOCKS_KEY);
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+  const input = raw as Record<string, { owner?: string; ts?: number }>;
+  const output: Record<string, { owner: string; ts: number }> = {};
+  const nowTs = now();
+  Object.keys(input).forEach(function (roomId) {
+    const item = input[roomId];
+    const owner = String(item && item.owner ? item.owner : "");
+    const ts = Number(item && item.ts ? item.ts : 0);
+    if (!owner || ts <= 0) {
+      return;
+    }
+    if (nowTs - ts > ROOM_LOCK_TTL_MS) {
+      return;
+    }
+    output[roomId] = { owner: owner, ts: ts };
+  });
+  return output;
+}
+
+function saveRoomLocks(locks: Record<string, { owner: string; ts: number }>): void {
+  wx.setStorageSync(ROOM_LOCKS_KEY, locks);
+}
+
 function randomRoomId(): string {
   return Math.floor(100000 + Math.random() * 900000).toString();
 }
@@ -125,12 +158,14 @@ function createDefaultRoom(roomId: string): RoomState {
       tiebreakScore: 15,
     },
     teamA: {
-      name: "A",
+      name: "甲",
+      captainNo: "",
       color: DEFAULT_TEAM_A_COLOR,
       players: createInitialPlayers(),
     },
     teamB: {
-      name: "B",
+      name: "乙",
+      captainNo: "",
       color: DEFAULT_TEAM_B_COLOR,
       players: createInitialPlayers(),
     },
@@ -139,6 +174,7 @@ function createDefaultRoom(roomId: string): RoomState {
       bScore: 0,
       servingTeam: "A",
       isSwapped: false,
+      decidingSetEightHandled: false,
       setNo: 1,
       aSetWins: 0,
       bSetWins: 0,
@@ -193,8 +229,10 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   base.settings.maxScore = Number(input.settings && input.settings.maxScore) || 25;
   base.settings.tiebreakScore = Number(input.settings && input.settings.tiebreakScore) || 15;
 
-  base.teamA.name = (input.teamA && input.teamA.name) || "A";
-  base.teamB.name = (input.teamB && input.teamB.name) || "B";
+  base.teamA.name = (input.teamA && input.teamA.name) || "甲";
+  base.teamB.name = (input.teamB && input.teamB.name) || "乙";
+  base.teamA.captainNo = String(input.teamA && (input.teamA as any).captainNo ? (input.teamA as any).captainNo : "");
+  base.teamB.captainNo = String(input.teamB && (input.teamB as any).captainNo ? (input.teamB as any).captainNo : "");
   base.teamA.color = normalizeHexColor(input.teamA && (input.teamA as any).color, DEFAULT_TEAM_A_COLOR);
   base.teamB.color = normalizeHexColor(input.teamB && (input.teamB as any).color, DEFAULT_TEAM_B_COLOR);
   if (base.teamA.color === base.teamB.color) {
@@ -210,6 +248,7 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   base.match.bScore = Math.max(0, Number(input.match && input.match.bScore) || 0);
   base.match.servingTeam = input.match && input.match.servingTeam === "B" ? "B" : "A";
   base.match.isSwapped = !!(input.match && (input.match as any).isSwapped);
+  base.match.decidingSetEightHandled = !!(input.match && (input.match as any).decidingSetEightHandled);
   base.match.setNo = Math.max(1, Number(input.match && (input.match as any).setNo) || 1);
   base.match.aSetWins = Math.max(0, Number(input.match && (input.match as any).aSetWins) || 0);
   base.match.bSetWins = Math.max(0, Number(input.match && (input.match as any).bSetWins) || 0);
@@ -224,6 +263,8 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
         servingTeam: item.servingTeam === "B" ? "B" : "A",
         teamAPlayers: normalizePlayers(item.teamAPlayers),
         teamBPlayers: normalizePlayers(item.teamBPlayers),
+        isSwapped: !!item.isSwapped,
+        decidingSetEightHandled: !!item.decidingSetEightHandled,
         setNo: Math.max(1, Number(item.setNo) || 1),
         aSetWins: Math.max(0, Number(item.aSetWins) || 0),
         bSetWins: Math.max(0, Number(item.bSetWins) || 0),
@@ -325,6 +366,8 @@ export function createRoom(input: {
   settings: MatchSettings;
   teamAName: string;
   teamBName: string;
+  teamACaptainNo?: string;
+  teamBCaptainNo?: string;
   teamAColor?: string;
   teamBColor?: string;
   teamAPlayers: PlayerSlot[];
@@ -350,12 +393,14 @@ export function createRoom(input: {
     tiebreakScore: Number(input.settings.tiebreakScore) || 15,
   };
   room.teamA = {
-    name: input.teamAName || "A",
+    name: input.teamAName || "甲",
+    captainNo: String(input.teamACaptainNo || ""),
     color: normalizeHexColor(input.teamAColor, DEFAULT_TEAM_A_COLOR),
     players: normalizePlayers(input.teamAPlayers),
   };
   room.teamB = {
-    name: input.teamBName || "B",
+    name: input.teamBName || "乙",
+    captainNo: String(input.teamBCaptainNo || ""),
     color: normalizeHexColor(input.teamBColor, DEFAULT_TEAM_B_COLOR),
     players: normalizePlayers(input.teamBPlayers),
   };
@@ -374,6 +419,58 @@ export function createRoom(input: {
 export function getRoom(roomId: string): RoomState | null {
   const room = getStore()[roomId];
   return room ? cloneRoom(room) : null;
+}
+
+export function isRoomIdBlocked(roomId: string): boolean {
+  const id = String(roomId || "");
+  if (!id) {
+    return false;
+  }
+  if (getRoom(id)) {
+    return true;
+  }
+  const locks = loadRoomLocks();
+  return !!locks[id];
+}
+
+export function reserveRoomId(roomId: string, ownerId: string): boolean {
+  const id = String(roomId || "");
+  const owner = String(ownerId || "");
+  if (!id || !owner) {
+    return false;
+  }
+  if (getRoom(id)) {
+    return false;
+  }
+  const locks = loadRoomLocks();
+  const existing = locks[id];
+  if (existing && existing.owner !== owner) {
+    return false;
+  }
+  locks[id] = {
+    owner: owner,
+    ts: now(),
+  };
+  saveRoomLocks(locks);
+  return true;
+}
+
+export function releaseRoomId(roomId: string, ownerId?: string): void {
+  const id = String(roomId || "");
+  if (!id) {
+    return;
+  }
+  const owner = String(ownerId || "");
+  const locks = loadRoomLocks();
+  const existing = locks[id];
+  if (!existing) {
+    return;
+  }
+  if (owner && existing.owner !== owner) {
+    return;
+  }
+  delete locks[id];
+  saveRoomLocks(locks);
 }
 
 export function getParticipantCount(roomId: string): number {

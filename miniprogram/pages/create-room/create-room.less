@@ -1,40 +1,73 @@
+page {
+  height: 100vh;
+  overflow: hidden;
+}
+
 .entry-container {
-  min-height: 100vh;
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 32rpx;
+  box-sizing: border-box;
+  overflow: hidden;
+}
+
+.entry-shell {
+  width: 100%;
+  max-width: 1120rpx;
   display: flex;
   flex-direction: column;
-  gap: 16px;
-  padding: 16px;
-  box-sizing: border-box;
+  gap: 40rpx;
 }
 
-.entry-card {
+.entry-section {
   width: 100%;
-  border-radius: 14px;
-  padding: 16px;
-  background: rgba(153, 153, 153, 0.08);
+  padding: 16rpx 0;
   box-sizing: border-box;
 }
 
-.join-card {
-  background: rgba(129, 199, 158, 0.12);
+.section-divider {
+  width: 100%;
+  height: 2rpx;
+  background: var(--line-soft);
+  margin: 36rpx 0;
 }
 
 .title {
   display: block;
-  font-size: 22px;
+  font-size: 50rpx;
   font-weight: 600;
-  color: #222;
+  color: var(--text-primary);
+  text-align: center;
+}
+
+.subtitle {
+  display: block;
+  margin-top: 16rpx;
+  font-size: 22rpx;
+  color: var(--text-muted);
   text-align: center;
 }
 
 .pin-input-wrap {
   position: relative;
-  margin-top: 10px;
-  height: 44px;
-  border-radius: 10px;
-  background: #fff;
-  border: 1px solid #ddd;
+  margin-top: 32rpx;
+  height: 112rpx;
+  border-radius: 24rpx;
+  background: var(--surface);
+  border: 2rpx solid var(--line);
   overflow: hidden;
+}
+
+.pin-input-wrap,
+.enter-btn {
+  width: 72%;
+  max-width: 720rpx;
+  min-width: 440rpx;
+  margin-left: auto;
+  margin-right: auto;
+  box-sizing: border-box;
 }
 
 .pin-native-input {
@@ -49,8 +82,8 @@
   text-align: center;
   background: transparent;
   border: 0;
-  font-size: 18px;
-  letter-spacing: 14px;
+  font-size: 64rpx;
+  letter-spacing: 28rpx;
 }
 
 .pin-display {
@@ -62,20 +95,28 @@
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 18px;
-  letter-spacing: 14px;
-  color: #666;
+  font-size: 64rpx;
+  letter-spacing: 28rpx;
+  color: var(--text-tertiary);
   pointer-events: none;
 }
 
 .enter-btn {
-  margin-top: 12px;
-  background: #8a87d0;
+  margin-top: 36rpx;
+  display: block;
+  height: 82rpx;
+  line-height: 82rpx;
+  padding: 0;
+  background: #4f5561;
   color: #fff;
-  border-radius: 10px;
-  font-size: 16px;
+  border-radius: 24rpx;
+  font-size: 32rpx;
+}
+
+.enter-btn::after {
+  border: 0;
 }
 
 .join-btn {
-  background: #65b288;
+  background: #6c63be;
 }

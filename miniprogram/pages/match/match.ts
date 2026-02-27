@@ -6,6 +6,7 @@ import {
   leaveRoom,
   TEAM_COLOR_OPTIONS,
 } from "../../utils/room-service";
+import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
 type TeamCode = "A" | "B";
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
@@ -105,7 +106,7 @@ function getSetTargetScore(room: any): number {
   return decidingSet ? 15 : 25;
 }
 
-function shouldAutoSwitchAtEight(room: any): boolean {
+function shouldPromptSwitchAtEight(room: any): boolean {
   if ((room.settings.wins || 1) <= 1) {
     return false;
   }
@@ -116,6 +117,9 @@ function shouldAutoSwitchAtEight(room: any): boolean {
     return false;
   }
   if (room.match.isSwapped) {
+    return false;
+  }
+  if (room.match.decidingSetEightHandled) {
     return false;
   }
   return Math.max(room.match.aScore, room.match.bScore) === 8;
@@ -150,6 +154,37 @@ function appendMatchLog(room: any, action: string, note: string, team?: TeamCode
   }
 }
 
+function pushUndoSnapshot(room: any): void {
+  room.match.undoStack.push({
+    aScore: room.match.aScore,
+    bScore: room.match.bScore,
+    servingTeam: room.match.servingTeam,
+    teamAPlayers: room.teamA.players.slice(),
+    teamBPlayers: room.teamB.players.slice(),
+    isSwapped: !!room.match.isSwapped,
+    decidingSetEightHandled: !!room.match.decidingSetEightHandled,
+    setNo: room.match.setNo,
+    aSetWins: room.match.aSetWins,
+    bSetWins: room.match.bSetWins,
+    isFinished: room.match.isFinished,
+  });
+  if (room.match.undoStack.length > 100) {
+    room.match.undoStack.shift();
+  }
+}
+
+function samePlayers(a: PlayerSlot[], b: PlayerSlot[]): boolean {
+  if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) {
+    return false;
+  }
+  for (let i = 0; i < a.length; i += 1) {
+    if (a[i].pos !== b[i].pos || a[i].number !== b[i].number) {
+      return false;
+    }
+  }
+  return true;
+}
+
 function hexToRgbTriplet(hex: string): string {
   const normalized = String(hex || "").trim();
   const m = normalized.match(/^#([0-9a-fA-F]{6})$/);
@@ -163,20 +198,26 @@ function hexToRgbTriplet(hex: string): string {
   return String(r) + ", " + String(g) + ", " + String(b);
 }
 
+function normalizeNumberInput(value: string): string {
+  return String(value || "").replace(/\D/g, "").slice(0, 2);
+}
+
 Page({
   data: {
     roomId: "",
     participantCount: 0,
-    teamAName: "A",
-    teamBName: "B",
+    teamAName: "甲",
+    teamBName: "乙",
     teamAColor: TEAM_COLOR_OPTIONS[0].value,
     teamBColor: TEAM_COLOR_OPTIONS[1].value,
+    teamACaptainNo: "",
+    teamBCaptainNo: "",
     teamARGB: "138, 135, 208",
     teamBRGB: "129, 199, 158",
     aScore: 0,
     bScore: 0,
     servingTeam: "A" as TeamCode,
-    servingTeamName: "A",
+    servingTeamName: "甲",
     serveOnLeft: true,
     serveThemeClass: "serve-a",
     serveMotion: false,
@@ -200,17 +241,25 @@ Page({
     teamAMainGrid: [] as PlayerSlot[][],
     teamBLibero: [] as PlayerSlot[],
     teamBMainGrid: [] as PlayerSlot[][],
-    safePadTop: "8px",
-    safePadRight: "20px",
-    safePadBottom: "8px",
-    safePadLeft: "20px",
+    safePadTop: "0px",
+    safePadRight: "0px",
+    safePadBottom: "0px",
+    safePadLeft: "0px",
+    safeDebugText: "",
     updatedAt: 0,
   },
 
   pollTimer: 0 as number,
   serveMotionTimer: 0 as number,
+  themeOff: null as null | (() => void),
 
   onLoad(query: Record<string, string>) {
+    this.applyNavigationTheme();
+    if (!this.themeOff) {
+      this.themeOff = bindThemeChange(() => {
+        this.applyNavigationTheme();
+      });
+    }
     const roomId = query.roomId || "";
     if (!roomId) {
       wx.showToast({ title: "缺少房间号", icon: "none" });
@@ -226,6 +275,7 @@ Page({
   },
 
   onShow() {
+    this.applyNavigationTheme();
     this.startPolling();
   },
 
@@ -234,6 +284,10 @@ Page({
   },
 
   onUnload() {
+    if (this.themeOff) {
+      this.themeOff();
+      this.themeOff = null;
+    }
     this.stopPolling();
     if ((wx as any).offWindowResize) {
       (wx as any).offWindowResize(this.onWindowResize);
@@ -251,6 +305,10 @@ Page({
     this.syncSafePadding();
   },
 
+  applyNavigationTheme() {
+    applyNavigationBarTheme();
+  },
+
   syncSafePadding() {
     const info: any = (wx as any).getWindowInfo ? (wx as any).getWindowInfo() : wx.getSystemInfoSync();
     const safe = info && info.safeArea;
@@ -258,10 +316,11 @@ Page({
     const windowHeight = Number(info && info.windowHeight) || Number(info && info.screenHeight) || 0;
     if (!safe || !windowWidth || !windowHeight) {
       this.setData({
-        safePadTop: "8px",
-        safePadRight: "20px",
-        safePadBottom: "8px",
-        safePadLeft: "20px",
+        safePadTop: "10px",
+        safePadRight: "0px",
+        safePadBottom: "25px",
+        safePadLeft: "0px",
+        safeDebugText: "safeArea unavailable",
       });
       return;
     }
@@ -269,11 +328,25 @@ Page({
     const insetLeft = Math.max(0, Number(safe.left) || 0);
     const insetRight = Math.max(0, windowWidth - (Number(safe.right) || windowWidth));
     const insetBottom = Math.max(0, windowHeight - (Number(safe.bottom) || windowHeight));
+    // 比赛页统一策略：左右用安全边距，顶部/底部使用固定值便于稳定布局。
+    // 部分机型会把危险区上报到 top，这里也映射到左右，避免“左右贴边+顶部空白”。
+    const sideInset = Math.max(insetLeft, insetRight, insetTop, insetBottom);
     this.setData({
-      safePadTop: String(8 + insetTop) + "px",
-      safePadRight: String(20 + insetRight) + "px",
-      safePadBottom: String(8 + insetBottom) + "px",
-      safePadLeft: String(20 + insetLeft) + "px",
+      safePadTop: "10px",
+      safePadRight: String(sideInset) + "px",
+      safePadBottom: "25px",
+      safePadLeft: String(sideInset) + "px",
+      safeDebugText:
+        "side-only | ww:" +
+        String(windowWidth) +
+        " wh:" +
+        String(windowHeight) +
+        " | safe t/l/r/b:" +
+        [safe.top, safe.left, safe.right, safe.bottom].join("/") +
+        " | inset t/l/r/b:" +
+        [insetTop, insetLeft, insetRight, insetBottom].join("/") +
+        " | pad t/r/b/l:" +
+        [10, sideInset, 25, sideInset].join("/"),
     });
   },
 
@@ -345,6 +418,8 @@ Page({
       teamBName: room.teamB.name,
       teamAColor: teamAColor,
       teamBColor: teamBColor,
+      teamACaptainNo: normalizeNumberInput(String((room.teamA as any).captainNo || "")),
+      teamBCaptainNo: normalizeNumberInput(String((room.teamB as any).captainNo || "")),
       teamARGB: hexToRgbTriplet(teamAColor),
       teamBRGB: hexToRgbTriplet(teamBColor),
       aScore: room.match.aScore,
@@ -404,26 +479,14 @@ Page({
     let matchEndedMessage = "";
     let matchWinnerName = "";
     let rotatedTeam: TeamCode | "" = "";
+    let needDecidingSetSwitchChoice = false;
 
     const next = updateRoom(roomId, (room) => {
       if (room.match.isFinished) {
         return room;
       }
       if (type === "add") {
-        room.match.undoStack.push({
-          aScore: room.match.aScore,
-          bScore: room.match.bScore,
-          servingTeam: room.match.servingTeam,
-          teamAPlayers: room.teamA.players.slice(),
-          teamBPlayers: room.teamB.players.slice(),
-          setNo: room.match.setNo,
-          aSetWins: room.match.aSetWins,
-          bSetWins: room.match.bSetWins,
-          isFinished: room.match.isFinished,
-        });
-        if (room.match.undoStack.length > 100) {
-          room.match.undoStack.shift();
-        }
+        pushUndoSnapshot(room);
 
         if (team === "A") {
           room.match.aScore += 1;
@@ -448,8 +511,10 @@ Page({
           room.match.servingTeam = team;
         }
 
-        if (shouldAutoSwitchAtEight(room)) {
-          toggleSidesWithLog(room, "决胜局8分自动换边");
+        if (shouldPromptSwitchAtEight(room)) {
+          room.match.decidingSetEightHandled = true;
+          needDecidingSetSwitchChoice = true;
+          appendMatchLog(room, "switch_sides_prompt", "决胜局8分，请选择是否换边");
         }
 
         const target = getSetTargetScore(room);
@@ -510,6 +575,7 @@ Page({
             room.match.bScore = 0;
             room.match.servingTeam = setWinner;
             room.match.isSwapped = false;
+            room.match.decidingSetEightHandled = false;
             appendMatchLog(room, "next_set", "进入第" + String(room.match.setNo) + "局", setWinner);
           }
         }
@@ -528,9 +594,33 @@ Page({
       }
     };
 
+    const showDecidingSetSwitchChoice = () => {
+      if (!needDecidingSetSwitchChoice) {
+        return;
+      }
+      wx.showModal({
+        title: "决胜局8分",
+        content: "是否现在换边？",
+        confirmText: "换边",
+        cancelText: "不换边",
+        success: (res) => {
+          if (res.confirm) {
+            this.onSwitchSides();
+            return;
+          }
+          updateRoom(roomId, (room) => {
+            appendMatchLog(room, "switch_sides_skip", "决胜局8分，选择不换边");
+            return room;
+          });
+          this.loadRoom(roomId, true);
+        },
+      });
+    };
+
     if (!rotatedTeam) {
       this.loadRoom(roomId, true);
       showMessages();
+      showDecidingSetSwitchChoice();
       return;
     }
 
@@ -548,6 +638,7 @@ Page({
       }
       this.loadRoom(roomId, true);
       showMessages();
+      showDecidingSetSwitchChoice();
       setTimeout(() => {
         if (rotatedTeam === "A") {
           this.setData({ rotatingAIn: false });
@@ -567,6 +658,7 @@ Page({
     this.setData({ switchingOut: true, switchingIn: false });
     setTimeout(() => {
       const next = updateRoom(roomId, (room) => {
+        pushUndoSnapshot(room);
         toggleSidesWithLog(room, room.match.isSwapped ? "左右换边（已复位）" : "左右换边（已交换）");
         room.teamA.players = rotateTeamNTimes(room.teamA.players, 3);
         room.teamB.players = rotateTeamNTimes(room.teamB.players, 3);
@@ -600,6 +692,7 @@ Page({
 
     setTimeout(() => {
       const next = updateRoom(roomId, (room) => {
+        pushUndoSnapshot(room);
         rotateTeamAndLog(room, team, "手动轮转");
         return room;
       });
@@ -632,26 +725,14 @@ Page({
   onResetScore() {
     const roomId = this.data.roomId;
     const next = updateRoom(roomId, (room) => {
-      room.match.undoStack.push({
-        aScore: room.match.aScore,
-        bScore: room.match.bScore,
-        servingTeam: room.match.servingTeam,
-        teamAPlayers: room.teamA.players.slice(),
-        teamBPlayers: room.teamB.players.slice(),
-        setNo: room.match.setNo,
-        aSetWins: room.match.aSetWins,
-        bSetWins: room.match.bSetWins,
-        isFinished: room.match.isFinished,
-      });
-      if (room.match.undoStack.length > 100) {
-        room.match.undoStack.shift();
-      }
+      pushUndoSnapshot(room);
       room.match.aScore = 0;
       room.match.bScore = 0;
       room.match.servingTeam = "A";
       room.match.aSetWins = 0;
       room.match.bSetWins = 0;
       room.match.setNo = 1;
+      room.match.decidingSetEightHandled = false;
       room.match.isFinished = false;
       appendMatchLog(room, "score_reset", "比分清零（0:0）");
       return room;
@@ -678,9 +759,15 @@ Page({
         last &&
         last.aScore === room.match.aScore &&
         last.bScore === room.match.bScore &&
+        last.servingTeam === room.match.servingTeam &&
+        !!last.isSwapped === !!room.match.isSwapped &&
+        !!last.decidingSetEightHandled === !!room.match.decidingSetEightHandled &&
         (last.setNo || room.match.setNo) === room.match.setNo &&
         (last.aSetWins || 0) === room.match.aSetWins &&
-        (last.bSetWins || 0) === room.match.bSetWins
+        (last.bSetWins || 0) === room.match.bSetWins &&
+        !!last.isFinished === !!room.match.isFinished &&
+        samePlayers(last.teamAPlayers || [], room.teamA.players || []) &&
+        samePlayers(last.teamBPlayers || [], room.teamB.players || [])
       ) {
         last = stack.pop();
       }
@@ -691,6 +778,8 @@ Page({
       room.match.aScore = last.aScore;
       room.match.bScore = last.bScore;
       room.match.servingTeam = last.servingTeam;
+      room.match.isSwapped = !!last.isSwapped;
+      room.match.decidingSetEightHandled = !!last.decidingSetEightHandled;
       room.match.setNo = last.setNo || room.match.setNo || 1;
       room.match.aSetWins = last.aSetWins || 0;
       room.match.bSetWins = last.bSetWins || 0;

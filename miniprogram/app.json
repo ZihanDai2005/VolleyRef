@@ -9,6 +9,7 @@
     "navigationBarTitleText": "",
     "navigationBarBackgroundColor": "#ffffff"
   },
+  "darkmode": true,
   "style": "v2",
   "rendererOptions": {
     "skyline": {

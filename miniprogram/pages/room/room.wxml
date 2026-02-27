@@ -21,17 +21,19 @@
       </picker>
     </view>
     <view class="setting-row">
-      <text class="label">A队名称</text>
+      <text class="label">甲队名称</text>
       <input
         class="input team-name input-left"
         value="{{teamAName}}"
-        placeholder="A"
+        placeholder="{{teamANameFocused ? '' : '甲'}}"
         data-field="teamAName"
+        bindfocus="onTeamNameFocus"
+        bindblur="onTeamNameBlur"
         bindinput="onInputChange"
       />
     </view>
     <view class="setting-row color-row">
-      <text class="label">A队颜色</text>
+      <text class="label">甲队颜色</text>
       <view class="color-options">
         <view
           class="color-option {{teamAColor === item.value ? 'active' : ''}} {{teamBColor === item.value ? 'disabled' : ''}}"
@@ -48,17 +50,19 @@
       </view>
     </view>
     <view class="setting-row">
-      <text class="label">B队名称</text>
+      <text class="label">乙队名称</text>
       <input
         class="input team-name input-left"
         value="{{teamBName}}"
-        placeholder="B"
+        placeholder="{{teamBNameFocused ? '' : '乙'}}"
         data-field="teamBName"
+        bindfocus="onTeamNameFocus"
+        bindblur="onTeamNameBlur"
         bindinput="onInputChange"
       />
     </view>
     <view class="setting-row color-row">
-      <text class="label">B队颜色</text>
+      <text class="label">乙队颜色</text>
       <view class="color-options">
         <view
           class="color-option {{teamBColor === item.value ? 'active' : ''}} {{teamAColor === item.value ? 'disabled' : ''}}"
@@ -74,7 +78,7 @@
         </view>
       </view>
     </view>
-    <view class="setting-row">
+    <view class="setting-row" wx:if="{{!createMode}}">
       <text class="label">房间密码</text>
       <input
         class="input team-name input-left"
@@ -91,54 +95,104 @@
   </view>
 
   <view class="card team" id="team-a">
-    <text class="team-title">{{teamAName || 'A'}}队 首发队员</text>
-
-    <view class="player-row row-three">
-      <view class="player-card" wx:for="{{teamARowTop}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{idx}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
-        <text class="sub-text">{{item.pos}}</text>
+    <view class="team-head-row">
+      <text class="team-title">{{teamAName || '甲'}}队 首发队员</text>
+      <view class="team-switches">
+        <view
+          class="toggle-item pressable {{servingTeam === 'A' ? 'on' : ''}}"
+          data-team="A"
+          hover-class="tap-active"
+          bindtap="onTeamServeButton"
+        >
+          <view class="toggle-track"><view class="toggle-thumb"></view></view>
+          <text class="toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
+        </view>
+        <view class="side-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleTeamSide">
+          <text>{{teamASide === 'A' ? 'A边' : 'B边'}}</text>
+          <view class="side-toggle-icon"></view>
+        </view>
       </view>
     </view>
 
-    <view class="player-row row-three">
-      <view class="player-card" wx:for="{{teamARowMid}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{idx + 3}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
-        <text class="sub-text">{{item.pos}}</text>
+    <view class="lineup-grid">
+      <view class="main-col">
+        <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
+          <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+            <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+            <text class="sub-text">{{item.pos}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="libero-col">
+        <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
+          <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+          <text class="sub-text">{{item.pos}}</text>
+        </view>
       </view>
     </view>
 
-    <view class="player-row row-two">
-      <view class="player-card libero" wx:for="{{teamARowLibero}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{idx + 6}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
-        <text class="sub-text">{{item.pos}}</text>
-      </view>
+    <view class="setting-row captain-row">
+      <text class="label">队长号码</text>
+      <input
+        class="input team-name input-left"
+        type="number"
+        maxlength="2"
+        value="{{teamACaptainNo}}"
+        data-field="teamACaptainNo"
+        bindinput="onInputChange"
+      />
     </view>
   </view>
 
   <view class="card team" id="team-b">
-    <text class="team-title">{{teamBName || 'B'}}队 首发队员</text>
-
-    <view class="player-row row-three">
-      <view class="player-card" wx:for="{{teamBRowTop}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{idx}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
-        <text class="sub-text">{{item.pos}}</text>
+    <view class="team-head-row">
+      <text class="team-title">{{teamBName || '乙'}}队 首发队员</text>
+      <view class="team-switches">
+        <view
+          class="toggle-item pressable {{servingTeam === 'B' ? 'on' : ''}}"
+          data-team="B"
+          hover-class="tap-active"
+          bindtap="onTeamServeButton"
+        >
+          <view class="toggle-track"><view class="toggle-thumb"></view></view>
+          <text class="toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
+        </view>
+        <view class="side-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleTeamSide">
+          <text>{{teamASide === 'B' ? 'A边' : 'B边'}}</text>
+          <view class="side-toggle-icon"></view>
+        </view>
       </view>
     </view>
 
-    <view class="player-row row-three">
-      <view class="player-card" wx:for="{{teamBRowMid}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{idx + 3}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
-        <text class="sub-text">{{item.pos}}</text>
+    <view class="lineup-grid">
+      <view class="main-col">
+        <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
+          <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+            <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+            <text class="sub-text">{{item.pos}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="libero-col">
+        <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
+          <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+          <text class="sub-text">{{item.pos}}</text>
+        </view>
       </view>
     </view>
 
-    <view class="player-row row-two">
-      <view class="player-card libero" wx:for="{{teamBRowLibero}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{idx + 6}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
-        <text class="sub-text">{{item.pos}}</text>
-      </view>
+    <view class="setting-row captain-row">
+      <text class="label">队长号码</text>
+      <input
+        class="input team-name input-left"
+        type="number"
+        maxlength="2"
+        value="{{teamBCaptainNo}}"
+        data-field="teamBCaptainNo"
+        bindinput="onInputChange"
+      />
     </view>
   </view>
 
-  <button class="save-btn" bindtap="onSaveAndStart">{{editMode ? '保存配置' : '保存并进入比赛'}}</button>
+  <button class="save-btn" bindtap="onSaveAndStart">进入比赛</button>
 </view>

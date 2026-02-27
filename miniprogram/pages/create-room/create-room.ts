@@ -1,31 +1,49 @@
 import {
   getRoom,
   heartbeatRoom,
+  isRoomIdBlocked,
+  reserveRoomId,
   verifyRoomPassword,
 } from "../../utils/room-service";
+import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
 Page({
   data: {
-    createRoomId: "",
     createPassword: "",
     joinRoomId: "",
     joinPassword: "",
-    createRoomIdDots: "••••••",
     createPasswordDots: "••••••",
     joinRoomIdDots: "••••••",
     joinPasswordDots: "••••••",
   },
+  themeOff: null as null | (() => void),
+
+  onLoad() {
+    this.applyNavigationTheme();
+    if (!this.themeOff) {
+      this.themeOff = bindThemeChange(() => {
+        this.applyNavigationTheme();
+      });
+    }
+  },
+
+  onShow() {
+    this.applyNavigationTheme();
+  },
+
+  onUnload() {
+    if (this.themeOff) {
+      this.themeOff();
+      this.themeOff = null;
+    }
+  },
+
+  applyNavigationTheme() {
+    applyNavigationBarTheme();
+  },
 
   getRemainingDots(value: string) {
     return "•".repeat(Math.max(0, 6 - value.length));
-  },
-
-  onCreateRoomIdInput(e: WechatMiniprogram.Input) {
-    const value = e.detail.value.replace(/\D/g, "").slice(0, 6);
-    this.setData({
-      createRoomId: value,
-      createRoomIdDots: this.getRemainingDots(value),
-    });
   },
 
   onJoinRoomIdInput(e: WechatMiniprogram.Input) {
@@ -52,22 +70,32 @@ Page({
     });
   },
 
+  generateRoomId() {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  },
+
+  generateAvailableRoomId() {
+    let attempts = 0;
+    let roomId = this.generateRoomId();
+    while (isRoomIdBlocked(roomId) && attempts < 1000) {
+      roomId = this.generateRoomId();
+      attempts += 1;
+    }
+    return roomId;
+  },
+
   onCreateRoomSubmit() {
-    const roomId = this.data.createRoomId.trim();
+    const clientId = getApp<IAppOption>().globalData.clientId;
+    const roomId = this.generateAvailableRoomId();
     const password = this.data.createPassword.trim();
-
-    if (roomId.length !== 6) {
-      wx.showToast({ title: "请输入6位房间号", icon: "none" });
-      return;
-    }
-
-    if (roomId && getRoom(roomId)) {
-      wx.showToast({ title: "房间号已存在", icon: "none" });
-      return;
-    }
 
     if (password.length !== 6) {
       wx.showToast({ title: "请输入6位数字密码", icon: "none" });
+      return;
+    }
+
+    if (!reserveRoomId(roomId, clientId)) {
+      wx.showToast({ title: "编号分配冲突，请重试", icon: "none" });
       return;
     }
 

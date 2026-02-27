@@ -5,21 +5,21 @@ page {
 
 .match-container {
   height: 100vh;
-  padding-top: var(--safe-pad-top, 8px);
-  padding-right: var(--safe-pad-right, 20px);
-  padding-bottom: var(--safe-pad-bottom, 8px);
-  padding-left: var(--safe-pad-left, 20px);
+  padding-top: var(--safe-pad-top, 0px);
+  padding-right: var(--safe-pad-right, 0px);
+  padding-bottom: var(--safe-pad-bottom, 0px);
+  padding-left: var(--safe-pad-left, 0px);
   box-sizing: border-box;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 10px;
+  gap: 15px;
 }
 
 .serve-tag {
   font-size: 14px;
-  color: #666;
-  background: rgba(153, 153, 153, 0.14);
+  color: var(--text-tertiary);
+  background: var(--surface-soft);
   padding: 6px 10px;
   border-radius: 999px;
   display: flex;
@@ -94,12 +94,12 @@ page {
 
 .top-control-row {
   --xy-gap: 8px;
-  position: relative;
   display: flex;
-  align-items: flex-start;
+  align-items: center;
   justify-content: space-between;
   width: 100%;
-  min-height: 104px;
+  min-height: 110px;
+  flex-shrink: 0;
 }
 
 .x-zone,
@@ -108,11 +108,12 @@ page {
   display: flex;
   flex-direction: column;
   gap: var(--xy-gap);
-  flex-shrink: 0;
+  flex: 0 0 auto;
 }
 
 .x-zone {
   align-items: flex-start;
+  justify-content: center;
 }
 
 .x-row {
@@ -132,8 +133,8 @@ page {
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
-  color: #444;
-  background: rgba(153, 153, 153, 0.14);
+  color: var(--text-secondary);
+  background: var(--surface-soft);
   border: 0;
   border-radius: 999px;
   padding: 0 14px;
@@ -150,8 +151,8 @@ page {
   font-size: 14px;
   font-weight: 600;
   line-height: 1;
-  color: #444;
-  background: rgba(153, 153, 153, 0.14);
+  color: var(--text-secondary);
+  background: var(--surface-soft);
   border: 0;
   border-radius: 999px;
   padding: 0 14px;
@@ -159,6 +160,7 @@ page {
 
 .y-zone {
   align-items: flex-end;
+  justify-content: center;
 }
 
 .y-row {
@@ -169,16 +171,13 @@ page {
 }
 
 .score-zone {
-  position: absolute;
-  left: 50%;
-  top: 0;
-  transform: translateX(-50%);
+  flex: 1;
   display: flex;
   flex-direction: column;
   align-items: center;
-  justify-content: flex-start;
+  justify-content: center;
   gap: 6px;
-  z-index: 1;
+  min-width: 0;
 }
 
 .pressable {
@@ -199,9 +198,9 @@ page {
   align-items: center;
   justify-content: center;
   text-align: center;
-  background: #fff;
-  color: #555;
-  border: 1px solid #ddd;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 14px;
   font-weight: 600;
@@ -219,9 +218,9 @@ page {
   align-items: center;
   justify-content: center;
   text-align: center;
-  background: #fff;
-  color: #555;
-  border: 1px solid #ddd;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--line);
   border-radius: 999px;
   font-size: 14px;
   font-weight: 600;
@@ -245,9 +244,9 @@ page {
 
 
 .plain-btn {
-  background: #fff;
-  color: #555;
-  border: 1px solid #ddd;
+  background: var(--surface);
+  color: var(--text-secondary);
+  border: 1px solid var(--line);
   border-radius: 10px;
   font-size: 14px;
 }
@@ -259,6 +258,9 @@ page {
 .court-row {
   display: flex;
   gap: 10px;
+  align-items: stretch;
+  flex: 1;
+  min-height: 0;
 }
 
 .court-row.swapped {
@@ -279,12 +281,13 @@ page {
 
 .team-panel {
   flex: 1;
-  background: rgba(153, 153, 153, 0.06);
+  background: var(--card-bg);
   border-radius: 12px;
   padding: 10px;
   display: flex;
   flex-direction: column;
   gap: 8px;
+  min-height: 0;
 }
 
 .team-head {
@@ -307,7 +310,7 @@ page {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: #666;
+  color: var(--text-tertiary);
   border: 0;
   background: transparent;
   border-radius: 999px;
@@ -335,10 +338,13 @@ page {
 .lineup-grid {
   --gap: 8px;
   --card-w: calc((100% - (var(--gap) * 2)) / 3);
+  --row-h: calc((100% - (var(--gap) * 2)) / 3);
   display: flex;
   gap: var(--gap);
-  align-items: center;
+  align-items: stretch;
   justify-content: center;
+  flex: 1;
+  min-height: 0;
 }
 
 .lineup-grid.reverse {
@@ -354,6 +360,9 @@ page {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
 }
 
 .main-col {
@@ -361,24 +370,34 @@ page {
   display: flex;
   flex-direction: column;
   gap: var(--gap);
+  justify-content: center;
+  height: 100%;
+  min-height: 0;
 }
 
 .player-row {
   width: 100%;
   display: flex;
   gap: var(--gap);
+  flex: 0 0 auto;
+  height: var(--row-h);
+  min-height: 0;
 }
 
 .row-two .player-card {
   width: calc((100% - var(--gap)) / 2);
+  height: 100%;
 }
 
 .libero-col .player-card {
   width: 100%;
+  flex: 0 0 auto;
+  height: var(--row-h);
+  min-height: 0;
 }
 
 .player-card {
-  height: 58px;
+  height: auto;
   border-radius: 12px;
   position: relative;
   display: flex;
@@ -390,13 +409,13 @@ page {
 }
 
 .team-a .player-card {
-  background-color: #fff;
+  background-color: var(--page-bg);
   color: var(--team-a-color, #8a87d0);
   border: 1px solid var(--team-a-color, #8a87d0);
 }
 
 .team-b .player-card {
-  background-color: #fff;
+  background-color: var(--page-bg);
   color: var(--team-b-color, #81c79e);
   border: 1px solid var(--team-b-color, #81c79e);
 }
@@ -451,6 +470,13 @@ page {
   color: inherit;
 }
 
+.captain-num {
+  display: inline-block;
+  line-height: 1;
+  padding-bottom: 2px;
+  border-bottom: 2px solid currentColor;
+}
+
 .sub-text {
   position: absolute;
   left: 6px;
@@ -473,6 +499,62 @@ page {
 .serve-mark.active {
   opacity: 1;
   transform: translateY(0);
+}
+
+@media (max-height: 360px) {
+  .match-container {
+    gap: 6px;
+  }
+
+  .top-control-row {
+    --xy-gap: 6px;
+    min-height: 72px;
+  }
+
+  .action-btn,
+  .top-btn,
+  .x-room-count-pill,
+  .set-summary-pill {
+    height: 28px;
+    padding: 0 10px;
+    font-size: 12px;
+  }
+
+  .serve-tag {
+    font-size: 12px;
+    padding: 4px 8px;
+  }
+
+  .serve-text {
+    font-size: 12px;
+  }
+
+  .serve-arrow {
+    width: 14px;
+    height: 14px;
+  }
+
+  .team-panel {
+    padding: 8px;
+    gap: 6px;
+  }
+
+  .team-title {
+    font-size: 16px;
+  }
+
+  .lineup-grid {
+    --gap: 6px;
+  }
+
+  .num {
+    font-size: 22px;
+  }
+
+  .sub-text,
+  .serve-mark {
+    font-size: 11px;
+  }
 }
 
 .team-panel.rotate-in .num,
@@ -611,7 +693,7 @@ page {
 .log-panel {
   width: 84vw;
   max-height: 72vh;
-  background: #fff;
+  background: var(--surface);
   border-radius: 12px;
   padding: 10px;
   box-sizing: border-box;
@@ -626,7 +708,7 @@ page {
 .log-title {
   font-size: 16px;
   font-weight: 600;
-  color: #333;
+  color: var(--text-primary);
 }
 
 .log-list {
@@ -636,26 +718,26 @@ page {
 
 .log-item {
   padding: 8px 0;
-  border-bottom: 1px solid #eee;
+  border-bottom: 1px solid var(--line-soft);
   display: flex;
   gap: 8px;
 }
 
 .log-time {
   width: 76px;
-  color: #999;
+  color: var(--text-muted);
   font-size: 12px;
   flex-shrink: 0;
 }
 
 .log-note {
-  color: #444;
+  color: var(--text-secondary);
   font-size: 13px;
 }
 
 .log-empty {
   padding: 16px 0;
   text-align: center;
-  color: #999;
+  color: var(--text-muted);
   font-size: 13px;
 }

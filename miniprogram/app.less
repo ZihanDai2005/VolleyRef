@@ -1,10 +1,29 @@
-/**app.wxss**/
-.container {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: space-between;
-  padding: 200rpx 0;
-  box-sizing: border-box;
-} 
+page {
+  --page-bg: #ffffff;
+  --card-bg: rgba(153, 153, 153, 0.06);
+  --surface: #ffffff;
+  --surface-soft: rgba(153, 153, 153, 0.1);
+  --line: #dddddd;
+  --line-soft: #e8e8e8;
+  --text-primary: #222222;
+  --text-secondary: #555555;
+  --text-muted: #999999;
+  --text-tertiary: #666666;
+  background: var(--page-bg);
+  color: var(--text-primary);
+}
+
+@media (prefers-color-scheme: dark) {
+  page {
+    --page-bg: #131416;
+    --card-bg: rgba(255, 255, 255, 0.06);
+    --surface: #1b1d20;
+    --surface-soft: rgba(255, 255, 255, 0.08);
+    --line: #3a3d42;
+    --line-soft: #2f3237;
+    --text-primary: #f3f4f6;
+    --text-secondary: #d4d7dd;
+    --text-muted: #a0a6b1;
+    --text-tertiary: #bcc1ca;
+  }
+}

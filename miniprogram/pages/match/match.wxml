@@ -6,7 +6,7 @@
     <view class="x-zone">
       <view class="x-row">
         <view class="top-btn pressable" hover-class="tap-active" bindtap="onSwitchSides">左右换边</view>
-        <view class="top-btn pressable" hover-class="tap-active" bindtap="onUndoLastScore">比分撤回</view>
+        <view class="top-btn pressable" hover-class="tap-active" bindtap="onUndoLastScore">撤回操作</view>
       </view>
       <view class="x-row">
         <view class="x-room-count-pill">在线人数：{{participantCount}}</view>
@@ -46,14 +46,14 @@
       <view class="lineup-grid {{isSwapped ? 'swap-layout' : ''}}">
         <view class="libero-col">
           <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
-            <text class="num">{{item.number}}</text>
+            <text class="num {{item.number === teamACaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
             <text class="sub-text">{{item.pos}}</text>
           </view>
         </view>
         <view class="main-col">
           <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
             <view class="player-card {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
-              <text class="num pos-{{item.pos}}">{{item.number}}</text>
+              <text class="num pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
               <text class="sub-text">{{item.pos}}</text>
               <text class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}">发</text>
             </view>
@@ -73,7 +73,7 @@
         <view class="main-col">
           <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
             <view class="player-card {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
-              <text class="num pos-{{item.pos}}">{{item.number}}</text>
+              <text class="num pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
               <text class="sub-text">{{item.pos}}</text>
               <text class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}">发</text>
             </view>
@@ -81,7 +81,7 @@
         </view>
         <view class="libero-col">
           <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
-            <text class="num">{{item.number}}</text>
+            <text class="num {{item.number === teamBCaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
             <text class="sub-text">{{item.pos}}</text>
           </view>
         </view>
