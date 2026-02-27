@@ -96,7 +96,7 @@
       <text class="team-title">{{teamAName || '甲'}}队 首发队员</text>
       <view class="team-switches">
         <view
-          class="toggle-item pressable {{servingTeam === 'A' ? 'on' : ''}}"
+          class="toggle-item switch-btn pressable {{servingTeam === 'A' ? 'on' : ''}} {{servePulseTeam === 'A' ? 'switch-pulse' : ''}}"
           data-team="A"
           hover-class="tap-active"
           bindtap="onTeamServeButton"
@@ -104,7 +104,7 @@
           <text class="toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
           <view class="serve-toggle-icon"></view>
         </view>
-        <view class="side-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleTeamSide">
+        <view class="side-toggle-btn switch-btn pressable {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
           <text>{{teamASide === 'A' ? 'A场区' : 'B场区'}}</text>
           <view class="side-toggle-icon"></view>
         </view>
@@ -146,7 +146,7 @@
       <text class="team-title">{{teamBName || '乙'}}队 首发队员</text>
       <view class="team-switches">
         <view
-          class="toggle-item pressable {{servingTeam === 'B' ? 'on' : ''}}"
+          class="toggle-item switch-btn pressable {{servingTeam === 'B' ? 'on' : ''}} {{servePulseTeam === 'B' ? 'switch-pulse' : ''}}"
           data-team="B"
           hover-class="tap-active"
           bindtap="onTeamServeButton"
@@ -154,7 +154,7 @@
           <text class="toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
           <view class="serve-toggle-icon"></view>
         </view>
-        <view class="side-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleTeamSide">
+        <view class="side-toggle-btn switch-btn pressable {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
           <text>{{teamASide === 'B' ? 'A场区' : 'B场区'}}</text>
           <view class="side-toggle-icon"></view>
         </view>
@@ -201,4 +201,47 @@
     <button class="save-btn half-btn" bindtap="onSaveAndStart">进入比赛</button>
   </view>
   <button class="save-btn" wx:if="{{!createMode}}" bindtap="onSaveAndStart">进入比赛</button>
+
+  <view class="captain-picker-mask" wx:if="{{showCaptainPicker}}" catchtouchmove="noop" bindtap="onCaptainPickerCancel">
+    <view class="captain-picker-panel" catchtap="noop">
+      <view class="captain-picker-title">{{captainPickerTitle}}</view>
+      <view class="captain-picker-tip">请选择当前在场上的队长号码</view>
+      <view class="lineup-grid captain-picker-grid {{captainPickerTeam === 'A' ? 'team-a' : 'team-b'}}">
+        <view class="main-col">
+          <view class="player-row row-two" wx:for="{{captainPickerMainGrid}}" wx:key="index" wx:for-item="row">
+            <view
+              class="player-card captain-option-card {{captainPickerSelectedNo === item.number ? 'captain-option-selected' : ''}}"
+              wx:for="{{row}}"
+              wx:key="pos"
+              wx:for-item="item"
+              data-number="{{item.number}}"
+              hover-class="tap-active"
+              bindtap="onCaptainPickerSelect"
+            >
+              <text class="num-text">{{item.number}}</text>
+              <text class="sub-text">{{item.pos}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="libero-col">
+          <view
+            class="player-card libero captain-option-card {{captainPickerSelectedNo === item.number ? 'captain-option-selected' : ''}}"
+            wx:for="{{captainPickerLibero}}"
+            wx:key="pos"
+            wx:for-item="item"
+            data-number="{{item.number}}"
+            hover-class="tap-active"
+            bindtap="onCaptainPickerSelect"
+          >
+            <text class="num-text">{{item.number}}</text>
+            <text class="sub-text">{{item.pos}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="captain-picker-actions">
+        <button class="captain-picker-btn cancel" bindtap="onCaptainPickerCancel">取消</button>
+        <button class="captain-picker-btn confirm" bindtap="onCaptainPickerConfirm">确定</button>
+      </view>
+    </view>
+  </view>
 </view>

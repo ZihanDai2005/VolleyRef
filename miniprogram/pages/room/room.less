@@ -1,4 +1,5 @@
 .room-container {
+  --page-bg-rgb: 255, 255, 255;
   padding: 30rpx;
   display: flex;
   flex-direction: column;
@@ -69,6 +70,15 @@
   transition: transform 120ms ease, opacity 120ms ease, border-color 120ms ease, background-color 120ms ease;
 }
 
+.switch-btn {
+  position: relative;
+  overflow: hidden;
+}
+
+.switch-pulse {
+  animation: switchPulse 180ms ease;
+}
+
 .toggle-item {
   min-width: 96rpx;
   gap: 8rpx;
@@ -105,6 +115,21 @@
     center / contain no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.0503 12.0498L21 16.9996L16.0503 21.9493L14.636 20.5351L17.172 17.9988L4 17.9996V15.9996L17.172 15.9988L14.636 13.464L16.0503 12.0498ZM7.94975 2.0498L9.36396 3.46402L6.828 5.9988L20 5.99955V7.99955L6.828 7.9988L9.36396 10.5351L7.94975 11.9493L3 6.99955L7.94975 2.0498Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
+}
+
+@keyframes switchPulse {
+  0% {
+    transform: scale(1);
+    opacity: 1;
+  }
+  50% {
+    transform: scale(0.94);
+    opacity: 0.78;
+  }
+  100% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 
 .setting-row {
@@ -296,6 +321,12 @@
   opacity: 1;
 }
 
+.num-text {
+  font-size: 40rpx;
+  font-weight: 600;
+  color: inherit;
+}
+
 .sub-text {
   position: absolute;
   left: 10rpx;
@@ -361,4 +392,131 @@
     center / contain no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M6.9998 6V3C6.9998 2.44772 7.44752 2 7.9998 2H19.9998C20.5521 2 20.9998 2.44772 20.9998 3V17C20.9998 17.5523 20.5521 18 19.9998 18H16.9998V20.9991C16.9998 21.5519 16.5499 22 15.993 22H4.00666C3.45059 22 3 21.5554 3 20.9991L3.0026 7.00087C3.0027 6.44811 3.45264 6 4.00942 6H6.9998ZM5.00242 8L5.00019 20H14.9998V8H5.00242ZM8.9998 6H16.9998V16H18.9998V4H8.9998V6Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
+}
+
+.captain-picker-mask {
+  position: fixed;
+  inset: 0;
+  z-index: 999;
+  background: rgba(0, 0, 0, 0.4);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24rpx;
+  box-sizing: border-box;
+}
+
+.captain-picker-panel {
+  width: 100%;
+  max-width: 690rpx;
+  background: var(--surface);
+  border-radius: 24rpx;
+  padding: 30rpx 24rpx 0;
+  box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 10rpx;
+  overflow: hidden;
+}
+
+.captain-picker-title {
+  font-size: 38rpx;
+  font-weight: 600;
+  text-align: center;
+  margin: 0;
+}
+
+.captain-picker-tip {
+  font-size: 26rpx;
+  color: var(--text-secondary);
+  text-align: center;
+  margin: 0 0 4rpx;
+}
+
+.captain-picker-grid {
+  --gap: 14rpx;
+}
+
+.captain-picker-grid .player-card {
+  height: 96rpx;
+}
+
+.captain-option-card {
+  transition: transform 180ms ease;
+}
+
+.captain-option-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  opacity: 0;
+  transition: none;
+  pointer-events: none;
+  background: none;
+  display: none;
+}
+
+.captain-option-selected {
+  transform: scale(0.985);
+  box-shadow: none;
+}
+
+.captain-option-selected::before {
+  opacity: 0;
+}
+
+.captain-option-selected .num-text {
+  display: inline-block;
+  line-height: 1;
+  padding-bottom: 2px;
+  border-bottom: 2px solid currentColor;
+  transform: translateY(1px) scale(1.24);
+  transform-origin: center;
+  transition: transform 180ms ease;
+}
+
+.captain-picker-actions {
+  display: flex;
+  gap: 0;
+  margin: 8rpx -24rpx 0;
+  border-top: 1px solid var(--line-soft);
+}
+
+.captain-picker-btn {
+  flex: 1;
+  height: 96rpx;
+  line-height: 96rpx;
+  border: 0;
+  border-radius: 0;
+  font-size: 34rpx;
+  font-weight: 500;
+  background: transparent;
+  padding: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+.captain-picker-btn::after {
+  border: 0;
+}
+
+.captain-picker-btn.cancel {
+  color: var(--text-primary);
+}
+
+.captain-picker-btn.confirm {
+  color: #576b95;
+}
+
+.captain-picker-btn.confirm {
+  border-left: 1px solid var(--line-soft);
+}
+
+@media (prefers-color-scheme: dark) {
+  .room-container {
+    --page-bg-rgb: 19, 20, 22;
+  }
 }

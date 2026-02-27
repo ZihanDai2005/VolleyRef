@@ -159,6 +159,17 @@ function normalizeNumberInput(value: string): string {
   return String(value || "").replace(/\D/g, "").slice(0, 2);
 }
 
+function hexToRgbString(hex: string): string {
+  const value = String(hex || "").replace("#", "").trim();
+  if (!/^[0-9a-fA-F]{6}$/.test(value)) {
+    return "138, 135, 208";
+  }
+  const r = parseInt(value.slice(0, 2), 16);
+  const g = parseInt(value.slice(2, 4), 16);
+  const b = parseInt(value.slice(4, 6), 16);
+  return r + ", " + g + ", " + b;
+}
+
 Page({
   data: {
     roomId: "",
@@ -180,6 +191,10 @@ Page({
     teamASide: "A" as TeamCode,
     teamAColor: TEAM_COLOR_OPTIONS[0].value,
     teamBColor: TEAM_COLOR_OPTIONS[1].value,
+    teamARGB: hexToRgbString(TEAM_COLOR_OPTIONS[0].value),
+    teamBRGB: hexToRgbString(TEAM_COLOR_OPTIONS[1].value),
+    servePulseTeam: "" as "" | TeamCode,
+    sidePulse: false,
     colorOptions: TEAM_COLOR_OPTIONS,
     teamAPlayers: [] as PlayerSlot[],
     teamBPlayers: [] as PlayerSlot[],
@@ -187,11 +202,18 @@ Page({
     teamALibero: [] as DisplayPlayerSlot[],
     teamBMainGrid: [] as DisplayPlayerSlot[][],
     teamBLibero: [] as DisplayPlayerSlot[],
+    showCaptainPicker: false,
+    captainPickerTitle: "",
+    captainPickerTeam: "A" as TeamCode,
+    captainPickerMainGrid: [] as DisplayPlayerSlot[][],
+    captainPickerLibero: [] as DisplayPlayerSlot[],
+    captainPickerSelectedNo: "",
     updatedAt: 0,
   },
 
   pollTimer: 0 as number,
   themeOff: null as null | (() => void),
+  captainPickerResolver: null as null | ((value: string | null) => void),
 
   onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
@@ -226,6 +248,8 @@ Page({
         teamASide: "A",
         teamAColor: TEAM_COLOR_OPTIONS[0].value,
         teamBColor: TEAM_COLOR_OPTIONS[1].value,
+        teamARGB: hexToRgbString(TEAM_COLOR_OPTIONS[0].value),
+        teamBRGB: hexToRgbString(TEAM_COLOR_OPTIONS[1].value),
         teamAPlayers: initialA,
         teamBPlayers: initialB,
         teamAMainGrid: buildMainGrid(initialA, TEAM_A_MAIN_ORDER),
@@ -261,11 +285,19 @@ Page({
         const clientId = getApp<IAppOption>().globalData.clientId;
         releaseRoomId(this.data.roomId, clientId);
       }
+      if (this.captainPickerResolver) {
+        this.captainPickerResolver(null);
+        this.captainPickerResolver = null;
+      }
       return;
     }
     const roomId = this.data.roomId;
     const clientId = getApp<IAppOption>().globalData.clientId;
     leaveRoom(roomId, clientId);
+    if (this.captainPickerResolver) {
+      this.captainPickerResolver(null);
+      this.captainPickerResolver = null;
+    }
   },
 
   applyNavigationTheme() {
@@ -344,6 +376,8 @@ Page({
       teamASide: room.match.isSwapped ? "B" : "A",
       teamAColor: room.teamA.color || TEAM_COLOR_OPTIONS[0].value,
       teamBColor: room.teamB.color || TEAM_COLOR_OPTIONS[1].value,
+      teamARGB: hexToRgbString(room.teamA.color || TEAM_COLOR_OPTIONS[0].value),
+      teamBRGB: hexToRgbString(room.teamB.color || TEAM_COLOR_OPTIONS[1].value),
       teamAPlayers: teamAPlayers,
       teamBPlayers: teamBPlayers,
       teamAMainGrid: buildMainGrid(teamAPlayers, TEAM_A_MAIN_ORDER),
@@ -436,12 +470,14 @@ Page({
         return;
       }
       this.setData({ teamAColor: color });
+      this.setData({ teamARGB: hexToRgbString(color) });
     } else {
       if (color === this.data.teamAColor) {
         showToastHint("甲/乙队颜色不能相同");
         return;
       }
       this.setData({ teamBColor: color });
+      this.setData({ teamBRGB: hexToRgbString(color) });
     }
     this.persistDraft();
   },
@@ -499,12 +535,22 @@ Page({
     const team = dataset.team;
     const current = this.data.servingTeam;
     const next = current === team ? (team === "A" ? "B" : "A") : team;
-    this.setData({ servingTeam: next });
+    this.setData({ servingTeam: next, servePulseTeam: team });
+    setTimeout(() => {
+      if (this.data.servePulseTeam === team) {
+        this.setData({ servePulseTeam: "" });
+      }
+    }, 180);
     this.persistDraft();
   },
 
   onToggleTeamSide() {
-    this.setData({ teamASide: this.data.teamASide === "A" ? "B" : "A" });
+    this.setData({ teamASide: this.data.teamASide === "A" ? "B" : "A", sidePulse: true });
+    setTimeout(() => {
+      if (this.data.sidePulse) {
+        this.setData({ sidePulse: false });
+      }
+    }, 180);
     this.persistDraft();
   },
 
@@ -518,37 +564,62 @@ Page({
     });
   },
 
-  promptOnCourtCaptain(teamLabel: string, players: PlayerSlot[]): Promise<string | null> {
+  promptOnCourtCaptain(teamLabel: string, team: TeamCode, players: PlayerSlot[]): Promise<string | null> {
     return new Promise((resolve) => {
-      const ask = () => {
-        (wx as any).showModal({
-          title: teamLabel + "队场上队长",
-          content: "",
-          editable: true,
-          confirmText: "确定",
-          cancelText: "取消",
-          success: (res: any) => {
-            if (!res || res.cancel) {
-              resolve(null);
-              return;
-            }
-            const value = normalizeNumberInput(String(res.content || ""));
-            if (!/^\d{1,2}$/.test(value)) {
-              showToastHint("请输入1-2位数字号码");
-              ask();
-              return;
-            }
-            if (!this.isNumberOnCourt(players, value)) {
-              showToastHint("该号码不在场上");
-              ask();
-              return;
-            }
-            resolve(value);
-          },
-        });
-      };
-      ask();
+      const order = team === "A" ? TEAM_A_MAIN_ORDER : TEAM_B_MAIN_ORDER;
+      this.captainPickerResolver = resolve;
+      this.setData({
+        showCaptainPicker: true,
+        captainPickerTitle: teamLabel + "队场上队长",
+        captainPickerTeam: team,
+        captainPickerMainGrid: buildMainGrid(players, order),
+        captainPickerLibero: buildLibero(players),
+        captainPickerSelectedNo: "",
+      });
     });
+  },
+
+  noop() {},
+
+  onCaptainPickerSelect(e: WechatMiniprogram.TouchEvent) {
+    const number = normalizeNumberInput(String((e.currentTarget.dataset as { number?: string }).number || ""));
+    if (!number) {
+      return;
+    }
+    this.setData({ captainPickerSelectedNo: number });
+  },
+
+  onCaptainPickerCancel() {
+    const resolver = this.captainPickerResolver;
+    this.captainPickerResolver = null;
+    this.setData({
+      showCaptainPicker: false,
+      captainPickerSelectedNo: "",
+      captainPickerMainGrid: [],
+      captainPickerLibero: [],
+    });
+    if (resolver) {
+      resolver(null);
+    }
+  },
+
+  onCaptainPickerConfirm() {
+    const value = normalizeNumberInput(this.data.captainPickerSelectedNo);
+    if (!value) {
+      showToastHint("请先选择队长号码");
+      return;
+    }
+    const resolver = this.captainPickerResolver;
+    this.captainPickerResolver = null;
+    this.setData({
+      showCaptainPicker: false,
+      captainPickerSelectedNo: "",
+      captainPickerMainGrid: [],
+      captainPickerLibero: [],
+    });
+    if (resolver) {
+      resolver(value);
+    }
   },
 
   async ensureOnCourtCaptains(
@@ -559,16 +630,18 @@ Page({
     let teamBCaptainNo = normalizeNumberInput(this.data.teamBCaptainNo);
     const aOk = this.isNumberOnCourt(teamAPlayers, teamACaptainNo);
     const bOk = this.isNumberOnCourt(teamBPlayers, teamBCaptainNo);
+    const teamADisplayName = (this.data.teamAName || "").trim() || "甲";
+    const teamBDisplayName = (this.data.teamBName || "").trim() || "乙";
 
     if (!aOk) {
-      const enteredA = await this.promptOnCourtCaptain("甲", teamAPlayers);
+      const enteredA = await this.promptOnCourtCaptain(teamADisplayName, "A", teamAPlayers);
       if (!enteredA) {
         return null;
       }
       teamACaptainNo = enteredA;
     }
     if (!bOk) {
-      const enteredB = await this.promptOnCourtCaptain("乙", teamBPlayers);
+      const enteredB = await this.promptOnCourtCaptain(teamBDisplayName, "B", teamBPlayers);
       if (!enteredB) {
         return null;
       }
