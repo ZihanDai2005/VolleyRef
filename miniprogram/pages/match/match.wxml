@@ -9,28 +9,26 @@
         <view class="top-btn pressable" hover-class="tap-active" bindtap="onUndoLastScore">撤回操作</view>
       </view>
       <view class="x-row">
-        <view class="x-room-count-pill">在线人数：{{participantCount}}</view>
+        <view class="action-btn pressable" hover-class="tap-active" bindtap="onOpenLogPanel">计分记录</view>
       </view>
     </view>
 
     <view class="score-zone">
-      <view class="serve-indicator">
-        <view class="serve-tag {{serveThemeClass}} {{serveMotion ? 'serve-motion' : ''}}">
-          <view class="serve-arrow left {{serveOnLeft ? 'active' : ''}}"></view>
-          <text class="serve-text">发球</text>
-          <view class="serve-arrow right {{!serveOnLeft ? 'active' : ''}}"></view>
-        </view>
-      </view>
-      <score-board aScore="{{aScore}}" bScore="{{bScore}}" bind:scoreChange="onScoreChange" />
+      <view class="x-room-count-pill center-set-pill stat-num-pill">{{setWinsText}}</view>
+      <score-board
+        aScore="{{aScore}}"
+        bScore="{{bScore}}"
+        lastScoringTeam="{{lastScoringTeam}}"
+        bind:scoreChange="onScoreChange"
+      />
     </view>
 
     <view class="y-zone">
       <view class="y-row">
-        <view class="action-btn pressable" hover-class="tap-active" bindtap="onOpenConfig">房间设置</view>
-        <view class="action-btn pressable" hover-class="tap-active" bindtap="onOpenLogPanel">计分记录</view>
+        <view class="x-room-count-pill">在线人数 {{participantCount}}</view>
       </view>
       <view class="y-row">
-        <view class="set-summary-pill">{{setSummaryText}}</view>
+        <view class="x-room-count-pill timer-pill"><text class="timer-pill-text">比赛计时 {{setTimerText}}</text></view>
       </view>
     </view>
   </view>

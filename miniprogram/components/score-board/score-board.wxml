@@ -3,11 +3,11 @@
     <view class="side-btn pressable" hover-class="tap-active" bindtap="onAddScoreA">
       <view class="plus-icon"></view>
     </view>
-    <text class="score {{pulseA ? 'score-pulse' : ''}}">{{aScore}}</text>
+    <text class="score {{pulseA ? 'score-pulse' : ''}} {{lastScoringTeam === 'A' ? 'score-hot' : ''}}">{{aScore}}</text>
   </view>
   <view class="vs">VS</view>
   <view class="team-score b">
-    <text class="score {{pulseB ? 'score-pulse' : ''}}">{{bScore}}</text>
+    <text class="score {{pulseB ? 'score-pulse' : ''}} {{lastScoringTeam === 'B' ? 'score-hot' : ''}}">{{bScore}}</text>
     <view class="side-btn pressable" hover-class="tap-active" bindtap="onAddScoreB">
       <view class="plus-icon"></view>
     </view>

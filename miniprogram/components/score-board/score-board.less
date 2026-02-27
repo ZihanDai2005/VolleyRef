@@ -1,22 +1,38 @@
 .score-board {
-  display: flex;
-  flex-direction: row;
+  --vs-gap: 70px;
+  width: 760px;
+  max-width: 100%;
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
   align-items: center;
-  justify-content: center;
   margin-bottom: 0;
 }
 .team-score {
   display: flex;
   flex-direction: row;
   align-items: center;
-  margin: 0 18px;
   gap: 14px;
+}
+.team-score.a {
+  justify-self: end;
+  justify-content: flex-end;
+  padding-right: var(--vs-gap);
+}
+.team-score.b {
+  justify-self: start;
+  justify-content: flex-start;
+  padding-left: var(--vs-gap);
 }
 .score {
   font-size: 60px;
   font-weight: bold;
   line-height: 1;
-  transition: transform 180ms ease;
+  transition: transform 180ms ease, color 180ms ease;
+}
+
+.score-hot {
+  color: #d94a4a;
 }
 .side-btn {
   margin: 0;
@@ -44,9 +60,14 @@
     center / contain no-repeat;
 }
 .vs {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
   font-size: 30px;
   color: #888;
-  margin: 0 16px;
+  margin: 0;
+  pointer-events: none;
 }
 
 .tap-active {

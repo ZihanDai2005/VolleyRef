@@ -2,10 +2,6 @@
   class="room-container"
   style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}};"
 >
-  <view class="room-id">
-    {{createMode ? '裁判团队编号：' : '房间号：'}}{{roomId}} ｜ {{createMode ? ('密码：' + (roomPassword || '未设置')) : ('人数：' + participantCount)}}
-  </view>
-
   <view class="card room-settings">
     <text class="team-label">比赛设置</text>
     <view class="setting-row">
@@ -15,6 +11,7 @@
         range="{{matchModes}}"
         range-key="label"
         value="{{matchModeIndex}}"
+        disabled="{{!createMode}}"
         bindchange="onMatchModeChange"
       >
         <view class="input team-name picker-value">{{matchModes[matchModeIndex].label}}</view>
@@ -26,6 +23,7 @@
         class="input team-name input-left"
         value="{{teamAName}}"
         placeholder="{{teamANameFocused ? '' : '甲'}}"
+        disabled="{{!createMode}}"
         data-field="teamAName"
         bindfocus="onTeamNameFocus"
         bindblur="onTeamNameBlur"
@@ -41,11 +39,10 @@
           wx:key="value"
           data-team="A"
           data-color="{{item.value}}"
-          hover-class="color-option-hover"
+          hover-class="{{createMode ? 'color-option-hover' : ''}}"
           bindtap="onTeamColorSelect"
         >
           <view class="color-dot" style="background-color: {{item.value}};"></view>
-          <text class="color-name">{{item.label}}</text>
         </view>
       </view>
     </view>
@@ -55,6 +52,7 @@
         class="input team-name input-left"
         value="{{teamBName}}"
         placeholder="{{teamBNameFocused ? '' : '乙'}}"
+        disabled="{{!createMode}}"
         data-field="teamBName"
         bindfocus="onTeamNameFocus"
         bindblur="onTeamNameBlur"
@@ -70,11 +68,10 @@
           wx:key="value"
           data-team="B"
           data-color="{{item.value}}"
-          hover-class="color-option-hover"
+          hover-class="{{createMode ? 'color-option-hover' : ''}}"
           bindtap="onTeamColorSelect"
         >
           <view class="color-dot" style="background-color: {{item.value}};"></view>
-          <text class="color-name">{{item.label}}</text>
         </view>
       </view>
     </view>
@@ -94,7 +91,7 @@
     </view>
   </view>
 
-  <view class="card team" id="team-a">
+  <view class="card team team-a">
     <view class="team-head-row">
       <text class="team-title">{{teamAName || '甲'}}队 首发队员</text>
       <view class="team-switches">
@@ -104,11 +101,11 @@
           hover-class="tap-active"
           bindtap="onTeamServeButton"
         >
-          <view class="toggle-track"><view class="toggle-thumb"></view></view>
           <text class="toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
+          <view class="serve-toggle-icon"></view>
         </view>
         <view class="side-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleTeamSide">
-          <text>{{teamASide === 'A' ? 'A边' : 'B边'}}</text>
+          <text>{{teamASide === 'A' ? 'A场区' : 'B场区'}}</text>
           <view class="side-toggle-icon"></view>
         </view>
       </view>
@@ -144,7 +141,7 @@
     </view>
   </view>
 
-  <view class="card team" id="team-b">
+  <view class="card team team-b">
     <view class="team-head-row">
       <text class="team-title">{{teamBName || '乙'}}队 首发队员</text>
       <view class="team-switches">
@@ -154,11 +151,11 @@
           hover-class="tap-active"
           bindtap="onTeamServeButton"
         >
-          <view class="toggle-track"><view class="toggle-thumb"></view></view>
           <text class="toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
+          <view class="serve-toggle-icon"></view>
         </view>
         <view class="side-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleTeamSide">
-          <text>{{teamASide === 'B' ? 'A边' : 'B边'}}</text>
+          <text>{{teamASide === 'B' ? 'A场区' : 'B场区'}}</text>
           <view class="side-toggle-icon"></view>
         </view>
       </view>
@@ -194,5 +191,14 @@
     </view>
   </view>
 
-  <button class="save-btn" bindtap="onSaveAndStart">进入比赛</button>
+  <view class="create-actions" wx:if="{{createMode}}">
+    <button class="save-btn invite-btn half-btn" bindtap="onCopyInviteAndStart">
+      <view class="btn-content">
+        <view class="invite-icon"></view>
+        <text>复制邀请</text>
+      </view>
+    </button>
+    <button class="save-btn half-btn" bindtap="onSaveAndStart">进入比赛</button>
+  </view>
+  <button class="save-btn" wx:if="{{!createMode}}" bindtap="onSaveAndStart">进入比赛</button>
 </view>

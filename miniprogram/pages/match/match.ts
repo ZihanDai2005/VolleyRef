@@ -159,6 +159,7 @@ function pushUndoSnapshot(room: any): void {
   room.match.undoStack.push({
     aScore: room.match.aScore,
     bScore: room.match.bScore,
+    lastScoringTeam: room.match.lastScoringTeam || "",
     servingTeam: room.match.servingTeam,
     teamAPlayers: room.teamA.players.slice(),
     teamBPlayers: room.teamB.players.slice(),
@@ -203,6 +204,15 @@ function normalizeNumberInput(value: string): string {
   return String(value || "").replace(/\D/g, "").slice(0, 2);
 }
 
+function formatDurationMMSS(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const mm = Math.floor(total / 60);
+  const ss = total % 60;
+  const mmText = mm < 10 ? "0" + String(mm) : String(mm);
+  const ssText = ss < 10 ? "0" + String(ss) : String(ss);
+  return mmText + ":" + ssText;
+}
+
 Page({
   data: {
     roomId: "",
@@ -217,15 +227,13 @@ Page({
     teamBRGB: "129, 199, 158",
     aScore: 0,
     bScore: 0,
+    lastScoringTeam: "" as TeamCode | "",
+    setTimerText: "00:00",
     servingTeam: "A" as TeamCode,
-    servingTeamName: "甲",
-    serveOnLeft: true,
-    serveThemeClass: "serve-a",
-    serveMotion: false,
     setNo: 1,
     aSetWins: 0,
     bSetWins: 0,
-    setSummaryText: "第1局 0:0",
+    setWinsText: "0:0",
     isMatchFinished: false,
     isSwapped: false,
     showLogPanel: false,
@@ -251,7 +259,10 @@ Page({
   },
 
   pollTimer: 0 as number,
-  serveMotionTimer: 0 as number,
+  timerTick: 0 as number,
+  timerStartAtMs: 0 as number,
+  timerElapsedBaseMs: 0 as number,
+  lastRenderedTimerText: "00:00",
   themeOff: null as null | (() => void),
 
   onLoad(query: Record<string, string>) {
@@ -266,7 +277,7 @@ Page({
       showBlockHint("缺少房间号");
       return;
     }
-    wx.setNavigationBarTitle({ title: "比赛房间 " + roomId });
+    wx.setNavigationBarTitle({ title: "裁判团队编号 " + roomId });
     this.setData({ roomId: roomId });
     this.syncSafePadding();
     if ((wx as any).onWindowResize) {
@@ -277,11 +288,13 @@ Page({
 
   onShow() {
     this.applyNavigationTheme();
+    this.startTimerTick();
     this.startPolling();
   },
 
   onHide() {
     this.stopPolling();
+    this.stopTimerTick();
   },
 
   onUnload() {
@@ -290,12 +303,9 @@ Page({
       this.themeOff = null;
     }
     this.stopPolling();
+    this.stopTimerTick();
     if ((wx as any).offWindowResize) {
       (wx as any).offWindowResize(this.onWindowResize);
-    }
-    if (this.serveMotionTimer) {
-      clearTimeout(this.serveMotionTimer);
-      this.serveMotionTimer = 0;
     }
     const roomId = this.data.roomId;
     const clientId = getApp<IAppOption>().globalData.clientId;
@@ -308,6 +318,18 @@ Page({
 
   applyNavigationTheme() {
     applyNavigationBarTheme();
+  },
+
+  handleRoomClosed() {
+    wx.showModal({
+      title: "房间已关闭",
+      content: "该裁判团队已超时关闭或不存在，请重新创建或加入有效团队。",
+      showCancel: false,
+      confirmText: "返回首页",
+      success: () => {
+        wx.reLaunch({ url: "/pages/create-room/create-room" });
+      },
+    });
   },
 
   syncSafePadding() {
@@ -370,13 +392,40 @@ Page({
     this.pollTimer = 0;
   },
 
+  startTimerTick() {
+    this.stopTimerTick();
+    this.timerTick = setInterval(() => {
+      this.refreshTimerText();
+    }, 250) as unknown as number;
+  },
+
+  stopTimerTick() {
+    if (!this.timerTick) {
+      return;
+    }
+    clearInterval(this.timerTick);
+    this.timerTick = 0;
+  },
+
+  refreshTimerText() {
+    const startAt = this.timerStartAtMs || 0;
+    const base = this.timerElapsedBaseMs || 0;
+    const live = startAt > 0 ? base + (Date.now() - startAt) : base;
+    const nextText = formatDurationMMSS(live);
+    if (nextText === this.lastRenderedTimerText) {
+      return;
+    }
+    this.lastRenderedTimerText = nextText;
+    this.setData({ setTimerText: nextText });
+  },
+
   loadRoom(roomId: string, force: boolean) {
     const clientId = getApp<IAppOption>().globalData.clientId;
     heartbeatRoom(roomId, clientId);
     const room = getRoom(roomId);
     if (!room) {
       if (force) {
-        showBlockHint("房间不存在");
+        this.handleRoomClosed();
       }
       return;
     }
@@ -392,27 +441,20 @@ Page({
     const bRows = buildTeamRows(room.teamB.players);
     const aMainGrid = buildMainGridByOrder(room.teamA.players, ["V", "IV", "VI", "III", "I", "II"]);
     const bMainGrid = buildMainGridByOrder(room.teamB.players, ["II", "I", "III", "VI", "IV", "V"]);
-    const nextServingTeam = room.match.servingTeam;
     const nextSwapped = !!room.match.isSwapped;
     const teamAColor = room.teamA.color || TEAM_COLOR_OPTIONS[0].value;
     const teamBColor = room.teamB.color || TEAM_COLOR_OPTIONS[1].value;
     const leftSetWins = nextSwapped ? room.match.bSetWins : room.match.aSetWins;
     const rightSetWins = nextSwapped ? room.match.aSetWins : room.match.bSetWins;
-    const setSummaryText = room.match.isFinished
-      ? "已结束 " + String(leftSetWins || 0) + ":" + String(rightSetWins || 0)
-      : "第" + String(room.match.setNo || 1) + "局 " + String(leftSetWins || 0) + ":" + String(rightSetWins || 0);
-    const nextServeOnLeft =
-      (nextServingTeam === "A" && !nextSwapped) || (nextServingTeam === "B" && nextSwapped);
-    const nextServeThemeClass = nextServingTeam === "A" ? "serve-a" : "serve-b";
-    const shouldAnimateServe =
-      this.data.servingTeam !== nextServingTeam ||
-      this.data.isSwapped !== nextSwapped ||
-      this.data.serveOnLeft !== nextServeOnLeft;
-
-    if (this.serveMotionTimer) {
-      clearTimeout(this.serveMotionTimer);
-      this.serveMotionTimer = 0;
-    }
+    const setWinsText = String(leftSetWins || 0) + ":" + String(rightSetWins || 0);
+    const timerStartAt = Number((room.match as any).setTimerStartAt) || 0;
+    const timerElapsedMs = Number((room.match as any).setTimerElapsedMs) || 0;
+    this.timerStartAtMs = timerStartAt;
+    this.timerElapsedBaseMs = timerElapsedMs;
+    const liveTimerMs = timerStartAt > 0 ? timerElapsedMs + (Date.now() - timerStartAt) : timerElapsedMs;
+    const timerText = formatDurationMMSS(liveTimerMs);
+    this.lastRenderedTimerText = timerText;
+    wx.setNavigationBarTitle({ title: "裁判团队编号 " + roomId });
     this.setData({
       participantCount: getParticipantCount(roomId),
       teamAName: room.teamA.name,
@@ -425,15 +467,13 @@ Page({
       teamBRGB: hexToRgbTriplet(teamBColor),
       aScore: room.match.aScore,
       bScore: room.match.bScore,
-      servingTeam: nextServingTeam,
-      servingTeamName: nextServingTeam === "A" ? room.teamA.name : room.teamB.name,
-      serveOnLeft: nextServeOnLeft,
-      serveThemeClass: nextServeThemeClass,
-      serveMotion: shouldAnimateServe,
+      lastScoringTeam: room.match.lastScoringTeam === "B" ? "B" : room.match.lastScoringTeam === "A" ? "A" : "",
+      setTimerText: timerText,
+      servingTeam: room.match.servingTeam,
       setNo: room.match.setNo || 1,
       aSetWins: room.match.aSetWins || 0,
       bSetWins: room.match.bSetWins || 0,
-      setSummaryText: setSummaryText,
+      setWinsText: setWinsText,
       isMatchFinished: !!room.match.isFinished,
       isSwapped: nextSwapped,
       teamAPlayers: room.teamA.players,
@@ -457,11 +497,6 @@ Page({
         }),
       updatedAt: room.updatedAt,
     });
-    if (shouldAnimateServe) {
-      this.serveMotionTimer = setTimeout(() => {
-        this.setData({ serveMotion: false });
-      }, 220) as unknown as number;
-    }
   },
 
   onScoreChange(e: WechatMiniprogram.CustomEvent) {
@@ -478,8 +513,7 @@ Page({
     const roomId = this.data.roomId;
     let setEndedMessage = "";
     let matchEndedMessage = "";
-    let matchWinnerName = "";
-    let matchFinalSetScore = "";
+    let setElapsedText = "00:00";
     let rotatedTeam: TeamCode | "" = "";
     let needDecidingSetSwitchChoice = false;
 
@@ -489,12 +523,17 @@ Page({
       }
       if (type === "add") {
         pushUndoSnapshot(room);
+        if (room.match.aScore === 0 && room.match.bScore === 0 && !room.match.setTimerStartAt) {
+          room.match.setTimerStartAt = Date.now();
+          room.match.setTimerElapsedMs = 0;
+        }
 
         if (team === "A") {
           room.match.aScore += 1;
         } else {
           room.match.bScore += 1;
         }
+        room.match.lastScoringTeam = team;
         appendMatchLog(
           room,
           "score_add",
@@ -529,6 +568,12 @@ Page({
         }
 
         if (setWinner) {
+          const startedAt = Number(room.match.setTimerStartAt) || 0;
+          const baseElapsed = Number(room.match.setTimerElapsedMs) || 0;
+          const finalElapsed = startedAt > 0 ? baseElapsed + (Date.now() - startedAt) : baseElapsed;
+          room.match.setTimerElapsedMs = finalElapsed;
+          room.match.setTimerStartAt = 0;
+          setElapsedText = formatDurationMMSS(finalElapsed);
           if (setWinner === "A") {
             room.match.aSetWins += 1;
           } else {
@@ -549,7 +594,12 @@ Page({
             setWinner
           );
           setEndedMessage =
-            "第" + String(room.match.setNo) + "局结束，" + (setWinner === "A" ? room.teamA.name : room.teamB.name) + "胜";
+            "第" +
+            String(room.match.setNo) +
+            "局结束，" +
+            (setWinner === "A" ? room.teamA.name : room.teamB.name) +
+            "胜，用时" +
+            setElapsedText;
 
           const reachedWins =
             setWinner === "A"
@@ -557,8 +607,8 @@ Page({
               : room.match.bSetWins >= room.settings.wins;
           if (reachedWins) {
             room.match.isFinished = true;
-            matchWinnerName = setWinner === "A" ? room.teamA.name : room.teamB.name;
-            matchFinalSetScore = String(room.match.aSetWins) + ":" + String(room.match.bSetWins);
+            const matchWinnerName = setWinner === "A" ? room.teamA.name : room.teamB.name;
+            const matchFinalSetScore = String(room.match.aSetWins) + ":" + String(room.match.bSetWins);
             appendMatchLog(
               room,
               "match_end",
@@ -576,6 +626,9 @@ Page({
             room.match.setNo += 1;
             room.match.aScore = 0;
             room.match.bScore = 0;
+            room.match.lastScoringTeam = "";
+            room.match.setTimerStartAt = 0;
+            room.match.setTimerElapsedMs = 0;
             room.match.servingTeam = setWinner;
             room.match.isSwapped = false;
             room.match.decidingSetEightHandled = false;
@@ -723,17 +776,15 @@ Page({
     }, 140);
   },
 
-  onOpenConfig() {
-    const roomId = this.data.roomId;
-    wx.navigateTo({ url: "/pages/room/room?roomId=" + roomId + "&edit=1" });
-  },
-
   onResetScore() {
     const roomId = this.data.roomId;
     const next = updateRoom(roomId, (room) => {
       pushUndoSnapshot(room);
       room.match.aScore = 0;
       room.match.bScore = 0;
+      room.match.lastScoringTeam = "";
+      room.match.setTimerStartAt = 0;
+      room.match.setTimerElapsedMs = 0;
       room.match.servingTeam = "A";
       room.match.aSetWins = 0;
       room.match.bSetWins = 0;
@@ -765,6 +816,7 @@ Page({
         last &&
         last.aScore === room.match.aScore &&
         last.bScore === room.match.bScore &&
+        (last.lastScoringTeam || "") === (room.match.lastScoringTeam || "") &&
         last.servingTeam === room.match.servingTeam &&
         !!last.isSwapped === !!room.match.isSwapped &&
         !!last.decidingSetEightHandled === !!room.match.decidingSetEightHandled &&
@@ -783,6 +835,7 @@ Page({
       undone = true;
       room.match.aScore = last.aScore;
       room.match.bScore = last.bScore;
+      room.match.lastScoringTeam = last.lastScoringTeam === "B" ? "B" : last.lastScoringTeam === "A" ? "A" : "";
       room.match.servingTeam = last.servingTeam;
       room.match.isSwapped = !!last.isSwapped;
       room.match.decidingSetEightHandled = !!last.decidingSetEightHandled;

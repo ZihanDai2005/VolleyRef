@@ -22,6 +22,9 @@ export interface TeamState {
 export interface MatchState {
   aScore: number;
   bScore: number;
+  lastScoringTeam: "A" | "B" | "";
+  setTimerStartAt: number;
+  setTimerElapsedMs: number;
   servingTeam: "A" | "B";
   isSwapped: boolean;
   decidingSetEightHandled: boolean;
@@ -32,6 +35,9 @@ export interface MatchState {
   undoStack: Array<{
     aScore: number;
     bScore: number;
+    lastScoringTeam?: "A" | "B" | "";
+    setTimerStartAt?: number;
+    setTimerElapsedMs?: number;
     servingTeam: "A" | "B";
     teamAPlayers: PlayerSlot[];
     teamBPlayers: PlayerSlot[];
@@ -70,7 +76,7 @@ interface RoomStore {
 
 const ROOMS_KEY = "volleyball.rooms.v1";
 const ROOM_LOCKS_KEY = "volleyball.roomLocks.v1";
-const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 20 * 1000;
 const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
 const POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
@@ -79,16 +85,16 @@ const DEFAULT_TEAM_B_COLOR = "#66B97A";
 export const TEAM_COLOR_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "浅灰", value: "#9FA8B4" },
   { label: "深灰", value: "#4F5561" },
-  { label: "浅蓝", value: "#6FAEDC" },
-  { label: "深蓝", value: "#3E6FB6" },
   { label: "紫色", value: "#6C63BE" },
+  { label: "深蓝", value: "#3E6FB6" },
+  { label: "浅蓝", value: "#6FAEDC" },
+  { label: "青色", value: "#3FA89C" },
   { label: "浅绿", value: "#66B97A" },
   { label: "深绿", value: "#2F6F4A" },
-  { label: "青色", value: "#3FA89C" },
-  { label: "红色", value: "#C95A5A" },
-  { label: "粉色", value: "#E5A7BE" },
   { label: "黄色", value: "#E0BC45" },
-  { label: "橙色", value: "#E28A47" }
+  { label: "粉色", value: "#E5A7BE" },
+  { label: "橙色", value: "#E28A47" },
+  { label: "红色", value: "#C95A5A" }
 ];
 
 function normalizeHexColor(color: unknown, fallback: string): string {
@@ -172,6 +178,9 @@ function createDefaultRoom(roomId: string): RoomState {
     match: {
       aScore: 0,
       bScore: 0,
+      lastScoringTeam: "",
+      setTimerStartAt: 0,
+      setTimerElapsedMs: 0,
       servingTeam: "A",
       isSwapped: false,
       decidingSetEightHandled: false,
@@ -246,6 +255,14 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
 
   base.match.aScore = Math.max(0, Number(input.match && input.match.aScore) || 0);
   base.match.bScore = Math.max(0, Number(input.match && input.match.bScore) || 0);
+  base.match.lastScoringTeam =
+    input.match && (input.match as any).lastScoringTeam === "B"
+      ? "B"
+      : input.match && (input.match as any).lastScoringTeam === "A"
+        ? "A"
+        : "";
+  base.match.setTimerStartAt = Math.max(0, Number(input.match && (input.match as any).setTimerStartAt) || 0);
+  base.match.setTimerElapsedMs = Math.max(0, Number(input.match && (input.match as any).setTimerElapsedMs) || 0);
   base.match.servingTeam = input.match && input.match.servingTeam === "B" ? "B" : "A";
   base.match.isSwapped = !!(input.match && (input.match as any).isSwapped);
   base.match.decidingSetEightHandled = !!(input.match && (input.match as any).decidingSetEightHandled);
@@ -260,6 +277,9 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
       return {
         aScore: Math.max(0, Number(item.aScore) || 0),
         bScore: Math.max(0, Number(item.bScore) || 0),
+        lastScoringTeam: item.lastScoringTeam === "B" ? "B" : item.lastScoringTeam === "A" ? "A" : "",
+        setTimerStartAt: Math.max(0, Number(item.setTimerStartAt) || 0),
+        setTimerElapsedMs: Math.max(0, Number(item.setTimerElapsedMs) || 0),
         servingTeam: item.servingTeam === "B" ? "B" : "A",
         teamAPlayers: normalizePlayers(item.teamAPlayers),
         teamBPlayers: normalizePlayers(item.teamBPlayers),

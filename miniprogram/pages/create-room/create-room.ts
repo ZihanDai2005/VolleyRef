@@ -71,6 +71,19 @@ Page({
     });
   },
 
+  parseInviteText(text: string): { roomId: string; password: string } | null {
+    const raw = String(text || "");
+    const roomMatch = raw.match(/裁判团队编号\s*[:：]?\s*(\d{6})/);
+    const pwdMatch = raw.match(/密码\s*[:：]?\s*(\d{6})/);
+    if (!roomMatch || !pwdMatch) {
+      return null;
+    }
+    return {
+      roomId: roomMatch[1],
+      password: pwdMatch[1],
+    };
+  },
+
   generateRoomId() {
     return Math.floor(100000 + Math.random() * 900000).toString();
   },
@@ -138,5 +151,27 @@ Page({
     }
     const target = room.status === "match" ? "match" : "room";
     wx.navigateTo({ url: "/pages/" + target + "/" + target + "?roomId=" + roomId });
+  },
+
+  onPasteInviteAndJoin() {
+    wx.getClipboardData({
+      success: (res) => {
+        const data = this.parseInviteText((res && (res as any).data) || "");
+        if (!data) {
+          showBlockHint("未识别到有效邀请信息，请先复制完整邀请文案");
+          return;
+        }
+        this.setData({
+          joinRoomId: data.roomId,
+          joinPassword: data.password,
+          joinRoomIdDots: this.getRemainingDots(data.roomId),
+          joinPasswordDots: this.getRemainingDots(data.password),
+        });
+        this.onJoinRoomSubmit();
+      },
+      fail: () => {
+        showBlockHint("读取剪贴板失败，请检查小程序剪贴板权限");
+      },
+    });
   },
 });

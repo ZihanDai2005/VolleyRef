@@ -7,7 +7,7 @@
       <view class="pin-input-wrap">
         <input
           class="pin-native-input"
-          type="text"
+          type="number"
           maxlength="6"
           value="{{createPassword}}"
           bindinput="onCreatePasswordInput"
@@ -29,7 +29,7 @@
       <view class="pin-input-wrap">
         <input
           class="pin-native-input"
-          type="text"
+          type="number"
           maxlength="6"
           value="{{joinRoomId}}"
           bindinput="onJoinRoomIdInput"
@@ -42,7 +42,7 @@
       <view class="pin-input-wrap">
         <input
           class="pin-native-input"
-          type="text"
+          type="number"
           maxlength="6"
           value="{{joinPassword}}"
           bindinput="onJoinPasswordInput"
@@ -53,6 +53,12 @@
       </view>
 
       <button class="enter-btn join-btn" bindtap="onJoinRoomSubmit">加入</button>
+      <button class="paste-link-btn" bindtap="onPasteInviteAndJoin">
+        <view class="link-content">
+          <view class="paste-icon"></view>
+          <text>粘贴邀请直接加入</text>
+        </view>
+      </button>
     </view>
   </view>
 </view>

@@ -207,6 +207,9 @@ Page({
     }
     const createMode = query.create === "1";
     const editMode = query.edit === "1";
+    if (createMode) {
+      wx.setNavigationBarTitle({ title: "创建裁判团队 " + roomId });
+    }
     this.setData({ roomId: roomId, editMode: editMode, createMode: createMode });
     if (createMode) {
       const presetPassword = String(query.password || "").replace(/\D/g, "").slice(0, 6);
@@ -269,6 +272,18 @@ Page({
     applyNavigationBarTheme();
   },
 
+  handleRoomClosed() {
+    wx.showModal({
+      title: "房间已关闭",
+      content: "该裁判团队已超时关闭或不存在，请重新创建或加入有效团队。",
+      showCancel: false,
+      confirmText: "返回首页",
+      success: () => {
+        wx.reLaunch({ url: "/pages/create-room/create-room" });
+      },
+    });
+  },
+
   startPolling() {
     this.stopPolling();
     this.pollTimer = setInterval(() => {
@@ -295,7 +310,7 @@ Page({
     const room = getRoom(roomId);
     if (!room) {
       if (force) {
-        showBlockHint("房间不存在");
+        this.handleRoomClosed();
       }
       return;
     }
@@ -343,8 +358,14 @@ Page({
     const field = (e.currentTarget.dataset as { field: string }).field;
     const value = e.detail.value;
     if (field === "teamAName") {
+      if (!this.data.createMode) {
+        return;
+      }
       this.setData({ teamAName: value });
     } else if (field === "teamBName") {
+      if (!this.data.createMode) {
+        return;
+      }
       this.setData({ teamBName: value });
     } else if (field === "teamACaptainNo") {
       this.setData({ teamACaptainNo: normalizeNumberInput(value) });
@@ -359,6 +380,9 @@ Page({
   },
 
   onMatchModeChange(e: WechatMiniprogram.CustomEvent) {
+    if (!this.data.createMode) {
+      return;
+    }
     const idx = Number(e.detail.value);
     const maxIdx = this.data.matchModes.length - 1;
     const nextIdx = Number.isFinite(idx) ? Math.max(0, Math.min(maxIdx, idx)) : 0;
@@ -397,6 +421,9 @@ Page({
   },
 
   onTeamColorSelect(e: WechatMiniprogram.TouchEvent) {
+    if (!this.data.createMode) {
+      return;
+    }
     const dataset = e.currentTarget.dataset as { team: TeamCode; color: string };
     const team = dataset.team;
     const color = String(dataset.color || "").toUpperCase();
@@ -700,7 +727,7 @@ Page({
     });
 
     if (!next) {
-      showBlockHint("房间不存在");
+      this.handleRoomClosed();
       return;
     }
 
@@ -709,5 +736,28 @@ Page({
       return;
     }
     wx.navigateTo({ url: "/pages/match/match?roomId=" + roomId });
+  },
+
+  buildInviteText() {
+    return (
+      "[排球裁判小助手] 裁判团队编号 " +
+      this.data.roomId +
+      "，密码 " +
+      this.data.roomPassword +
+      "，打开小程序粘贴即可加入房间，请确认邀请人已完成比赛设置并进入比赛页面后再加入"
+    );
+  },
+
+  async onCopyInviteAndStart() {
+    const inviteText = this.buildInviteText();
+    wx.setClipboardData({
+      data: inviteText,
+      success: () => {
+        showToastHint("邀请信息已复制");
+      },
+      fail: () => {
+        showBlockHint("复制失败，请重试");
+      },
+    });
   },
 });

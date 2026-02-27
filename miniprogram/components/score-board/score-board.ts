@@ -18,6 +18,10 @@ Component({
         }
       },
     },
+    lastScoringTeam: {
+      type: String,
+      value: "",
+    },
   },
   data: {
     pulseA: false,
