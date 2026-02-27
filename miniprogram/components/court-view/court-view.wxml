@@ -1,8 +1,0 @@
-<view class="court-view">
-  <view class="team-title">{{teamType === 'A' ? 'A队' : 'B队'}}</view>
-  <view class="court">
-    <block wx:for="{{players}}" wx:key="pos">
-      <player-card number="{{item.number}}" pos="{{item.pos}}" color="{{teamType === 'A' ? '#ffdddd' : '#ddeaff'}}" />
-    </block>
-  </view>
-</view>

@@ -1,7 +1,4 @@
 import {
-  buildDefaultSettings,
-  createInitialPlayers,
-  createRoom,
   getRoom,
   heartbeatRoom,
   verifyRoomPassword,
@@ -10,9 +7,11 @@ import {
 Page({
   data: {
     createRoomId: "",
+    createPassword: "",
     joinRoomId: "",
     joinPassword: "",
     createRoomIdDots: "••••••",
+    createPasswordDots: "••••••",
     joinRoomIdDots: "••••••",
     joinPasswordDots: "••••••",
   },
@@ -37,6 +36,14 @@ Page({
     });
   },
 
+  onCreatePasswordInput(e: WechatMiniprogram.Input) {
+    const value = (e.detail.value || "").replace(/\D/g, "").slice(0, 6);
+    this.setData({
+      createPassword: value,
+      createPasswordDots: this.getRemainingDots(value),
+    });
+  },
+
   onJoinPasswordInput(e: WechatMiniprogram.Input) {
     const value = (e.detail.value || "").replace(/\D/g, "").slice(0, 6);
     this.setData({
@@ -46,8 +53,8 @@ Page({
   },
 
   onCreateRoomSubmit() {
-    const clientId = getApp<IAppOption>().globalData.clientId;
     const roomId = this.data.createRoomId.trim();
+    const password = this.data.createPassword.trim();
 
     if (roomId.length !== 6) {
       wx.showToast({ title: "请输入6位房间号", icon: "none" });
@@ -59,18 +66,14 @@ Page({
       return;
     }
 
-    const created = createRoom({
-      roomId: roomId,
-      password: "",
-      settings: buildDefaultSettings(),
-      teamAName: "A",
-      teamBName: "B",
-      teamAPlayers: createInitialPlayers(),
-      teamBPlayers: createInitialPlayers(),
-    });
+    if (password.length !== 6) {
+      wx.showToast({ title: "请输入6位数字密码", icon: "none" });
+      return;
+    }
 
-    heartbeatRoom(created.roomId, clientId);
-    wx.navigateTo({ url: "/pages/room/room?roomId=" + created.roomId });
+    wx.navigateTo({
+      url: "/pages/room/room?roomId=" + roomId + "&create=1&password=" + password,
+    });
   },
 
   onJoinRoomSubmit() {

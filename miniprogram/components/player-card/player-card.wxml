@@ -1,4 +1,0 @@
-<view class="player-card {{active ? 'active' : ''}}" style="background: {{color}};" catchtouchstart="onTouchStart" catchtouchend="onTouchEnd">
-  <text class="number">{{number}}</text>
-  <text class="pos">{{pos}}</text>
-</view>

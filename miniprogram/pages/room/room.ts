@@ -1,4 +1,5 @@
 import {
+  createRoom,
   getRoom,
   updateRoom,
   heartbeatRoom,
@@ -10,6 +11,49 @@ import {
 type TeamCode = "A" | "B";
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
+type MatchModeOption = {
+  label: string;
+  sets: number;
+  wins: number;
+  maxScore: number;
+  tiebreakScore: number;
+};
+
+const MATCH_MODE_OPTIONS: MatchModeOption[] = [
+  { label: "5局3胜", sets: 5, wins: 3, maxScore: 25, tiebreakScore: 15 },
+  { label: "3局2胜", sets: 3, wins: 2, maxScore: 25, tiebreakScore: 15 },
+  { label: "1局1胜(15分)", sets: 1, wins: 1, maxScore: 15, tiebreakScore: 15 },
+  { label: "1局1胜(25分)", sets: 1, wins: 1, maxScore: 25, tiebreakScore: 25 },
+];
+
+function getMatchModeIndexBySettings(
+  sets: number,
+  wins: number,
+  maxScore: number,
+  tiebreakScore: number
+): number {
+  const exactIdx = MATCH_MODE_OPTIONS.findIndex(function (item) {
+    return (
+      item.sets === sets &&
+      item.wins === wins &&
+      item.maxScore === maxScore &&
+      item.tiebreakScore === tiebreakScore
+    );
+  });
+  if (exactIdx >= 0) {
+    return exactIdx;
+  }
+  if (sets === 5 && wins === 3) {
+    return 0;
+  }
+  if (sets === 3 && wins === 2) {
+    return 1;
+  }
+  if (sets === 1 && wins === 1) {
+    return maxScore >= 25 ? 3 : 2;
+  }
+  return 0;
+}
 
 function validateTeamPlayers(players: PlayerSlot[], teamName: string): string | null {
   const main = players.slice(0, 6);
@@ -34,18 +78,33 @@ function validateTeamPlayers(players: PlayerSlot[], teamName: string): string | 
   return null;
 }
 
+function findDuplicateNumber(players: PlayerSlot[]): string | null {
+  const seen: Record<string, boolean> = {};
+  for (let i = 0; i < players.length; i += 1) {
+    const n = (players[i].number || "").trim();
+    if (!n || n === "?") {
+      continue;
+    }
+    if (seen[n]) {
+      return n;
+    }
+    seen[n] = true;
+  }
+  return null;
+}
+
 Page({
   data: {
     roomId: "",
     participantCount: 0,
     roomPassword: "",
+    createMode: false,
     editMode: false,
-    sets: "5",
-    wins: "3",
-    maxScore: "25",
-    tiebreakScore: "15",
-    teamAName: "A",
-    teamBName: "B",
+    matchModes: MATCH_MODE_OPTIONS,
+    matchModeIndex: 0,
+    passwordFocused: false,
+    teamAName: "",
+    teamBName: "",
     teamAColor: TEAM_COLOR_OPTIONS[0].value,
     teamBColor: TEAM_COLOR_OPTIONS[1].value,
     colorOptions: TEAM_COLOR_OPTIONS,
@@ -68,12 +127,76 @@ Page({
       wx.showToast({ title: "房间号无效", icon: "none" });
       return;
     }
+    const createMode = query.create === "1";
     const editMode = query.edit === "1";
-    this.setData({ roomId: roomId, editMode: editMode });
+    this.setData({ roomId: roomId, editMode: editMode, createMode: createMode });
+    if (createMode) {
+      const presetPassword = String(query.password || "").replace(/\D/g, "").slice(0, 6);
+      this.setData({
+        participantCount: 0,
+        roomPassword: presetPassword,
+        teamAName: "",
+        teamBName: "",
+        teamAColor: TEAM_COLOR_OPTIONS[0].value,
+        teamBColor: TEAM_COLOR_OPTIONS[1].value,
+        teamAPlayers: [
+          { pos: "I", number: "?" },
+          { pos: "II", number: "?" },
+          { pos: "III", number: "?" },
+          { pos: "IV", number: "?" },
+          { pos: "V", number: "?" },
+          { pos: "VI", number: "?" },
+          { pos: "L1", number: "?" },
+          { pos: "L2", number: "?" },
+        ],
+        teamBPlayers: [
+          { pos: "I", number: "?" },
+          { pos: "II", number: "?" },
+          { pos: "III", number: "?" },
+          { pos: "IV", number: "?" },
+          { pos: "V", number: "?" },
+          { pos: "VI", number: "?" },
+          { pos: "L1", number: "?" },
+          { pos: "L2", number: "?" },
+        ],
+        teamARowTop: [
+          { pos: "I", number: "?" },
+          { pos: "II", number: "?" },
+          { pos: "III", number: "?" },
+        ],
+        teamARowMid: [
+          { pos: "IV", number: "?" },
+          { pos: "V", number: "?" },
+          { pos: "VI", number: "?" },
+        ],
+        teamARowLibero: [
+          { pos: "L1", number: "?" },
+          { pos: "L2", number: "?" },
+        ],
+        teamBRowTop: [
+          { pos: "I", number: "?" },
+          { pos: "II", number: "?" },
+          { pos: "III", number: "?" },
+        ],
+        teamBRowMid: [
+          { pos: "IV", number: "?" },
+          { pos: "V", number: "?" },
+          { pos: "VI", number: "?" },
+        ],
+        teamBRowLibero: [
+          { pos: "L1", number: "?" },
+          { pos: "L2", number: "?" },
+        ],
+      });
+      return;
+    }
     this.loadRoom(roomId, true);
   },
 
   onShow() {
+    if (this.data.createMode) {
+      return;
+    }
     this.startPolling();
   },
 
@@ -83,6 +206,9 @@ Page({
 
   onUnload() {
     this.stopPolling();
+    if (this.data.createMode) {
+      return;
+    }
     const roomId = this.data.roomId;
     const clientId = getApp<IAppOption>().globalData.clientId;
     leaveRoom(roomId, clientId);
@@ -134,10 +260,12 @@ Page({
     this.setData({
       participantCount: getParticipantCount(roomId),
       roomPassword: room.password,
-      sets: String(room.settings.sets),
-      wins: String(room.settings.wins),
-      maxScore: String(room.settings.maxScore),
-      tiebreakScore: String(room.settings.tiebreakScore),
+      matchModeIndex: getMatchModeIndexBySettings(
+        room.settings.sets,
+        room.settings.wins,
+        room.settings.maxScore,
+        room.settings.tiebreakScore
+      ),
       teamAName: room.teamA.name,
       teamBName: room.teamB.name,
       teamAColor: room.teamA.color || TEAM_COLOR_OPTIONS[0].value,
@@ -157,15 +285,7 @@ Page({
   onInputChange(e: WechatMiniprogram.Input) {
     const field = (e.currentTarget.dataset as { field: string }).field;
     const value = e.detail.value;
-    if (field === "sets") {
-      this.setData({ sets: value });
-    } else if (field === "wins") {
-      this.setData({ wins: value });
-    } else if (field === "maxScore") {
-      this.setData({ maxScore: value });
-    } else if (field === "tiebreakScore") {
-      this.setData({ tiebreakScore: value });
-    } else if (field === "teamAName") {
+    if (field === "teamAName") {
       this.setData({ teamAName: value });
     } else if (field === "teamBName") {
       this.setData({ teamBName: value });
@@ -175,6 +295,22 @@ Page({
     setTimeout(() => {
       this.persistDraft();
     }, 0);
+  },
+
+  onMatchModeChange(e: WechatMiniprogram.CustomEvent) {
+    const idx = Number(e.detail.value);
+    const maxIdx = this.data.matchModes.length - 1;
+    const nextIdx = Number.isFinite(idx) ? Math.max(0, Math.min(maxIdx, idx)) : 0;
+    this.setData({ matchModeIndex: nextIdx });
+    this.persistDraft();
+  },
+
+  onPasswordFocus() {
+    this.setData({ passwordFocused: true });
+  },
+
+  onPasswordBlur() {
+    this.setData({ passwordFocused: false });
   },
 
   onTeamColorSelect(e: WechatMiniprogram.TouchEvent) {
@@ -238,20 +374,33 @@ Page({
     }
   },
 
+  onPlayerNumberBlur(e: WechatMiniprogram.TouchEvent) {
+    const dataset = e.currentTarget.dataset as { team: TeamCode };
+    const team = dataset.team;
+    const players = team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers;
+    const duplicate = findDuplicateNumber(players);
+    if (!duplicate) {
+      return;
+    }
+    const teamName = team === "A" ? (this.data.teamAName.trim() || "A") : (this.data.teamBName.trim() || "B");
+    wx.showToast({ title: teamName + "队号码" + duplicate + "重复", icon: "none" });
+  },
+
   persistDraft(teamAPlayersArg?: PlayerSlot[], teamBPlayersArg?: PlayerSlot[]) {
     const roomId = this.data.roomId;
-    if (!roomId) {
+    if (!roomId || this.data.createMode) {
       return;
     }
     const teamAPlayers = teamAPlayersArg || this.data.teamAPlayers;
     const teamBPlayers = teamBPlayersArg || this.data.teamBPlayers;
+    const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
     updateRoom(roomId, (room) => {
       room.password = this.data.roomPassword.trim();
       room.settings = {
-        sets: Number(this.data.sets) || 5,
-        wins: Number(this.data.wins) || 3,
-        maxScore: Number(this.data.maxScore) || 25,
-        tiebreakScore: Number(this.data.tiebreakScore) || 15,
+        sets: mode.sets,
+        wins: mode.wins,
+        maxScore: mode.maxScore,
+        tiebreakScore: mode.tiebreakScore,
       };
       room.teamA = {
         name: this.data.teamAName.trim() || "A",
@@ -271,6 +420,7 @@ Page({
     const teamAName = this.data.teamAName.trim() || "A";
     const teamBName = this.data.teamBName.trim() || "B";
     const roomPassword = this.data.roomPassword.trim();
+    const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
 
     if (roomPassword.length !== 6) {
       wx.showToast({ title: "房间密码需6位数字", icon: "none" });
@@ -295,14 +445,49 @@ Page({
 
     const roomId = this.data.roomId;
     const editMode = this.data.editMode;
+    const createMode = this.data.createMode;
+    if (createMode) {
+      if (getRoom(roomId)) {
+        wx.showToast({ title: "房间号已存在", icon: "none" });
+        return;
+      }
+      const created = createRoom({
+        roomId: roomId,
+        password: roomPassword,
+        settings: {
+          sets: mode.sets,
+          wins: mode.wins,
+          maxScore: mode.maxScore,
+          tiebreakScore: mode.tiebreakScore,
+        },
+        teamAName: teamAName,
+        teamAColor: this.data.teamAColor,
+        teamAPlayers: this.data.teamAPlayers.slice(),
+        teamBName: teamBName,
+        teamBColor: this.data.teamBColor,
+        teamBPlayers: this.data.teamBPlayers.slice(),
+      });
+      const nextCreated = updateRoom(created.roomId, (room) => {
+        room.status = "match";
+        return room;
+      });
+      if (!nextCreated) {
+        wx.showToast({ title: "创建失败", icon: "none" });
+        return;
+      }
+      const clientId = getApp<IAppOption>().globalData.clientId;
+      heartbeatRoom(created.roomId, clientId);
+      wx.navigateTo({ url: "/pages/match/match?roomId=" + created.roomId });
+      return;
+    }
     const next = updateRoom(roomId, (room) => {
       room.status = editMode ? room.status : "match";
       room.password = roomPassword;
       room.settings = {
-        sets: Number(this.data.sets) || 5,
-        wins: Number(this.data.wins) || 3,
-        maxScore: Number(this.data.maxScore) || 25,
-        tiebreakScore: Number(this.data.tiebreakScore) || 15,
+        sets: mode.sets,
+        wins: mode.wins,
+        maxScore: mode.maxScore,
+        tiebreakScore: mode.tiebreakScore,
       };
       room.teamA = {
         name: teamAName,

@@ -4,6 +4,14 @@ App<IAppOption>({
     clientId: "",
   },
   onLaunch() {
+    const rawShowToast = wx.showToast.bind(wx);
+    (wx as any).showToast = (options: WechatMiniprogram.ShowToastOption) => {
+      return rawShowToast({
+        duration: options && typeof options.duration === "number" ? options.duration : 3000,
+        ...options,
+      });
+    };
+
     const logs = wx.getStorageSync("logs") || [];
     logs.unshift(Date.now());
     wx.setStorageSync("logs", logs);

@@ -1,6 +1,6 @@
 <view class="entry-container">
   <view class="entry-card">
-    <text class="title">创建房间</text>
+    <text class="title">创建裁判团队</text>
 
     <view class="pin-input-wrap">
       <input
@@ -15,11 +15,24 @@
       </view>
     </view>
 
-    <button class="enter-btn" bindtap="onCreateRoomSubmit">创建房间</button>
+    <view class="pin-input-wrap">
+      <input
+        class="pin-native-input"
+        type="text"
+        maxlength="6"
+        value="{{createPassword}}"
+        bindinput="onCreatePasswordInput"
+      />
+      <view class="pin-display">
+        <text>{{createPassword}}{{createPasswordDots}}</text>
+      </view>
+    </view>
+
+    <button class="enter-btn" bindtap="onCreateRoomSubmit">创建裁判团队</button>
   </view>
 
   <view class="entry-card join-card">
-    <text class="title">加入房间</text>
+    <text class="title">加入裁判团队</text>
 
     <view class="pin-input-wrap">
       <input
@@ -47,6 +60,6 @@
       </view>
     </view>
 
-    <button class="enter-btn join-btn" bindtap="onJoinRoomSubmit">加入房间</button>
+    <button class="enter-btn join-btn" bindtap="onJoinRoomSubmit">加入裁判团队</button>
   </view>
 </view>

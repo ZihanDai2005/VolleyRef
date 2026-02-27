@@ -2,29 +2,33 @@
   class="room-container"
   style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}};"
 >
-  <view class="room-id">房间号：{{roomId}} ｜ 人数：{{participantCount}}</view>
+  <view class="room-id">
+    {{createMode ? '裁判团队编号：' : '房间号：'}}{{roomId}} ｜ {{createMode ? ('密码：' + (roomPassword || '未设置')) : ('人数：' + participantCount)}}
+  </view>
 
   <view class="card room-settings">
     <text class="team-label">比赛设置</text>
     <view class="setting-row">
-      <input class="input short" value="{{sets}}" data-field="sets" bindinput="onInputChange" />
-      <text class="label">局</text>
-      <input class="input short" value="{{wins}}" data-field="wins" bindinput="onInputChange" />
-      <text class="label">胜</text>
-    </view>
-    <view class="setting-row">
-      <text class="label">最高分数</text>
-      <input class="input short" value="{{maxScore}}" data-field="maxScore" bindinput="onInputChange" />
-      <text class="label">决胜局分数</text>
-      <input class="input short" value="{{tiebreakScore}}" data-field="tiebreakScore" bindinput="onInputChange" />
+      <text class="label">赛制模式</text>
+      <picker
+        mode="selector"
+        range="{{matchModes}}"
+        range-key="label"
+        value="{{matchModeIndex}}"
+        bindchange="onMatchModeChange"
+      >
+        <view class="input team-name picker-value">{{matchModes[matchModeIndex].label}}</view>
+      </picker>
     </view>
     <view class="setting-row">
       <text class="label">A队名称</text>
-      <input class="input team-name" value="{{teamAName}}" data-field="teamAName" bindinput="onInputChange" />
-    </view>
-    <view class="setting-row">
-      <text class="label">B队名称</text>
-      <input class="input team-name" value="{{teamBName}}" data-field="teamBName" bindinput="onInputChange" />
+      <input
+        class="input team-name input-left"
+        value="{{teamAName}}"
+        placeholder="A"
+        data-field="teamAName"
+        bindinput="onInputChange"
+      />
     </view>
     <view class="setting-row color-row">
       <text class="label">A队颜色</text>
@@ -35,12 +39,23 @@
           wx:key="value"
           data-team="A"
           data-color="{{item.value}}"
+          hover-class="color-option-hover"
           bindtap="onTeamColorSelect"
         >
           <view class="color-dot" style="background-color: {{item.value}};"></view>
           <text class="color-name">{{item.label}}</text>
         </view>
       </view>
+    </view>
+    <view class="setting-row">
+      <text class="label">B队名称</text>
+      <input
+        class="input team-name input-left"
+        value="{{teamBName}}"
+        placeholder="B"
+        data-field="teamBName"
+        bindinput="onInputChange"
+      />
     </view>
     <view class="setting-row color-row">
       <text class="label">B队颜色</text>
@@ -51,6 +66,7 @@
           wx:key="value"
           data-team="B"
           data-color="{{item.value}}"
+          hover-class="color-option-hover"
           bindtap="onTeamColorSelect"
         >
           <view class="color-dot" style="background-color: {{item.value}};"></view>
@@ -60,7 +76,17 @@
     </view>
     <view class="setting-row">
       <text class="label">房间密码</text>
-      <input class="input team-name" type="number" maxlength="6" placeholder="6位数字" value="{{roomPassword}}" data-field="roomPassword" bindinput="onInputChange" />
+      <input
+        class="input team-name input-left"
+        type="number"
+        maxlength="6"
+        placeholder="{{passwordFocused ? '' : '6位数字'}}"
+        value="{{roomPassword}}"
+        data-field="roomPassword"
+        bindfocus="onPasswordFocus"
+        bindblur="onPasswordBlur"
+        bindinput="onInputChange"
+      />
     </view>
   </view>
 
@@ -69,21 +95,21 @@
 
     <view class="player-row row-three">
       <view class="player-card" wx:for="{{teamARowTop}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{idx}}" bindinput="onPlayerNumberInput" />
+        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{idx}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
         <text class="sub-text">{{item.pos}}</text>
       </view>
     </view>
 
     <view class="player-row row-three">
       <view class="player-card" wx:for="{{teamARowMid}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{idx + 3}}" bindinput="onPlayerNumberInput" />
+        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{idx + 3}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
         <text class="sub-text">{{item.pos}}</text>
       </view>
     </view>
 
     <view class="player-row row-two">
       <view class="player-card libero" wx:for="{{teamARowLibero}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{idx + 6}}" bindinput="onPlayerNumberInput" />
+        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{idx + 6}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
         <text class="sub-text">{{item.pos}}</text>
       </view>
     </view>
@@ -94,21 +120,21 @@
 
     <view class="player-row row-three">
       <view class="player-card" wx:for="{{teamBRowTop}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{idx}}" bindinput="onPlayerNumberInput" />
+        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{idx}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
         <text class="sub-text">{{item.pos}}</text>
       </view>
     </view>
 
     <view class="player-row row-three">
       <view class="player-card" wx:for="{{teamBRowMid}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{idx + 3}}" bindinput="onPlayerNumberInput" />
+        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{idx + 3}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
         <text class="sub-text">{{item.pos}}</text>
       </view>
     </view>
 
     <view class="player-row row-two">
       <view class="player-card libero" wx:for="{{teamBRowLibero}}" wx:for-item="item" wx:for-index="idx" wx:key="pos">
-        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{idx + 6}}" bindinput="onPlayerNumberInput" />
+        <input class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{idx + 6}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
         <text class="sub-text">{{item.pos}}</text>
       </view>
     </view>

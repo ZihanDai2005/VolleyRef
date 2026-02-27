@@ -1,10 +1,8 @@
 {
   "pages": [
     "pages/create-room/create-room",
-    "pages/index/index",
     "pages/room/room",
-    "pages/match/match",
-    "pages/logs/logs"
+    "pages/match/match"
   ],
   "window": {
     "navigationBarTextStyle": "black",

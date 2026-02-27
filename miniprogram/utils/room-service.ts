@@ -68,19 +68,21 @@ const ROOMS_KEY = "volleyball.rooms.v1";
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 20 * 1000;
 const POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
-const DEFAULT_TEAM_A_COLOR = "#5E789F";
-const DEFAULT_TEAM_B_COLOR = "#6F9E86";
+const DEFAULT_TEAM_A_COLOR = "#6C63BE";
+const DEFAULT_TEAM_B_COLOR = "#66B97A";
 export const TEAM_COLOR_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: "海军蓝", value: "#5E789F" },
-  { label: "森林绿", value: "#6F9E86" },
-  { label: "酒红", value: "#A06A74" },
-  { label: "砖红", value: "#B27A6B" },
-  { label: "钢铁灰", value: "#7F8794" },
-  { label: "炭黑灰", value: "#5F666F" },
-  { label: "皇家蓝", value: "#6C86B5" },
-  { label: "青蓝", value: "#5F96A8" },
-  { label: "橄榄绿", value: "#8A9766" },
-  { label: "卡其棕", value: "#A58E74" },
+  { label: "浅灰", value: "#9FA8B4" },
+  { label: "深灰", value: "#4F5561" },
+  { label: "浅蓝", value: "#6FAEDC" },
+  { label: "深蓝", value: "#3E6FB6" },
+  { label: "紫色", value: "#6C63BE" },
+  { label: "绿色", value: "#66B97A" },
+  { label: "深绿", value: "#2F6F4A" },
+  { label: "青色", value: "#3FA89C" },
+  { label: "红色", value: "#C95A5A" },
+  { label: "粉色", value: "#E5A7BE" },
+  { label: "黄色", value: "#E0BC45" },
+  { label: "橙色", value: "#E28A47" }
 ];
 
 function normalizeHexColor(color: unknown, fallback: string): string {
@@ -385,7 +387,7 @@ export function getParticipantCount(roomId: string): number {
 export function verifyRoomPassword(roomId: string, password: string): { ok: boolean; message: string } {
   const room = getStore()[roomId];
   if (!room) {
-    return { ok: false, message: "房间不存在" };
+    return { ok: false, message: "房间不存在，请确认是否有误，或确认其他裁判已经完成团队设置" };
   }
   if (String(room.password || "") !== String(password || "")) {
     return { ok: false, message: "房间密码错误" };

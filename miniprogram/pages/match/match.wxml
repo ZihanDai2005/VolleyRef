@@ -1,6 +1,6 @@
 <view
   class="match-container"
-  style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}};"
+  style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}}; --safe-pad-top: {{safePadTop}}; --safe-pad-right: {{safePadRight}}; --safe-pad-bottom: {{safePadBottom}}; --safe-pad-left: {{safePadLeft}};"
 >
   <view class="top-control-row">
     <view class="x-zone">
@@ -9,7 +9,7 @@
         <view class="top-btn pressable" hover-class="tap-active" bindtap="onUndoLastScore">比分撤回</view>
       </view>
       <view class="x-row">
-        <view class="x-room-count-pill">房间人数：{{participantCount}}</view>
+        <view class="x-room-count-pill">在线人数：{{participantCount}}</view>
       </view>
     </view>
 
