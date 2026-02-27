@@ -233,7 +233,8 @@ Page({
     setNo: 1,
     aSetWins: 0,
     bSetWins: 0,
-    setWinsText: "0:0",
+    setNoText: "第1局",
+    setWinsText: "0 : 0",
     isMatchFinished: false,
     isSwapped: false,
     showLogPanel: false,
@@ -446,7 +447,8 @@ Page({
     const teamBColor = room.teamB.color || TEAM_COLOR_OPTIONS[1].value;
     const leftSetWins = nextSwapped ? room.match.bSetWins : room.match.aSetWins;
     const rightSetWins = nextSwapped ? room.match.aSetWins : room.match.bSetWins;
-    const setWinsText = String(leftSetWins || 0) + ":" + String(rightSetWins || 0);
+    const setNoText = room.match.isFinished ? "已结束" : "第" + String(room.match.setNo || 1) + "局";
+    const setWinsText = String(leftSetWins || 0) + " : " + String(rightSetWins || 0);
     const timerStartAt = Number((room.match as any).setTimerStartAt) || 0;
     const timerElapsedMs = Number((room.match as any).setTimerElapsedMs) || 0;
     this.timerStartAtMs = timerStartAt;
@@ -473,6 +475,7 @@ Page({
       setNo: room.match.setNo || 1,
       aSetWins: room.match.aSetWins || 0,
       bSetWins: room.match.bSetWins || 0,
+      setNoText: setNoText,
       setWinsText: setWinsText,
       isMatchFinished: !!room.match.isFinished,
       isSwapped: nextSwapped,

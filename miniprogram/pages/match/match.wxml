@@ -26,6 +26,7 @@
     <view class="y-zone">
       <view class="y-row">
         <view class="x-room-count-pill">在线人数 {{participantCount}}</view>
+        <view class="x-room-count-pill">{{setNoText}}</view>
       </view>
       <view class="y-row">
         <view class="x-room-count-pill timer-pill"><text class="timer-pill-text">比赛计时 {{setTimerText}}</text></view>
