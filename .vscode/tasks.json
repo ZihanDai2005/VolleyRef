@@ -1,0 +1,55 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Rename home to create-room",
+			"type": "shell",
+			"command": "mv",
+			"args": [
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/home",
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/create-room"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Rename home files to create-room",
+			"type": "shell",
+			"command": "mv",
+			"args": [
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/create-room/home.json",
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/create-room/create-room.json"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Rename home files to create-room",
+			"type": "shell",
+			"command": "mv",
+			"args": [
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/create-room/home.ts",
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/create-room/create-room.ts"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Rename home files to create-room",
+			"type": "shell",
+			"command": "mv",
+			"args": [
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/create-room/home.less",
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/create-room/create-room.less"
+			],
+			"isBackground": false
+		},
+		{
+			"label": "Rename home files to create-room",
+			"type": "shell",
+			"command": "mv",
+			"args": [
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/create-room/home.wxml",
+				"/Users/daizhenjin/WeChatProjects/miniprogram-3/miniprogram/pages/create-room/create-room.wxml"
+			],
+			"isBackground": false
+		}
+	]
+}

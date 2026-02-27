@@ -1,0 +1,15 @@
+<view class="score-board">
+  <view class="team-score a">
+    <view class="side-btn pressable" hover-class="tap-active" bindtap="onAddScoreA">
+      <view class="plus-icon"></view>
+    </view>
+    <text class="score {{pulseA ? 'score-pulse' : ''}}">{{aScore}}</text>
+  </view>
+  <view class="vs">VS</view>
+  <view class="team-score b">
+    <text class="score {{pulseB ? 'score-pulse' : ''}}">{{bScore}}</text>
+    <view class="side-btn pressable" hover-class="tap-active" bindtap="onAddScoreB">
+      <view class="plus-icon"></view>
+    </view>
+  </view>
+</view>

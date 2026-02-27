@@ -1,0 +1,71 @@
+.score-board {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 0;
+}
+.team-score {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  margin: 0 18px;
+  gap: 14px;
+}
+.score {
+  font-size: 60px;
+  font-weight: bold;
+  line-height: 1;
+  transition: transform 180ms ease;
+}
+.side-btn {
+  margin: 0;
+  width: 54px;
+  height: 54px;
+  padding: 0;
+  background: rgba(153, 153, 153, 0.06);
+  border: 0;
+  border-radius: 10px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  line-height: 1;
+  transition: transform 120ms ease, opacity 120ms ease;
+}
+
+.plus-icon {
+  width: 28px;
+  height: 28px;
+  background-color: #666;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+.vs {
+  font-size: 30px;
+  color: #888;
+  margin: 0 16px;
+}
+
+.tap-active {
+  transform: scale(0.94);
+  opacity: 0.86;
+}
+
+.score-pulse {
+  animation: scorePulse 220ms ease;
+}
+
+@keyframes scorePulse {
+  0% {
+    transform: scale(1);
+  }
+  50% {
+    transform: scale(1.16);
+  }
+  100% {
+    transform: scale(1);
+  }
+}

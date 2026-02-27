@@ -1,0 +1,52 @@
+<view class="entry-container">
+  <view class="entry-card">
+    <text class="title">创建房间</text>
+
+    <view class="pin-input-wrap">
+      <input
+        class="pin-native-input"
+        type="text"
+        maxlength="6"
+        value="{{createRoomId}}"
+        bindinput="onCreateRoomIdInput"
+      />
+      <view class="pin-display">
+        <text>{{createRoomId}}{{createRoomIdDots}}</text>
+      </view>
+    </view>
+
+    <button class="enter-btn" bindtap="onCreateRoomSubmit">创建房间</button>
+  </view>
+
+  <view class="entry-card join-card">
+    <text class="title">加入房间</text>
+
+    <view class="pin-input-wrap">
+      <input
+        class="pin-native-input"
+        type="text"
+        maxlength="6"
+        value="{{joinRoomId}}"
+        bindinput="onJoinRoomIdInput"
+      />
+      <view class="pin-display">
+        <text>{{joinRoomId}}{{joinRoomIdDots}}</text>
+      </view>
+    </view>
+
+    <view class="pin-input-wrap">
+      <input
+        class="pin-native-input"
+        type="text"
+        maxlength="6"
+        value="{{joinPassword}}"
+        bindinput="onJoinPasswordInput"
+      />
+      <view class="pin-display">
+        <text>{{joinPassword}}{{joinPasswordDots}}</text>
+      </view>
+    </view>
+
+    <button class="enter-btn join-btn" bindtap="onJoinRoomSubmit">加入房间</button>
+  </view>
+</view>

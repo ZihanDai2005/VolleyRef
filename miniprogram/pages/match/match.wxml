@@ -1,0 +1,107 @@
+<view
+  class="match-container"
+  style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}};"
+>
+  <view class="top-control-row">
+    <view class="x-zone">
+      <view class="x-row">
+        <view class="top-btn pressable" hover-class="tap-active" bindtap="onSwitchSides">左右换边</view>
+        <view class="top-btn pressable" hover-class="tap-active" bindtap="onUndoLastScore">比分撤回</view>
+      </view>
+      <view class="x-row">
+        <view class="x-room-count-pill">房间人数：{{participantCount}}</view>
+      </view>
+    </view>
+
+    <view class="score-zone">
+      <view class="serve-indicator">
+        <view class="serve-tag {{serveThemeClass}} {{serveMotion ? 'serve-motion' : ''}}">
+          <view class="serve-arrow left {{serveOnLeft ? 'active' : ''}}"></view>
+          <text class="serve-text">发球</text>
+          <view class="serve-arrow right {{!serveOnLeft ? 'active' : ''}}"></view>
+        </view>
+      </view>
+      <score-board aScore="{{aScore}}" bScore="{{bScore}}" bind:scoreChange="onScoreChange" />
+    </view>
+
+    <view class="y-zone">
+      <view class="y-row">
+        <view class="action-btn pressable" hover-class="tap-active" bindtap="onOpenConfig">房间设置</view>
+        <view class="action-btn pressable" hover-class="tap-active" bindtap="onOpenLogPanel">计分记录</view>
+      </view>
+      <view class="y-row">
+        <view class="set-summary-pill">{{setSummaryText}}</view>
+      </view>
+    </view>
+  </view>
+
+  <view class="court-row {{isSwapped ? 'swapped' : ''}}">
+    <view class="team-panel team-a {{rotatingAOut ? 'rotate-out' : ''}} {{rotatingAIn ? 'rotate-in' : ''}}">
+      <view class="team-head">
+        <view class="rotate-btn left pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
+          <view class="rotate-icon"></view>
+        </view>
+        <text class="team-title">{{teamAName}}</text>
+      </view>
+      <view class="lineup-grid">
+        <view class="libero-col">
+          <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
+            <text class="num">{{item.number}}</text>
+            <text class="sub-text">{{item.pos}}</text>
+          </view>
+        </view>
+        <view class="main-col">
+          <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
+            <view class="player-card {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+              <text class="num pos-{{item.pos}}">{{item.number}}</text>
+              <text class="sub-text">{{item.pos}}</text>
+              <text class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}">发</text>
+            </view>
+          </view>
+        </view>
+      </view>
+    </view>
+
+    <view class="team-panel team-b {{rotatingBOut ? 'rotate-out' : ''}} {{rotatingBIn ? 'rotate-in' : ''}}">
+      <view class="team-head">
+        <text class="team-title">{{teamBName}}</text>
+        <view class="rotate-btn right pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
+          <view class="rotate-icon"></view>
+        </view>
+      </view>
+      <view class="lineup-grid reverse">
+        <view class="main-col">
+          <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
+            <view class="player-card {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+              <text class="num pos-{{item.pos}}">{{item.number}}</text>
+              <text class="sub-text">{{item.pos}}</text>
+              <text class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}">发</text>
+            </view>
+          </view>
+        </view>
+        <view class="libero-col">
+          <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
+            <text class="num">{{item.number}}</text>
+            <text class="sub-text">{{item.pos}}</text>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="log-mask" wx:if="{{showLogPanel}}" bindtap="onCloseLogPanel">
+    <view class="log-panel" catchtap="onLogPanelTap">
+      <view class="log-head">
+        <text class="log-title">计分记录</text>
+        <button class="plain-btn small" size="mini" bindtap="onCloseLogPanel">关闭</button>
+      </view>
+      <scroll-view class="log-list" scroll-y="true">
+        <view class="log-item" wx:for="{{logs}}" wx:key="id" wx:for-item="item">
+          <text class="log-time">{{item.timeText}}</text>
+          <text class="log-note">{{item.note}}</text>
+        </view>
+        <view class="log-empty" wx:if="{{!logs.length}}">暂无记录</view>
+      </scroll-view>
+    </view>
+  </view>
+</view>

@@ -1,0 +1,438 @@
+export type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
+
+export interface PlayerSlot {
+  pos: Position;
+  number: string;
+}
+
+export interface MatchSettings {
+  sets: number;
+  wins: number;
+  maxScore: number;
+  tiebreakScore: number;
+}
+
+export interface TeamState {
+  name: string;
+  color: string;
+  players: PlayerSlot[];
+}
+
+export interface MatchState {
+  aScore: number;
+  bScore: number;
+  servingTeam: "A" | "B";
+  isSwapped: boolean;
+  setNo: number;
+  aSetWins: number;
+  bSetWins: number;
+  isFinished: boolean;
+  undoStack: Array<{
+    aScore: number;
+    bScore: number;
+    servingTeam: "A" | "B";
+    teamAPlayers: PlayerSlot[];
+    teamBPlayers: PlayerSlot[];
+    setNo?: number;
+    aSetWins?: number;
+    bSetWins?: number;
+    isFinished?: boolean;
+  }>;
+  logs: Array<{
+    id: string;
+    ts: number;
+    action: string;
+    team: "A" | "B" | "";
+    note: string;
+  }>;
+}
+
+export interface RoomState {
+  roomId: string;
+  password: string;
+  status: "setup" | "match";
+  settings: MatchSettings;
+  teamA: TeamState;
+  teamB: TeamState;
+  match: MatchState;
+  participants: Record<string, number>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface RoomStore {
+  [roomId: string]: RoomState;
+}
+
+const ROOMS_KEY = "volleyball.rooms.v1";
+const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+const PARTICIPANT_TTL_MS = 20 * 1000;
+const POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
+const DEFAULT_TEAM_A_COLOR = "#5E789F";
+const DEFAULT_TEAM_B_COLOR = "#6F9E86";
+export const TEAM_COLOR_OPTIONS: Array<{ label: string; value: string }> = [
+  { label: "海军蓝", value: "#5E789F" },
+  { label: "森林绿", value: "#6F9E86" },
+  { label: "酒红", value: "#A06A74" },
+  { label: "砖红", value: "#B27A6B" },
+  { label: "钢铁灰", value: "#7F8794" },
+  { label: "炭黑灰", value: "#5F666F" },
+  { label: "皇家蓝", value: "#6C86B5" },
+  { label: "青蓝", value: "#5F96A8" },
+  { label: "橄榄绿", value: "#8A9766" },
+  { label: "卡其棕", value: "#A58E74" },
+];
+
+function normalizeHexColor(color: unknown, fallback: string): string {
+  const raw = String(color || "").trim().toUpperCase();
+  if (!/^#[0-9A-F]{6}$/.test(raw)) {
+    return fallback;
+  }
+  const exists = TEAM_COLOR_OPTIONS.some(function (item) {
+    return item.value === raw;
+  });
+  return exists ? raw : fallback;
+}
+
+function now(): number {
+  return Date.now();
+}
+
+function saveStore(store: RoomStore): void {
+  wx.setStorageSync(ROOMS_KEY, store);
+}
+
+function randomRoomId(): string {
+  return Math.floor(100000 + Math.random() * 900000).toString();
+}
+
+function cloneRoom(room: RoomState): RoomState {
+  return JSON.parse(JSON.stringify(room)) as RoomState;
+}
+
+function createDefaultRoom(roomId: string): RoomState {
+  const ts = now();
+  return {
+    roomId: roomId,
+    password: "",
+    status: "setup",
+    settings: {
+      sets: 5,
+      wins: 3,
+      maxScore: 25,
+      tiebreakScore: 15,
+    },
+    teamA: {
+      name: "A",
+      color: DEFAULT_TEAM_A_COLOR,
+      players: createInitialPlayers(),
+    },
+    teamB: {
+      name: "B",
+      color: DEFAULT_TEAM_B_COLOR,
+      players: createInitialPlayers(),
+    },
+    match: {
+      aScore: 0,
+      bScore: 0,
+      servingTeam: "A",
+      isSwapped: false,
+      setNo: 1,
+      aSetWins: 0,
+      bSetWins: 0,
+      isFinished: false,
+      undoStack: [],
+      logs: [],
+    },
+    participants: {},
+    createdAt: ts,
+    updatedAt: ts,
+  };
+}
+
+function normalizePlayers(players: unknown): PlayerSlot[] {
+  if (!Array.isArray(players)) {
+    return createInitialPlayers();
+  }
+  const result: PlayerSlot[] = [];
+  POSITIONS.forEach(function (pos, idx) {
+    const raw = players[idx] as Partial<PlayerSlot> | undefined;
+    result.push({
+      pos: pos,
+      number: raw && typeof raw.number === "string" ? raw.number : "?",
+    });
+  });
+  return result;
+}
+
+function normalizeParticipants(source: unknown): Record<string, number> {
+  if (!source || typeof source !== "object") {
+    return {};
+  }
+  const input = source as Record<string, unknown>;
+  const output: Record<string, number> = {};
+  Object.keys(input).forEach(function (k) {
+    const ts = Number(input[k]);
+    if (ts > 0) {
+      output[k] = ts;
+    }
+  });
+  return output;
+}
+
+function normalizeRoom(roomId: string, raw: unknown): RoomState {
+  const input = (raw || {}) as Partial<RoomState>;
+  const base = createDefaultRoom(roomId);
+
+  base.password = String((input as any).password || "");
+  base.status = input.status === "match" ? "match" : "setup";
+  base.settings.sets = Number(input.settings && input.settings.sets) || 5;
+  base.settings.wins = Number(input.settings && input.settings.wins) || 3;
+  base.settings.maxScore = Number(input.settings && input.settings.maxScore) || 25;
+  base.settings.tiebreakScore = Number(input.settings && input.settings.tiebreakScore) || 15;
+
+  base.teamA.name = (input.teamA && input.teamA.name) || "A";
+  base.teamB.name = (input.teamB && input.teamB.name) || "B";
+  base.teamA.color = normalizeHexColor(input.teamA && (input.teamA as any).color, DEFAULT_TEAM_A_COLOR);
+  base.teamB.color = normalizeHexColor(input.teamB && (input.teamB as any).color, DEFAULT_TEAM_B_COLOR);
+  if (base.teamA.color === base.teamB.color) {
+    base.teamB.color = DEFAULT_TEAM_B_COLOR;
+    if (base.teamA.color === base.teamB.color) {
+      base.teamB.color = TEAM_COLOR_OPTIONS[2].value;
+    }
+  }
+  base.teamA.players = normalizePlayers(input.teamA && input.teamA.players);
+  base.teamB.players = normalizePlayers(input.teamB && input.teamB.players);
+
+  base.match.aScore = Math.max(0, Number(input.match && input.match.aScore) || 0);
+  base.match.bScore = Math.max(0, Number(input.match && input.match.bScore) || 0);
+  base.match.servingTeam = input.match && input.match.servingTeam === "B" ? "B" : "A";
+  base.match.isSwapped = !!(input.match && (input.match as any).isSwapped);
+  base.match.setNo = Math.max(1, Number(input.match && (input.match as any).setNo) || 1);
+  base.match.aSetWins = Math.max(0, Number(input.match && (input.match as any).aSetWins) || 0);
+  base.match.bSetWins = Math.max(0, Number(input.match && (input.match as any).bSetWins) || 0);
+  base.match.isFinished = !!(input.match && (input.match as any).isFinished);
+
+  const rawUndoStack = input.match && (input.match as any).undoStack;
+  if (Array.isArray(rawUndoStack)) {
+    base.match.undoStack = rawUndoStack.map(function (item: any) {
+      return {
+        aScore: Math.max(0, Number(item.aScore) || 0),
+        bScore: Math.max(0, Number(item.bScore) || 0),
+        servingTeam: item.servingTeam === "B" ? "B" : "A",
+        teamAPlayers: normalizePlayers(item.teamAPlayers),
+        teamBPlayers: normalizePlayers(item.teamBPlayers),
+        setNo: Math.max(1, Number(item.setNo) || 1),
+        aSetWins: Math.max(0, Number(item.aSetWins) || 0),
+        bSetWins: Math.max(0, Number(item.bSetWins) || 0),
+        isFinished: !!item.isFinished,
+      };
+    });
+  } else {
+    base.match.undoStack = [];
+  }
+
+  const rawLogs = input.match && (input.match as any).logs;
+  if (Array.isArray(rawLogs)) {
+    base.match.logs = rawLogs.map(function (item: any, idx: number) {
+      const team = item.team === "A" || item.team === "B" ? item.team : "";
+      return {
+        id: String(item.id || "log-" + idx),
+        ts: Number(item.ts) || now(),
+        action: String(item.action || "unknown"),
+        team: team,
+        note: String(item.note || ""),
+      };
+    });
+  } else {
+    base.match.logs = [];
+  }
+
+  base.participants = normalizeParticipants((input as any).participants);
+  base.createdAt = Number(input.createdAt) || base.createdAt;
+  base.updatedAt = Number(input.updatedAt) || base.updatedAt;
+
+  return base;
+}
+
+function cleanupRoomParticipants(room: RoomState): boolean {
+  const ts = now();
+  let changed = false;
+  Object.keys(room.participants).forEach(function (clientId) {
+    if (ts - room.participants[clientId] > PARTICIPANT_TTL_MS) {
+      delete room.participants[clientId];
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function cleanupExpiredRooms(store: RoomStore): boolean {
+  const ts = now();
+  let changed = false;
+  Object.keys(store).forEach(function (roomId) {
+    const room = store[roomId];
+    if (!room) {
+      return;
+    }
+    if (cleanupRoomParticipants(room)) {
+      changed = true;
+    }
+    if (ts - room.updatedAt > ROOM_TTL_MS) {
+      delete store[roomId];
+      changed = true;
+    }
+  });
+  return changed;
+}
+
+function getStore(): RoomStore {
+  const raw = wx.getStorageSync(ROOMS_KEY);
+  if (!raw || typeof raw !== "object") {
+    return {};
+  }
+  const source = raw as Record<string, unknown>;
+  const store: RoomStore = {};
+  Object.keys(source).forEach(function (roomId) {
+    store[roomId] = normalizeRoom(roomId, source[roomId]);
+  });
+  if (cleanupExpiredRooms(store)) {
+    saveStore(store);
+  }
+  return store;
+}
+
+export function createInitialPlayers(): PlayerSlot[] {
+  return POSITIONS.map(function (pos) {
+    return { pos: pos, number: "?" };
+  });
+}
+
+export function buildDefaultSettings(): MatchSettings {
+  return {
+    sets: 5,
+    wins: 3,
+    maxScore: 25,
+    tiebreakScore: 15,
+  };
+}
+
+export function createRoom(input: {
+  roomId?: string;
+  password: string;
+  settings: MatchSettings;
+  teamAName: string;
+  teamBName: string;
+  teamAColor?: string;
+  teamBColor?: string;
+  teamAPlayers: PlayerSlot[];
+  teamBPlayers: PlayerSlot[];
+}): RoomState {
+  const store = getStore();
+  let roomId = input.roomId || randomRoomId();
+
+  if (!input.roomId) {
+    while (store[roomId]) {
+      roomId = randomRoomId();
+    }
+  } else if (store[roomId]) {
+    return cloneRoom(store[roomId]);
+  }
+
+  const room = createDefaultRoom(roomId);
+  room.password = String(input.password || "");
+  room.settings = {
+    sets: Number(input.settings.sets) || 5,
+    wins: Number(input.settings.wins) || 3,
+    maxScore: Number(input.settings.maxScore) || 25,
+    tiebreakScore: Number(input.settings.tiebreakScore) || 15,
+  };
+  room.teamA = {
+    name: input.teamAName || "A",
+    color: normalizeHexColor(input.teamAColor, DEFAULT_TEAM_A_COLOR),
+    players: normalizePlayers(input.teamAPlayers),
+  };
+  room.teamB = {
+    name: input.teamBName || "B",
+    color: normalizeHexColor(input.teamBColor, DEFAULT_TEAM_B_COLOR),
+    players: normalizePlayers(input.teamBPlayers),
+  };
+  if (room.teamA.color === room.teamB.color) {
+    room.teamB.color = DEFAULT_TEAM_B_COLOR;
+    if (room.teamA.color === room.teamB.color) {
+      room.teamB.color = TEAM_COLOR_OPTIONS[2].value;
+    }
+  }
+
+  store[roomId] = room;
+  saveStore(store);
+  return cloneRoom(room);
+}
+
+export function getRoom(roomId: string): RoomState | null {
+  const room = getStore()[roomId];
+  return room ? cloneRoom(room) : null;
+}
+
+export function getParticipantCount(roomId: string): number {
+  const room = getStore()[roomId];
+  if (!room) {
+    return 0;
+  }
+  return Object.keys(room.participants).length;
+}
+
+export function verifyRoomPassword(roomId: string, password: string): { ok: boolean; message: string } {
+  const room = getStore()[roomId];
+  if (!room) {
+    return { ok: false, message: "房间不存在" };
+  }
+  if (String(room.password || "") !== String(password || "")) {
+    return { ok: false, message: "房间密码错误" };
+  }
+  return { ok: true, message: "ok" };
+}
+
+export function heartbeatRoom(roomId: string, clientId: string): number {
+  const store = getStore();
+  const room = store[roomId];
+  if (!room || !clientId) {
+    return 0;
+  }
+  room.participants[clientId] = now();
+  room.updatedAt = now();
+  cleanupRoomParticipants(room);
+  store[roomId] = room;
+  saveStore(store);
+  return Object.keys(room.participants).length;
+}
+
+export function leaveRoom(roomId: string, clientId: string): void {
+  const store = getStore();
+  const room = store[roomId];
+  if (!room || !clientId) {
+    return;
+  }
+  if (room.participants[clientId]) {
+    delete room.participants[clientId];
+    room.updatedAt = now();
+    store[roomId] = room;
+    saveStore(store);
+  }
+}
+
+export function updateRoom(
+  roomId: string,
+  updater: (room: RoomState) => RoomState
+): RoomState | null {
+  const store = getStore();
+  const current = store[roomId];
+  if (!current) {
+    return null;
+  }
+  const next = normalizeRoom(roomId, updater(cloneRoom(current)));
+  next.updatedAt = now();
+  store[roomId] = next;
+  saveStore(store);
+  return cloneRoom(next);
+}
