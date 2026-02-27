@@ -265,6 +265,18 @@ page {
   flex-direction: row-reverse;
 }
 
+.court-row.switch-out .team-panel {
+  opacity: 0.22;
+  transform: scale(0.985);
+  transition: opacity 150ms ease, transform 150ms ease;
+}
+
+.court-row.switch-in .team-panel {
+  opacity: 1;
+  transform: scale(1);
+  transition: opacity 220ms ease, transform 220ms ease;
+}
+
 .team-panel {
   flex: 1;
   background: rgba(153, 153, 153, 0.06);
@@ -331,6 +343,10 @@ page {
 
 .lineup-grid.reverse {
   flex-direction: row;
+}
+
+.lineup-grid.swap-layout {
+  flex-direction: row-reverse;
 }
 
 .libero-col {

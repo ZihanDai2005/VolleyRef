@@ -35,15 +35,15 @@
     </view>
   </view>
 
-  <view class="court-row {{isSwapped ? 'swapped' : ''}}">
+  <view class="court-row {{isSwapped ? 'swapped' : ''}} {{switchingOut ? 'switch-out' : ''}} {{switchingIn ? 'switch-in' : ''}}">
     <view class="team-panel team-a {{rotatingAOut ? 'rotate-out' : ''}} {{rotatingAIn ? 'rotate-in' : ''}}">
       <view class="team-head">
-        <view class="rotate-btn left pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
+        <view class="rotate-btn {{isSwapped ? 'right' : 'left'}} pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
           <view class="rotate-icon"></view>
         </view>
         <text class="team-title">{{teamAName}}</text>
       </view>
-      <view class="lineup-grid">
+      <view class="lineup-grid {{isSwapped ? 'swap-layout' : ''}}">
         <view class="libero-col">
           <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
             <text class="num">{{item.number}}</text>
@@ -65,11 +65,11 @@
     <view class="team-panel team-b {{rotatingBOut ? 'rotate-out' : ''}} {{rotatingBIn ? 'rotate-in' : ''}}">
       <view class="team-head">
         <text class="team-title">{{teamBName}}</text>
-        <view class="rotate-btn right pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
+        <view class="rotate-btn {{isSwapped ? 'left' : 'right'}} pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
           <view class="rotate-icon"></view>
         </view>
       </view>
-      <view class="lineup-grid reverse">
+      <view class="lineup-grid reverse {{isSwapped ? 'swap-layout' : ''}}">
         <view class="main-col">
           <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
             <view class="player-card {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">

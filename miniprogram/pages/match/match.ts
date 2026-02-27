@@ -82,6 +82,14 @@ function rotateTeamAndLog(room: any, team: TeamCode, noteSuffix: string): void {
   appendMatchLog(room, "rotate", room.teamB.name + " " + noteSuffix, "B");
 }
 
+function rotateTeamNTimes(players: PlayerSlot[], times: number): PlayerSlot[] {
+  let next = players.slice();
+  for (let i = 0; i < times; i += 1) {
+    next = rotateTeamByRule(next);
+  }
+  return next;
+}
+
 function toggleSidesWithLog(room: any, note: string): void {
   room.match.isSwapped = !room.match.isSwapped;
   appendMatchLog(room, "switch_sides", note);
@@ -184,6 +192,8 @@ Page({
     rotatingAIn: false,
     rotatingBOut: false,
     rotatingBIn: false,
+    switchingOut: false,
+    switchingIn: false,
     teamAPlayers: [] as PlayerSlot[],
     teamBPlayers: [] as PlayerSlot[],
     teamALibero: [] as PlayerSlot[],
@@ -549,14 +559,29 @@ Page({
   },
 
   onSwitchSides() {
-    const roomId = this.data.roomId;
-    const next = updateRoom(roomId, (room) => {
-      toggleSidesWithLog(room, room.match.isSwapped ? "左右换边（已复位）" : "左右换边（已交换）");
-      return room;
-    });
-    if (next) {
-      this.loadRoom(roomId, true);
+    if (this.data.isMatchFinished) {
+      wx.showToast({ title: "比赛已结束，无法换边", icon: "none" });
+      return;
     }
+    const roomId = this.data.roomId;
+    this.setData({ switchingOut: true, switchingIn: false });
+    setTimeout(() => {
+      const next = updateRoom(roomId, (room) => {
+        toggleSidesWithLog(room, room.match.isSwapped ? "左右换边（已复位）" : "左右换边（已交换）");
+        room.teamA.players = rotateTeamNTimes(room.teamA.players, 3);
+        room.teamB.players = rotateTeamNTimes(room.teamB.players, 3);
+        appendMatchLog(room, "rotate", room.teamA.name + " 换边自动轮转3次", "A");
+        appendMatchLog(room, "rotate", room.teamB.name + " 换边自动轮转3次", "B");
+        return room;
+      });
+      this.setData({ switchingOut: false, switchingIn: true });
+      if (next) {
+        this.loadRoom(roomId, true);
+      }
+      setTimeout(() => {
+        this.setData({ switchingIn: false });
+      }, 220);
+    }, 150);
   },
 
   onRotateTeam(e: WechatMiniprogram.TouchEvent) {
