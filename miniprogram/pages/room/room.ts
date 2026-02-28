@@ -10,8 +10,8 @@ import {
 } from "../../utils/room-service";
 import { showBlockHint, showToastHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
+import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
 
-type TeamCode = "A" | "B";
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
 type DisplayPlayerSlot = PlayerSlot & { index: number };
@@ -40,9 +40,6 @@ const PLAYER_INDEX_BY_POS: Record<Position, number> = {
   L1: 6,
   L2: 7,
 };
-
-const TEAM_A_MAIN_ORDER: Position[] = ["V", "IV", "VI", "III", "I", "II"];
-const TEAM_B_MAIN_ORDER: Position[] = ["II", "I", "III", "VI", "IV", "V"];
 
 function createInitialPlayers(): PlayerSlot[] {
   return [
@@ -73,7 +70,7 @@ function normalizeLiberoSlots(players: PlayerSlot[]): PlayerSlot[] {
   return next;
 }
 
-function buildMainGrid(players: PlayerSlot[], order: Position[]): DisplayPlayerSlot[][] {
+function buildMainGrid(players: PlayerSlot[], order: MainPosition[]): DisplayPlayerSlot[][] {
   const byPos: Record<string, PlayerSlot> = {};
   players.forEach(function (p) {
     byPos[p.pos] = p;
@@ -278,9 +275,9 @@ Page({
         teamBRGB: hexToRgbString(TEAM_COLOR_OPTIONS[1].value),
         teamAPlayers: initialA,
         teamBPlayers: initialB,
-        teamAMainGrid: buildMainGrid(initialA, TEAM_A_MAIN_ORDER),
+        teamAMainGrid: buildMainGrid(initialA, getMainOrderForTeam("A", "A")),
         teamALibero: buildLibero(initialA),
-        teamBMainGrid: buildMainGrid(initialB, TEAM_B_MAIN_ORDER),
+        teamBMainGrid: buildMainGrid(initialB, getMainOrderForTeam("B", "A")),
         teamBLibero: buildLibero(initialB),
       });
       return;
@@ -408,9 +405,9 @@ Page({
       teamBRGB: hexToRgbString(room.teamB.color || TEAM_COLOR_OPTIONS[1].value),
       teamAPlayers: teamAPlayers,
       teamBPlayers: teamBPlayers,
-      teamAMainGrid: buildMainGrid(teamAPlayers, TEAM_A_MAIN_ORDER),
+      teamAMainGrid: buildMainGrid(teamAPlayers, getMainOrderForTeam("A", room.match.isSwapped ? "B" : "A")),
       teamALibero: buildLibero(teamAPlayers),
-      teamBMainGrid: buildMainGrid(teamBPlayers, TEAM_B_MAIN_ORDER),
+      teamBMainGrid: buildMainGrid(teamBPlayers, getMainOrderForTeam("B", room.match.isSwapped ? "B" : "A")),
       teamBLibero: buildLibero(teamBPlayers),
       updatedAt: room.updatedAt,
     });
@@ -565,7 +562,7 @@ Page({
       players[index] = { pos: current.pos, number: number };
       this.setData({
         teamAPlayers: players,
-        teamAMainGrid: buildMainGrid(players, TEAM_A_MAIN_ORDER),
+        teamAMainGrid: buildMainGrid(players, getMainOrderForTeam("A", this.data.teamASide)),
         teamALibero: buildLibero(players),
       });
       this.persistDraft(players, this.data.teamBPlayers);
@@ -578,7 +575,7 @@ Page({
       players[index] = { pos: current.pos, number: number };
       this.setData({
         teamBPlayers: players,
-        teamBMainGrid: buildMainGrid(players, TEAM_B_MAIN_ORDER),
+        teamBMainGrid: buildMainGrid(players, getMainOrderForTeam("B", this.data.teamASide)),
         teamBLibero: buildLibero(players),
       });
       this.persistDraft(this.data.teamAPlayers, players);
@@ -601,14 +598,14 @@ Page({
       if (team === "A") {
         this.setData({
           teamAPlayers: players,
-          teamAMainGrid: buildMainGrid(players, TEAM_A_MAIN_ORDER),
+          teamAMainGrid: buildMainGrid(players, getMainOrderForTeam("A", this.data.teamASide)),
           teamALibero: buildLibero(players),
         });
         this.persistDraft(players, this.data.teamBPlayers);
       } else {
         this.setData({
           teamBPlayers: players,
-          teamBMainGrid: buildMainGrid(players, TEAM_B_MAIN_ORDER),
+          teamBMainGrid: buildMainGrid(players, getMainOrderForTeam("B", this.data.teamASide)),
           teamBLibero: buildLibero(players),
         });
         this.persistDraft(this.data.teamAPlayers, players);
@@ -623,14 +620,14 @@ Page({
       if (team === "A") {
         this.setData({
           teamAPlayers: players,
-          teamAMainGrid: buildMainGrid(players, TEAM_A_MAIN_ORDER),
+          teamAMainGrid: buildMainGrid(players, getMainOrderForTeam("A", this.data.teamASide)),
           teamALibero: buildLibero(players),
         });
         this.persistDraft(players, this.data.teamBPlayers);
       } else {
         this.setData({
           teamBPlayers: players,
-          teamBMainGrid: buildMainGrid(players, TEAM_B_MAIN_ORDER),
+          teamBMainGrid: buildMainGrid(players, getMainOrderForTeam("B", this.data.teamASide)),
           teamBLibero: buildLibero(players),
         });
         this.persistDraft(this.data.teamAPlayers, players);
@@ -660,7 +657,13 @@ Page({
   },
 
   onToggleTeamSide() {
-    this.setData({ teamASide: this.data.teamASide === "A" ? "B" : "A", sidePulse: true });
+    const nextSide: TeamCode = this.data.teamASide === "A" ? "B" : "A";
+    this.setData({
+      teamASide: nextSide,
+      sidePulse: true,
+      teamAMainGrid: buildMainGrid(this.data.teamAPlayers, getMainOrderForTeam("A", nextSide)),
+      teamBMainGrid: buildMainGrid(this.data.teamBPlayers, getMainOrderForTeam("B", nextSide)),
+    });
     setTimeout(() => {
       if (this.data.sidePulse) {
         this.setData({ sidePulse: false });
@@ -681,7 +684,7 @@ Page({
 
   promptOnCourtCaptain(teamLabel: string, team: TeamCode, players: PlayerSlot[]): Promise<string | null> {
     return new Promise((resolve) => {
-      const order = team === "A" ? TEAM_A_MAIN_ORDER : TEAM_B_MAIN_ORDER;
+      const order = getMainOrderForTeam(team, this.data.teamASide);
       this.captainPickerResolver = resolve;
       this.setData({
         showCaptainPicker: true,
@@ -962,6 +965,11 @@ Page({
   },
 
   async onCopyInviteAndStart() {
+    const roomPassword = this.data.roomPassword.trim();
+    if (!/^\d{6}$/.test(roomPassword)) {
+      showBlockHint("房间密码需6位数字");
+      return;
+    }
     const inviteText = this.buildInviteText();
     wx.setClipboardData({
       data: inviteText,

@@ -7,7 +7,7 @@
       <view class="input-area">
         <text class="field-hint">6位裁判团队编号</text>
         <view class="input-wrap" bindtap="onRoomWrapTap">
-          <input
+          <input adjust-position="false"
             class="num-input-native"
             type="number"
             maxlength="6"
@@ -26,7 +26,7 @@
 
         <text class="field-hint">6位密码</text>
         <view class="input-wrap password-wrap" bindtap="onPasswordWrapTap">
-          <input
+          <input adjust-position="false"
             class="num-input-native"
             type="number"
             maxlength="6"

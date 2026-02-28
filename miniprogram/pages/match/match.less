@@ -120,6 +120,7 @@ page {
   line-height: 1;
   margin: 0;
   white-space: nowrap;
+  gap: 6px;
 }
 
 .top-btn {
@@ -140,6 +141,42 @@ page {
   line-height: 1;
   margin: 0;
   white-space: nowrap;
+  gap: 6px;
+}
+
+.btn-icon {
+  width: 15px;
+  height: 15px;
+  background: currentColor;
+  flex-shrink: 0;
+}
+
+.icon-switch {
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.0503 12.0498L21 16.9996L16.0503 21.9493L14.636 20.5351L17.172 17.9988L4 17.9996V15.9996L17.172 15.9988L14.636 13.464L16.0503 12.0498ZM7.94975 2.0498L9.36396 3.46402L6.828 5.9988L20 5.99955V7.99955L6.828 7.9988L9.36396 10.5351L7.94975 11.9493L3 6.99955L7.94975 2.0498Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.0503 12.0498L21 16.9996L16.0503 21.9493L14.636 20.5351L17.172 17.9988L4 17.9996V15.9996L17.172 15.9988L14.636 13.464L16.0503 12.0498ZM7.94975 2.0498L9.36396 3.46402L6.828 5.9988L20 5.99955V7.99955L6.828 7.9988L9.36396 10.5351L7.94975 11.9493L3 6.99955L7.94975 2.0498Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.icon-undo {
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M5.82843 6.99955L8.36396 9.53509L6.94975 10.9493L2 5.99955L6.94975 1.0498L8.36396 2.46402L5.82843 4.99955H13C17.4183 4.99955 21 8.58127 21 12.9996C21 17.4178 17.4183 20.9996 13 20.9996H4V18.9996H13C16.3137 18.9996 19 16.3133 19 12.9996C19 9.68584 16.3137 6.99955 13 6.99955H5.82843Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M5.82843 6.99955L8.36396 9.53509L6.94975 10.9493L2 5.99955L6.94975 1.0498L8.36396 2.46402L5.82843 4.99955H13C17.4183 4.99955 21 8.58127 21 12.9996C21 17.4178 17.4183 20.9996 13 20.9996H4V18.9996H13C16.3137 18.9996 19 16.3133 19 12.9996C19 9.68584 16.3137 6.99955 13 6.99955H5.82843Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.icon-log {
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M21 8V20.9932C21 21.5501 20.5552 22 20.0066 22H3.9934C3.44495 22 3 21.556 3 21.0082V2.9918C3 2.45531 3.4487 2 4.00221 2H14.9968L21 8ZM19 9H14V4H5V20H19V9ZM8 7H11V9H8V7ZM8 11H16V13H8V11ZM8 15H16V17H8V15Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M21 8V20.9932C21 21.5501 20.5552 22 20.0066 22H3.9934C3.44495 22 3 21.556 3 21.0082V2.9918C3 2.45531 3.4487 2 4.00221 2H14.9968L21 8ZM19 9H14V4H5V20H19V9ZM8 7H11V9H8V7ZM8 11H16V13H8V11ZM8 15H16V17H8V15Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.icon-substitute {
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12.0049 22.0027C6.48204 22.0027 2.00488 17.5256 2.00488 12.0027C2.00488 6.4799 6.48204 2.00275 12.0049 2.00275C17.5277 2.00275 22.0049 6.4799 22.0049 12.0027C22.0049 17.5256 17.5277 22.0027 12.0049 22.0027ZM12.0049 20.0027C16.4232 20.0027 20.0049 16.421 20.0049 12.0027C20.0049 7.58447 16.4232 4.00275 12.0049 4.00275C7.5866 4.00275 4.00488 7.58447 4.00488 12.0027C4.00488 16.421 7.5866 20.0027 12.0049 20.0027ZM7.00488 9.00275L10.0049 5.50275L13.0049 9.00275H11.0049V13.0027H9.00488V9.00275H7.00488ZM17.0049 15.0027L14.0049 18.5027L11.0049 15.0027H13.0049V11.0027H15.0049V15.0027H17.0049Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12.0049 22.0027C6.48204 22.0027 2.00488 17.5256 2.00488 12.0027C2.00488 6.4799 6.48204 2.00275 12.0049 2.00275C17.5277 2.00275 22.0049 6.4799 22.0049 12.0027C22.0049 17.5256 17.5277 22.0027 12.0049 22.0027ZM12.0049 20.0027C16.4232 20.0027 20.0049 16.421 20.0049 12.0027C20.0049 7.58447 16.4232 4.00275 12.0049 4.00275C7.5866 4.00275 4.00488 7.58447 4.00488 12.0027C4.00488 16.421 7.5866 20.0027 12.0049 20.0027ZM7.00488 9.00275L10.0049 5.50275L13.0049 9.00275H11.0049V13.0027H9.00488V9.00275H7.00488ZM17.0049 15.0027L14.0049 18.5027L11.0049 15.0027H13.0049V11.0027H15.0049V15.0027H17.0049Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
 }
 
 .x-zone .top-btn,
@@ -401,9 +438,15 @@ page {
 }
 
 .num {
+  display: inline-block;
   font-size: 26px;
   font-weight: 600;
   color: inherit;
+  will-change: transform;
+}
+
+.num-hidden {
+  opacity: 0;
 }
 
 .captain-num {
@@ -435,6 +478,28 @@ page {
 .serve-mark.active {
   opacity: 1;
   transform: translateY(0);
+}
+
+.rotate-fly-layer {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 18;
+}
+
+.rotate-fly-item {
+  position: fixed;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.rotate-fly-item.team-a {
+  color: var(--team-a-color, #8a87d0);
+}
+
+.rotate-fly-item.team-b {
+  color: var(--team-b-color, #81c79e);
 }
 
 @media (max-height: 360px) {
@@ -490,129 +555,6 @@ page {
   .sub-text,
   .serve-mark {
     font-size: 11px;
-  }
-}
-
-.team-panel.rotate-in .num,
-.team-panel.rotate-out .num {
-  animation-timing-function: ease;
-}
-
-/* A队位次布局: V IV / VI III / I II */
-.team-a.rotate-in .num.pos-I { animation-name: numInFromRight; animation-duration: 180ms; }
-.team-a.rotate-in .num.pos-II { animation-name: numInFromUp; animation-duration: 180ms; }
-.team-a.rotate-in .num.pos-III { animation-name: numInFromUp; animation-duration: 180ms; }
-.team-a.rotate-in .num.pos-IV { animation-name: numInFromLeft; animation-duration: 180ms; }
-.team-a.rotate-in .num.pos-V { animation-name: numInFromDown; animation-duration: 180ms; }
-.team-a.rotate-in .num.pos-VI { animation-name: numInFromDown; animation-duration: 180ms; }
-
-.team-a.rotate-out .num.pos-I { animation-name: numOutToUp; animation-duration: 140ms; }
-.team-a.rotate-out .num.pos-II { animation-name: numOutToLeft; animation-duration: 140ms; }
-.team-a.rotate-out .num.pos-III { animation-name: numOutToDown; animation-duration: 140ms; }
-.team-a.rotate-out .num.pos-IV { animation-name: numOutToDown; animation-duration: 140ms; }
-.team-a.rotate-out .num.pos-V { animation-name: numOutToRight; animation-duration: 140ms; }
-.team-a.rotate-out .num.pos-VI { animation-name: numOutToUp; animation-duration: 140ms; }
-
-/* B队位次布局: II I / III VI / IV V */
-.team-b.rotate-in .num.pos-I { animation-name: numInFromLeft; animation-duration: 180ms; }
-.team-b.rotate-in .num.pos-II { animation-name: numInFromDown; animation-duration: 180ms; }
-.team-b.rotate-in .num.pos-III { animation-name: numInFromDown; animation-duration: 180ms; }
-.team-b.rotate-in .num.pos-IV { animation-name: numInFromRight; animation-duration: 180ms; }
-.team-b.rotate-in .num.pos-V { animation-name: numInFromUp; animation-duration: 180ms; }
-.team-b.rotate-in .num.pos-VI { animation-name: numInFromUp; animation-duration: 180ms; }
-
-.team-b.rotate-out .num.pos-I { animation-name: numOutToDown; animation-duration: 140ms; }
-.team-b.rotate-out .num.pos-II { animation-name: numOutToRight; animation-duration: 140ms; }
-.team-b.rotate-out .num.pos-III { animation-name: numOutToUp; animation-duration: 140ms; }
-.team-b.rotate-out .num.pos-IV { animation-name: numOutToUp; animation-duration: 140ms; }
-.team-b.rotate-out .num.pos-V { animation-name: numOutToLeft; animation-duration: 140ms; }
-.team-b.rotate-out .num.pos-VI { animation-name: numOutToDown; animation-duration: 140ms; }
-
-@keyframes numInFromUp {
-  0% {
-    transform: translateY(-18px);
-    opacity: 0.4;
-  }
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes numOutToUp {
-  0% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(-16px);
-    opacity: 0.28;
-  }
-}
-
-@keyframes numOutToDown {
-  0% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-  100% {
-    transform: translateY(16px);
-    opacity: 0.28;
-  }
-}
-
-@keyframes numOutToLeft {
-  0% {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  100% {
-    transform: translateX(-16px);
-    opacity: 0.28;
-  }
-}
-
-@keyframes numOutToRight {
-  0% {
-    transform: translateX(0);
-    opacity: 1;
-  }
-  100% {
-    transform: translateX(16px);
-    opacity: 0.28;
-  }
-}
-
-@keyframes numInFromDown {
-  0% {
-    transform: translateY(18px);
-    opacity: 0.4;
-  }
-  100% {
-    transform: translateY(0);
-    opacity: 1;
-  }
-}
-
-@keyframes numInFromLeft {
-  0% {
-    transform: translateX(-18px);
-    opacity: 0.4;
-  }
-  100% {
-    transform: translateX(0);
-    opacity: 1;
-  }
-}
-
-@keyframes numInFromRight {
-  0% {
-    transform: translateX(18px);
-    opacity: 0.4;
-  }
-  100% {
-    transform: translateX(0);
-    opacity: 1;
   }
 }
 

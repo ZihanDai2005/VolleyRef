@@ -8,8 +8,8 @@ import {
 } from "../../utils/room-service";
 import { showBlockHint, showToastHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
+import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
 
-type TeamCode = "A" | "B";
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
 type MatchLogItem = {
@@ -24,8 +24,19 @@ type TeamRows = {
   libero: PlayerSlot[];
   main: PlayerSlot[];
 };
+type TeamPosRect = { left: number; top: number; width: number; height: number };
+type TeamRectMap = Partial<Record<MainPosition, TeamPosRect>>;
+type TeamMainNoMap = Partial<Record<MainPosition, string>>;
+type RotateFlyItem = {
+  id: string;
+  team: TeamCode;
+  number: string;
+  isCaptain: boolean;
+  style: string;
+};
 
 const ALL_POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
+const MAIN_POSITIONS: MainPosition[] = ["I", "II", "III", "IV", "V", "VI"];
 const NUMBER_SOURCE_MAP: Record<Position, Position> = {
   I: "II",
   II: "III",
@@ -48,7 +59,7 @@ function buildTeamRows(players: PlayerSlot[]): TeamRows {
   };
 }
 
-function buildMainGridByOrder(players: PlayerSlot[], order: Position[]): PlayerSlot[][] {
+function buildMainGridByOrder(players: PlayerSlot[], order: MainPosition[]): PlayerSlot[][] {
   const byPos: Record<string, PlayerSlot> = {};
   players.forEach(function (p) {
     byPos[p.pos] = p;
@@ -82,19 +93,6 @@ function rotateTeamAndLog(room: any, team: TeamCode, noteSuffix: string): void {
   }
   room.teamB.players = rotateTeamByRule(room.teamB.players);
   appendMatchLog(room, "rotate", room.teamB.name + " " + noteSuffix, "B");
-}
-
-function rotateTeamNTimes(players: PlayerSlot[], times: number): PlayerSlot[] {
-  let next = players.slice();
-  for (let i = 0; i < times; i += 1) {
-    next = rotateTeamByRule(next);
-  }
-  return next;
-}
-
-function toggleSidesWithLog(room: any, note: string): void {
-  room.match.isSwapped = !room.match.isSwapped;
-  appendMatchLog(room, "switch_sides", note);
 }
 
 function getSetTargetScore(room: any): number {
@@ -187,6 +185,35 @@ function samePlayers(a: PlayerSlot[], b: PlayerSlot[]): boolean {
   return true;
 }
 
+function buildMainMap(players: PlayerSlot[]): TeamMainNoMap {
+  const map: TeamMainNoMap = {};
+  players.forEach((p) => {
+    if (MAIN_POSITIONS.indexOf(p.pos as MainPosition) >= 0) {
+      map[p.pos as MainPosition] = p.number;
+    }
+  });
+  return map;
+}
+
+function rotateMainMapOnce(map: TeamMainNoMap): TeamMainNoMap {
+  const next: TeamMainNoMap = {};
+  MAIN_POSITIONS.forEach((pos) => {
+    const sourcePos = NUMBER_SOURCE_MAP[pos] as MainPosition;
+    next[pos] = map[sourcePos] || "?";
+  });
+  return next;
+}
+
+function sameMainMap(a: TeamMainNoMap, b: TeamMainNoMap): boolean {
+  return MAIN_POSITIONS.every((pos) => (a[pos] || "?") === (b[pos] || "?"));
+}
+
+function isOneStepRotationBetween(beforePlayers: PlayerSlot[], afterPlayers: PlayerSlot[]): boolean {
+  const before = buildMainMap(beforePlayers || []);
+  const after = buildMainMap(afterPlayers || []);
+  return sameMainMap(after, rotateMainMapOnce(before)) || sameMainMap(before, rotateMainMapOnce(after));
+}
+
 function hexToRgbTriplet(hex: string): string {
   const normalized = String(hex || "").trim();
   const m = normalized.match(/^#([0-9a-fA-F]{6})$/);
@@ -239,10 +266,9 @@ Page({
     isSwapped: false,
     showLogPanel: false,
     logs: [] as DisplayLogItem[],
-    rotatingAOut: false,
-    rotatingAIn: false,
-    rotatingBOut: false,
-    rotatingBIn: false,
+    hideTeamAMainNumbers: false,
+    hideTeamBMainNumbers: false,
+    rotateFlyItems: [] as RotateFlyItem[],
     switchingOut: false,
     switchingIn: false,
     teamAPlayers: [] as PlayerSlot[],
@@ -278,10 +304,8 @@ Page({
       showBlockHint("缺少房间号");
       return;
     }
-    const initialRoom = getRoom(roomId);
-    const initialPassword = String((initialRoom && initialRoom.password) || "").replace(/\D/g, "").slice(0, 6);
     wx.setNavigationBarTitle({
-      title: "房间号码 " + roomId + "   |   密码 " + initialPassword,
+      title: "裁判团队编号 " + roomId,
     });
     this.setData({ roomId: roomId });
     this.syncSafePadding();
@@ -424,6 +448,122 @@ Page({
     this.setData({ setTimerText: nextText });
   },
 
+  nextTickAsync() {
+    return new Promise<void>((resolve) => {
+      wx.nextTick(() => resolve());
+    });
+  },
+
+  measureTeamMainPosRects(team: TeamCode) {
+    return new Promise<TeamRectMap>((resolve) => {
+      const rects: TeamRectMap = {};
+      const base = team === "A" ? ".team-a" : ".team-b";
+      const query = wx.createSelectorQuery().in(this);
+      MAIN_POSITIONS.forEach((pos) => {
+        query.select(base + " .num.pos-" + pos).boundingClientRect();
+      });
+      query.exec((res) => {
+        const list = Array.isArray(res) ? res : [];
+        MAIN_POSITIONS.forEach((pos, idx) => {
+          const rect = list[idx] as WechatMiniprogram.BoundingClientRectCallbackResult | null;
+          if (
+            rect &&
+            typeof rect.left === "number" &&
+            typeof rect.top === "number" &&
+            typeof rect.width === "number" &&
+            typeof rect.height === "number"
+          ) {
+            rects[pos] = {
+              left: rect.left,
+              top: rect.top,
+              width: rect.width,
+              height: rect.height,
+            };
+          }
+        });
+        resolve(rects);
+      });
+    });
+  },
+
+  getTeamMainNumberMap(team: TeamCode): TeamMainNoMap {
+    const players = team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers;
+    return buildMainMap(players || []);
+  },
+
+  async playTeamRotateMotion(team: TeamCode, beforeRects: TeamRectMap, beforeNoMap: TeamMainNoMap, captainNo: string) {
+    if (!beforeRects || MAIN_POSITIONS.every((pos) => !beforeRects[pos])) {
+      return;
+    }
+    await this.nextTickAsync();
+    const afterRects = await this.measureTeamMainPosRects(team);
+    const afterNoMap = this.getTeamMainNumberMap(team);
+    const startItems: RotateFlyItem[] = [];
+    const endItems: RotateFlyItem[] = [];
+    MAIN_POSITIONS.forEach((sourcePos) => {
+      const number = beforeNoMap[sourcePos] || "?";
+      const targetPos = MAIN_POSITIONS.find((pos) => (afterNoMap[pos] || "?") === number);
+      if (!targetPos) {
+        return;
+      }
+      const fromRect = beforeRects[sourcePos];
+      const toRect = afterRects[targetPos];
+      if (!fromRect || !toRect) {
+        return;
+      }
+      const dx = toRect.left - fromRect.left;
+      const dy = toRect.top - fromRect.top;
+      const id = team + "-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
+      const baseStyle =
+        "left:" +
+        String(fromRect.left) +
+        "px;top:" +
+        String(fromRect.top) +
+        "px;width:" +
+        String(fromRect.width) +
+        "px;height:" +
+        String(fromRect.height) +
+        "px;";
+      startItems.push({
+        id,
+        team,
+        number,
+        isCaptain: normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo),
+        style: baseStyle + "transform:translate(0,0);transition:none;",
+      });
+      endItems.push({
+        id,
+        team,
+        number,
+        isCaptain: normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo),
+        style:
+          baseStyle +
+          "transform:translate(" +
+          String(dx) +
+          "px," +
+          String(dy) +
+          "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
+      });
+    });
+    if (!startItems.length) {
+      return;
+    }
+    if (team === "A") {
+      this.setData({ hideTeamAMainNumbers: true, rotateFlyItems: startItems });
+    } else {
+      this.setData({ hideTeamBMainNumbers: true, rotateFlyItems: startItems });
+    }
+    await this.nextTickAsync();
+    this.setData({ rotateFlyItems: endItems });
+    setTimeout(() => {
+      if (team === "A") {
+        this.setData({ hideTeamAMainNumbers: false, rotateFlyItems: [] });
+      } else {
+        this.setData({ hideTeamBMainNumbers: false, rotateFlyItems: [] });
+      }
+    }, 340);
+  },
+
   loadRoom(roomId: string, force: boolean) {
     const clientId = getApp<IAppOption>().globalData.clientId;
     heartbeatRoom(roomId, clientId);
@@ -442,11 +582,12 @@ Page({
       return;
     }
 
+    const nextSwapped = !!room.match.isSwapped;
+    const teamASide: TeamCode = nextSwapped ? "B" : "A";
     const aRows = buildTeamRows(room.teamA.players);
     const bRows = buildTeamRows(room.teamB.players);
-    const aMainGrid = buildMainGridByOrder(room.teamA.players, ["V", "IV", "VI", "III", "I", "II"]);
-    const bMainGrid = buildMainGridByOrder(room.teamB.players, ["II", "I", "III", "VI", "IV", "V"]);
-    const nextSwapped = !!room.match.isSwapped;
+    const aMainGrid = buildMainGridByOrder(room.teamA.players, getMainOrderForTeam("A", teamASide));
+    const bMainGrid = buildMainGridByOrder(room.teamB.players, getMainOrderForTeam("B", teamASide));
     const teamAColor = room.teamA.color || TEAM_COLOR_OPTIONS[0].value;
     const teamBColor = room.teamB.color || TEAM_COLOR_OPTIONS[1].value;
     const leftSetWins = nextSwapped ? room.match.bSetWins : room.match.aSetWins;
@@ -460,9 +601,8 @@ Page({
     const liveTimerMs = timerStartAt > 0 ? timerElapsedMs + (Date.now() - timerStartAt) : timerElapsedMs;
     const timerText = formatDurationMMSS(liveTimerMs);
     this.lastRenderedTimerText = timerText;
-    const password = String(room.password || "").replace(/\D/g, "").slice(0, 6);
     wx.setNavigationBarTitle({
-      title: "房间号码 " + roomId + "   |   密码 " + password,
+      title: "裁判团队编号 " + roomId,
     });
     this.setData({
       participantCount: getParticipantCount(roomId),
@@ -509,7 +649,7 @@ Page({
     });
   },
 
-  onScoreChange(e: WechatMiniprogram.CustomEvent) {
+  async onScoreChange(e: WechatMiniprogram.CustomEvent) {
     const detail = e.detail as { team?: TeamCode; type?: "add" | "sub" };
     const team = detail.team;
     const type = detail.type || "add";
@@ -526,6 +666,10 @@ Page({
     let setElapsedText = "00:00";
     let rotatedTeam: TeamCode | "" = "";
     let needDecidingSetSwitchChoice = false;
+    const beforeRotateRects =
+      type === "add" && this.data.servingTeam !== team ? await this.measureTeamMainPosRects(team) : null;
+    const beforeRotateNoMap = beforeRotateRects ? this.getTeamMainNumberMap(team) : null;
+    const beforeRotateCaptain = beforeRotateRects ? (team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo) : "";
 
     const next = updateRoom(roomId, (room) => {
       if (room.match.isFinished) {
@@ -674,13 +818,9 @@ Page({
         cancelText: "不换边",
         success: (res) => {
           if (res.confirm) {
-            this.onSwitchSides();
+            this.switchSidesWithAnimation("自动换边（决胜局）");
             return;
           }
-          updateRoom(roomId, (room) => {
-            appendMatchLog(room, "switch_sides_skip", "决胜局8分，选择不换边");
-            return room;
-          });
           this.loadRoom(roomId, true);
         },
       });
@@ -693,46 +833,22 @@ Page({
       return;
     }
 
-    if (rotatedTeam === "A") {
-      this.setData({ rotatingAOut: true, rotatingAIn: false });
-    } else {
-      this.setData({ rotatingBOut: true, rotatingBIn: false });
+    this.loadRoom(roomId, true);
+    if (beforeRotateRects && beforeRotateNoMap) {
+      await this.playTeamRotateMotion(rotatedTeam, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
     }
-
-    setTimeout(() => {
-      if (rotatedTeam === "A") {
-        this.setData({ rotatingAOut: false, rotatingAIn: true });
-      } else {
-        this.setData({ rotatingBOut: false, rotatingBIn: true });
-      }
-      this.loadRoom(roomId, true);
-      showMessages();
-      showDecidingSetSwitchChoice();
-      setTimeout(() => {
-        if (rotatedTeam === "A") {
-          this.setData({ rotatingAIn: false });
-        } else {
-          this.setData({ rotatingBIn: false });
-        }
-      }, 180);
-    }, 140);
+    showMessages();
+    showDecidingSetSwitchChoice();
   },
 
-  onSwitchSides() {
-    if (this.data.isMatchFinished) {
-      showToastHint("比赛已结束，无法换边");
-      return;
-    }
+  switchSidesWithAnimation(logNote: string) {
     const roomId = this.data.roomId;
     this.setData({ switchingOut: true, switchingIn: false });
     setTimeout(() => {
       const next = updateRoom(roomId, (room) => {
         pushUndoSnapshot(room);
-        toggleSidesWithLog(room, room.match.isSwapped ? "左右换边（已复位）" : "左右换边（已交换）");
-        room.teamA.players = rotateTeamNTimes(room.teamA.players, 3);
-        room.teamB.players = rotateTeamNTimes(room.teamB.players, 3);
-        appendMatchLog(room, "rotate", room.teamA.name + " 换边自动轮转3次", "A");
-        appendMatchLog(room, "rotate", room.teamB.name + " 换边自动轮转3次", "B");
+        room.match.isSwapped = !room.match.isSwapped;
+        appendMatchLog(room, "switch_sides", logNote);
         return room;
       });
       this.setData({ switchingOut: false, switchingIn: true });
@@ -745,7 +861,15 @@ Page({
     }, 150);
   },
 
-  onRotateTeam(e: WechatMiniprogram.TouchEvent) {
+  onSwitchSides() {
+    if (this.data.isMatchFinished) {
+      showToastHint("比赛已结束，无法换边");
+      return;
+    }
+    this.switchSidesWithAnimation("手动换边");
+  },
+
+  async onRotateTeam(e: WechatMiniprogram.TouchEvent) {
     if (this.data.isMatchFinished) {
       showToastHint("比赛已结束，无法轮转");
       return;
@@ -753,37 +877,20 @@ Page({
     const dataset = e.currentTarget.dataset as { team: TeamCode };
     const team = dataset.team;
     const roomId = this.data.roomId;
-    if (team === "A") {
-      this.setData({ rotatingAOut: true, rotatingAIn: false });
-    } else {
-      this.setData({ rotatingBOut: true, rotatingBIn: false });
+    const beforeRotateRects = await this.measureTeamMainPosRects(team);
+    const beforeRotateNoMap = this.getTeamMainNumberMap(team);
+    const beforeRotateCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
+    const next = updateRoom(roomId, (room) => {
+      pushUndoSnapshot(room);
+      rotateTeamAndLog(room, team, "手动轮转");
+      return room;
+    });
+
+    if (!next) {
+      return;
     }
-
-    setTimeout(() => {
-      const next = updateRoom(roomId, (room) => {
-        pushUndoSnapshot(room);
-        rotateTeamAndLog(room, team, "手动轮转");
-        return room;
-      });
-
-      if (team === "A") {
-        this.setData({ rotatingAOut: false, rotatingAIn: true });
-      } else {
-        this.setData({ rotatingBOut: false, rotatingBIn: true });
-      }
-
-      if (next) {
-        this.loadRoom(roomId, true);
-      }
-
-      setTimeout(() => {
-        if (team === "A") {
-          this.setData({ rotatingAIn: false });
-        } else {
-          this.setData({ rotatingBIn: false });
-        }
-      }, 180);
-    }, 140);
+    this.loadRoom(roomId, true);
+    await this.playTeamRotateMotion(team, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
   },
 
   onResetScore() {
@@ -809,11 +916,19 @@ Page({
     }
   },
 
-  onUndoLastScore() {
+  async onUndoLastScore() {
     const roomId = this.data.roomId;
     let undone = false;
     let beforeAScore = 0;
     let beforeBScore = 0;
+    let undoRotateA = false;
+    let undoRotateB = false;
+    const beforeARects = await this.measureTeamMainPosRects("A");
+    const beforeBRects = await this.measureTeamMainPosRects("B");
+    const beforeANoMap = this.getTeamMainNumberMap("A");
+    const beforeBNoMap = this.getTeamMainNumberMap("B");
+    const beforeACaptain = this.data.teamACaptainNo;
+    const beforeBCaptain = this.data.teamBCaptainNo;
     const next = updateRoom(roomId, (room) => {
       beforeAScore = room.match.aScore;
       beforeBScore = room.match.bScore;
@@ -853,6 +968,8 @@ Page({
       room.match.aSetWins = last.aSetWins || 0;
       room.match.bSetWins = last.bSetWins || 0;
       room.match.isFinished = !!last.isFinished;
+      undoRotateA = isOneStepRotationBetween(room.teamA.players || [], last.teamAPlayers || []);
+      undoRotateB = isOneStepRotationBetween(room.teamB.players || [], last.teamBPlayers || []);
       room.teamA.players = last.teamAPlayers.slice();
       room.teamB.players = last.teamBPlayers.slice();
       appendMatchLog(
@@ -879,10 +996,20 @@ Page({
       return;
     }
     this.loadRoom(roomId, true);
+    if (undoRotateA) {
+      await this.playTeamRotateMotion("A", beforeARects, beforeANoMap, beforeACaptain);
+    }
+    if (undoRotateB) {
+      await this.playTeamRotateMotion("B", beforeBRects, beforeBNoMap, beforeBCaptain);
+    }
   },
 
   onOpenLogPanel() {
     this.setData({ showLogPanel: true });
+  },
+
+  onSwitchPlayer() {
+    // Reserved: substitution behavior to be implemented later.
   },
 
   onCloseLogPanel() {
