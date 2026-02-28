@@ -1,0 +1,64 @@
+<view class="entry-container">
+  <view class="entry-shell">
+    <view class="form-block">
+      <text class="title">加入已有的</text>
+      <text class="title title-second">裁判协作</text>
+
+      <view class="input-area">
+        <text class="field-hint">6位裁判团队编号</text>
+        <view class="input-wrap" bindtap="onRoomWrapTap">
+          <input
+            class="num-input-native"
+            type="number"
+            maxlength="6"
+            value="{{joinRoomId}}"
+            focus="{{focusRoomInput}}"
+            cursor="{{joinRoomId.length}}"
+            bindfocus="onRoomInputFocus"
+            bindblur="onAnyInputBlur"
+            bindinput="onJoinRoomIdInput"
+          />
+          <view class="num-input-display">
+            <text class="num-input-display-text">{{joinRoomIdSpaced}}</text>
+            <text class="fake-caret {{activeInput === 'room' && joinRoomId.length < 6 ? 'active' : ''}}"></text>
+          </view>
+        </view>
+
+        <text class="field-hint">6位密码</text>
+        <view class="input-wrap password-wrap" bindtap="onPasswordWrapTap">
+          <input
+            class="num-input-native"
+            type="number"
+            maxlength="6"
+            value="{{joinPassword}}"
+            focus="{{focusPasswordInput}}"
+            cursor="{{joinPassword.length}}"
+            bindfocus="onPasswordInputFocus"
+            bindblur="onAnyInputBlur"
+            bindinput="onJoinPasswordInput"
+          />
+          <view class="num-input-display">
+            <text class="num-input-display-text">{{joinPasswordSpaced}}</text>
+            <text class="fake-caret {{activeInput === 'password' && joinPassword.length < 6 ? 'active' : ''}}"></text>
+          </view>
+        </view>
+      </view>
+
+      <view class="paste-link-btn" bindtap="onPasteInviteAndJoin" hover-class="paste-link-hover">
+        <view class="link-content">
+          <view class="paste-icon"></view>
+          <text>粘贴邀请信息直接加入</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="action-row">
+      <button class="entry-btn {{joinBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onContinueTap">
+        <view class="entry-btn-content">
+          <text class="entry-btn-text">继续</text>
+          <view class="entry-btn-icon"></view>
+        </view>
+      </button>
+    </view>
+  </view>
+</view>

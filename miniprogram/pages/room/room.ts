@@ -26,8 +26,8 @@ type MatchModeOption = {
 const MATCH_MODE_OPTIONS: MatchModeOption[] = [
   { label: "5局3胜", sets: 5, wins: 3, maxScore: 25, tiebreakScore: 15 },
   { label: "3局2胜", sets: 3, wins: 2, maxScore: 25, tiebreakScore: 15 },
-  { label: "1局1胜(15分)", sets: 1, wins: 1, maxScore: 15, tiebreakScore: 15 },
-  { label: "1局1胜(25分)", sets: 1, wins: 1, maxScore: 25, tiebreakScore: 25 },
+  { label: "1局1胜（15分）", sets: 1, wins: 1, maxScore: 15, tiebreakScore: 15 },
+  { label: "1局1胜（25分）", sets: 1, wins: 1, maxScore: 25, tiebreakScore: 25 },
 ];
 
 const PLAYER_INDEX_BY_POS: Record<Position, number> = {
@@ -193,6 +193,9 @@ function hexToRgbString(hex: string): string {
 Page({
   data: {
     roomId: "",
+    roomIdSpaced: "",
+    roomPasswordSpaced: "",
+    focusCreatePasswordInput: false,
     participantCount: 0,
     roomPassword: "",
     createMode: false,
@@ -229,6 +232,8 @@ Page({
     captainPickerLibero: [] as DisplayPlayerSlot[],
     captainPickerSelectedNo: "",
     updatedAt: 0,
+    createInviteBtnFx: false,
+    createContinueBtnFx: false,
   },
 
   pollTimer: 0 as number,
@@ -250,16 +255,17 @@ Page({
     const createMode = query.create === "1";
     const editMode = query.edit === "1";
     if (createMode) {
-      wx.setNavigationBarTitle({ title: "房间号码 " + roomId });
+      wx.setNavigationBarTitle({ title: "" });
     }
     this.setData({ roomId: roomId, editMode: editMode, createMode: createMode });
     if (createMode) {
-      const presetPassword = String(query.password || "").replace(/\D/g, "").slice(0, 6);
       const initialA = createInitialPlayers();
       const initialB = createInitialPlayers();
       this.setData({
+        roomIdSpaced: roomId.split("").join(" "),
         participantCount: 0,
-        roomPassword: presetPassword,
+        roomPassword: "",
+        roomPasswordSpaced: "",
         teamAName: "",
         teamBName: "",
         teamACaptainNo: "",
@@ -380,8 +386,10 @@ Page({
     const teamAPlayers = room.teamA.players;
     const teamBPlayers = room.teamB.players;
     this.setData({
+      roomIdSpaced: roomId.split("").join(" "),
       participantCount: getParticipantCount(roomId),
       roomPassword: room.password,
+      roomPasswordSpaced: String(room.password || "").split("").join(" "),
       matchModeIndex: getMatchModeIndexBySettings(
         room.settings.sets,
         room.settings.wins,
@@ -426,7 +434,11 @@ Page({
     } else if (field === "teamBCaptainNo") {
       this.setData({ teamBCaptainNo: normalizeNumberInput(value) });
     } else if (field === "roomPassword") {
-      this.setData({ roomPassword: (value || "").replace(/\D/g, "").slice(0, 6) });
+      const pwd = (value || "").replace(/\D/g, "").slice(0, 6);
+      this.setData({
+        roomPassword: pwd,
+        roomPasswordSpaced: pwd.split("").join(" "),
+      });
     }
     setTimeout(() => {
       this.persistDraft();
@@ -445,11 +457,15 @@ Page({
   },
 
   onPasswordFocus() {
-    this.setData({ passwordFocused: true });
+    this.setData({ passwordFocused: true, focusCreatePasswordInput: true });
   },
 
   onPasswordBlur() {
-    this.setData({ passwordFocused: false });
+    this.setData({ passwordFocused: false, focusCreatePasswordInput: false });
+  },
+
+  onCreatePasswordWrapTap() {
+    this.setData({ focusCreatePasswordInput: true });
   },
 
   onTeamNameFocus(e: WechatMiniprogram.InputFocus) {
@@ -921,6 +937,18 @@ Page({
       return;
     }
     wx.navigateTo({ url: "/pages/match/match?roomId=" + roomId });
+  },
+
+  onCreateInviteTap() {
+    this.setData({ createInviteBtnFx: true });
+    setTimeout(() => this.setData({ createInviteBtnFx: false }), 260);
+    this.onCopyInviteAndStart();
+  },
+
+  onCreateContinueTap() {
+    this.setData({ createContinueBtnFx: true });
+    setTimeout(() => this.setData({ createContinueBtnFx: false }), 260);
+    this.onSaveAndStart();
   },
 
   buildInviteText() {

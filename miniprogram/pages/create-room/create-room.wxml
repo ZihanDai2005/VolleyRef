@@ -1,62 +1,25 @@
-<view class="entry-container">
-  <view class="entry-shell">
-    <view class="entry-section">
-      <text class="title">开始一场比赛</text>
-      <text class="subtitle">请设置6位房间密码，房间号码将自动分配</text>
+<view class="landing-container">
+  <view class="landing-shell">
+    <text class="welcome-title">欢迎</text>
+    <text class="welcome-desc">为排球比赛而设计的裁判协同工具。</text>
+    <text class="welcome-desc spacer"></text>
+    <text class="welcome-desc">支持多位裁判实时协作，</text>
+    <text class="welcome-desc">同步比分、轮转与站位信息。</text>
+    <text class="welcome-desc spacer"></text>
+    <text class="welcome-desc">让记录更清晰，</text>
+    <text class="welcome-desc">让执裁更从容。</text>
 
-      <view class="pin-input-wrap">
-        <input
-          class="pin-native-input"
-          type="number"
-          maxlength="6"
-          value="{{createPassword}}"
-          bindinput="onCreatePasswordInput"
-        />
-        <view class="pin-display">
-          <text>{{createPassword}}{{createPasswordDots}}</text>
+    <view class="entry-actions">
+      <button class="entry-btn {{createBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateEntryTap">
+        <view class="entry-btn-content">
+          <text class="entry-btn-text">创建比赛</text>
+          <view class="entry-btn-icon"></view>
         </view>
-      </view>
-
-      <button class="enter-btn" bindtap="onCreateRoomSubmit">创建</button>
-    </view>
-
-    <view class="section-divider"></view>
-
-    <view class="entry-section">
-      <text class="title">加入一场比赛</text>
-      <text class="subtitle">请输入6位房间号码和密码</text>
-
-      <view class="pin-input-wrap">
-        <input
-          class="pin-native-input"
-          type="number"
-          maxlength="6"
-          value="{{joinRoomId}}"
-          bindinput="onJoinRoomIdInput"
-        />
-        <view class="pin-display">
-          <text>{{joinRoomId}}{{joinRoomIdDots}}</text>
-        </view>
-      </view>
-
-      <view class="pin-input-wrap">
-        <input
-          class="pin-native-input"
-          type="number"
-          maxlength="6"
-          value="{{joinPassword}}"
-          bindinput="onJoinPasswordInput"
-        />
-        <view class="pin-display">
-          <text>{{joinPassword}}{{joinPasswordDots}}</text>
-        </view>
-      </view>
-
-      <button class="enter-btn join-btn" bindtap="onJoinRoomSubmit">加入</button>
-      <button class="paste-link-btn" bindtap="onPasteInviteAndJoin">
-        <view class="link-content">
-          <view class="paste-icon"></view>
-          <text>粘贴邀请信息直接加入</text>
+      </button>
+      <button class="entry-btn {{joinBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onJoinEntryTap">
+        <view class="entry-btn-content">
+          <text class="entry-btn-text">加入比赛</text>
+          <view class="entry-btn-icon"></view>
         </view>
       </button>
     </view>
