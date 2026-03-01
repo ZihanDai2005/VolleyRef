@@ -1,13 +1,29 @@
 <view
   class="room-container {{createMode ? 'create-mode' : ''}}"
-  style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}};"
+  style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --custom-nav-offset: {{customNavOffset}};"
 >
+  <view class="custom-nav-bg" style="height: {{customNavOffset}};"></view>
+  <view
+    class="custom-nav"
+    style="top: {{customNavTop}}; left: {{createMode ? '64rpx' : '30rpx'}}; right: {{createMode ? '64rpx' : '30rpx'}};"
+  >
+    <view class="custom-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
+      <view class="custom-nav-back-icon"></view>
+    </view>
+    <view class="custom-nav-space"></view>
+  </view>
+
   <view class="create-head-block" wx:if="{{createMode}}">
     <text class="create-head-title">开始一个新的</text>
     <text class="create-head-title create-head-title-second">裁判协作</text>
 
     <view class="create-head-inputs">
-      <text class="create-head-hint">自动分配的裁判团队编号</text>
+      <view class="create-head-hint-row">
+        <text class="create-head-hint">裁判团队编号</text>
+        <view class="room-id-info-btn pressable" hover-class="tap-active" bindtap="onRoomIdInfoTap">
+          <view class="room-id-info-icon"></view>
+        </view>
+      </view>
       <view class="create-head-input-wrap create-head-input-wrap-readonly">
         <view class="create-head-input create-head-input-display create-head-input-readonly">
           <text class="create-head-input-display-text">{{roomIdSpaced}}</text>

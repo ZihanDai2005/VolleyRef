@@ -12,12 +12,15 @@ Page({
     focusRoomInput: false,
     focusPasswordInput: false,
     joinBtnFx: false,
+    customNavTop: "10px",
+    customNavOffset: "54px",
   },
   themeOff: null as null | (() => void),
 
   onLoad() {
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
+    this.syncCustomNavTop();
     if (!this.themeOff) {
       this.themeOff = bindThemeChange(() => {
         this.applyNavigationTheme();
@@ -29,6 +32,7 @@ Page({
   onShow() {
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
+    this.syncCustomNavTop();
   },
 
   onUnload() {
@@ -40,6 +44,39 @@ Page({
 
   applyNavigationTheme() {
     applyNavigationBarTheme();
+  },
+
+  syncCustomNavTop() {
+    const sys = wx.getSystemInfoSync();
+    const fallback = Number(sys.statusBarHeight || 0) + 6;
+    let navTop = fallback;
+    try {
+      const menu = wx.getMenuButtonBoundingClientRect();
+      if (
+        menu &&
+        typeof menu.top === "number" &&
+        typeof menu.height === "number" &&
+        menu.top >= 0 &&
+        menu.height > 0
+      ) {
+        // Align custom 44px nav row to the capsule center.
+        navTop = menu.top - (44 - menu.height) / 2;
+      }
+    } catch (e) {}
+    const roundedTop = Math.max(0, Math.round(navTop));
+    this.setData({
+      customNavTop: String(roundedTop) + "px",
+      customNavOffset: String(roundedTop + 44) + "px",
+    });
+  },
+
+  onBackTap() {
+    const pages = getCurrentPages();
+    if (pages.length > 1) {
+      wx.navigateBack({ delta: 1 });
+      return;
+    }
+    wx.reLaunch({ url: "/pages/create-room/create-room" });
   },
 
   onJoinRoomIdInput(e: WechatMiniprogram.Input) {

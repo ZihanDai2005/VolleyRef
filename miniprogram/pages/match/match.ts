@@ -248,6 +248,7 @@ Page({
     teamBName: "乙",
     teamAColor: TEAM_COLOR_OPTIONS[0].value,
     teamBColor: TEAM_COLOR_OPTIONS[1].value,
+    roomPassword: "",
     teamACaptainNo: "",
     teamBCaptainNo: "",
     teamARGB: "138, 135, 208",
@@ -283,6 +284,21 @@ Page({
     safePadLeft: "0px",
     safeDebugText: "",
     updatedAt: 0,
+    backConfirming: false,
+    showBackExitModal: false,
+    showSetEndModal: false,
+    setEndTitleTop: "",
+    setEndTitleBottom: "",
+    setEndTeamAName: "",
+    setEndTeamBName: "",
+    setEndSmallScoreA: 0,
+    setEndSmallScoreB: 0,
+    setEndBigScoreA: 0,
+    setEndBigScoreB: 0,
+    setEndWinnerName: "",
+    setEndDurationText: "00:00",
+    setEndMatchFinished: false,
+    setEndActionText: "继续",
   },
 
   pollTimer: 0 as number,
@@ -339,6 +355,69 @@ Page({
     const roomId = this.data.roomId;
     const clientId = getApp<IAppOption>().globalData.clientId;
     leaveRoom(roomId, clientId);
+  },
+
+  confirmBackToHome() {
+    if (this.data.backConfirming || this.data.showBackExitModal) {
+      return;
+    }
+    this.setData({ showBackExitModal: true });
+  },
+
+  onBackPress() {
+    this.confirmBackToHome();
+    return true;
+  },
+
+  onBackExitModalTap() {},
+
+  onBackExitCancel() {
+    this.setData({ showBackExitModal: false });
+  },
+
+  onBackExitDirect() {
+    this.setData({ showBackExitModal: false, backConfirming: true });
+    wx.reLaunch({ url: "/pages/create-room/create-room" });
+    setTimeout(() => {
+      this.setData({ backConfirming: false });
+    }, 200);
+  },
+
+  onBackExitCopyAndLeave() {
+    this.setData({ showBackExitModal: false, backConfirming: true });
+    const inviteText =
+      "[排球裁判小助手] 裁判团队编号 " +
+      this.data.roomId +
+      "，密码 " +
+      this.data.roomPassword +
+      "，打开小程序粘贴即可加入房间，请确认邀请人已完成比赛设置并进入比赛页面后再加入";
+    if (!/^\d{6}$/.test(this.data.roomId) || !/^\d{6}$/.test(this.data.roomPassword)) {
+      wx.reLaunch({ url: "/pages/create-room/create-room" });
+      setTimeout(() => {
+        this.setData({ backConfirming: false });
+      }, 200);
+      return;
+    }
+    wx.setClipboardData({
+      data: inviteText,
+      complete: () => {
+        wx.reLaunch({ url: "/pages/create-room/create-room" });
+        setTimeout(() => {
+          this.setData({ backConfirming: false });
+        }, 200);
+      },
+    });
+  },
+
+  onSetEndModalTap() {},
+
+  onSetEndContinue() {
+    this.setData({ showSetEndModal: false });
+    if (this.data.setEndMatchFinished) {
+      wx.reLaunch({ url: "/pages/create-room/create-room" });
+      return;
+    }
+    wx.navigateTo({ url: "/pages/lineup-adjust/lineup-adjust?roomId=" + this.data.roomId });
   },
 
   onWindowResize() {
@@ -454,6 +533,22 @@ Page({
     });
   },
 
+  delayAsync(ms: number) {
+    return new Promise<void>((resolve) => {
+      setTimeout(() => resolve(), ms);
+    });
+  },
+
+  countRectMap(rects: TeamRectMap): number {
+    let count = 0;
+    MAIN_POSITIONS.forEach((pos) => {
+      if (rects[pos]) {
+        count += 1;
+      }
+    });
+    return count;
+  },
+
   measureTeamMainPosRects(team: TeamCode) {
     return new Promise<TeamRectMap>((resolve) => {
       const rects: TeamRectMap = {};
@@ -486,6 +581,23 @@ Page({
     });
   },
 
+  async measureTeamMainPosRectsStable(team: TeamCode, timeoutMs = 1000) {
+    const start = Date.now();
+    let best: TeamRectMap = {};
+    while (Date.now() - start < timeoutMs) {
+      await this.nextTickAsync();
+      const rects = await this.measureTeamMainPosRects(team);
+      if (this.countRectMap(rects) >= this.countRectMap(best)) {
+        best = rects;
+      }
+      if (this.countRectMap(best) === MAIN_POSITIONS.length) {
+        return best;
+      }
+      await this.delayAsync(20);
+    }
+    return best;
+  },
+
   getTeamMainNumberMap(team: TeamCode): TeamMainNoMap {
     const players = team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers;
     return buildMainMap(players || []);
@@ -496,7 +608,8 @@ Page({
       return;
     }
     await this.nextTickAsync();
-    const afterRects = await this.measureTeamMainPosRects(team);
+    await this.delayAsync(10);
+    let afterRects = await this.measureTeamMainPosRectsStable(team, 1000);
     const afterNoMap = this.getTeamMainNumberMap(team);
     const startItems: RotateFlyItem[] = [];
     const endItems: RotateFlyItem[] = [];
@@ -546,6 +659,99 @@ Page({
       });
     });
     if (!startItems.length) {
+      MAIN_POSITIONS.forEach((targetPos) => {
+        const sourcePos = NUMBER_SOURCE_MAP[targetPos] as MainPosition;
+        const number = beforeNoMap[sourcePos] || "?";
+        const fromRect = beforeRects[sourcePos];
+        const toRect = afterRects[targetPos];
+        if (!fromRect || !toRect) {
+          return;
+        }
+        const dx = toRect.left - fromRect.left;
+        const dy = toRect.top - fromRect.top;
+        const id = team + "-fallback-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
+        const baseStyle =
+          "left:" +
+          String(fromRect.left) +
+          "px;top:" +
+          String(fromRect.top) +
+          "px;width:" +
+          String(fromRect.width) +
+          "px;height:" +
+          String(fromRect.height) +
+          "px;";
+        const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
+        startItems.push({
+          id,
+          team,
+          number,
+          isCaptain,
+          style: baseStyle + "transform:translate(0,0);transition:none;",
+        });
+        endItems.push({
+          id,
+          team,
+          number,
+          isCaptain,
+          style:
+            baseStyle +
+            "transform:translate(" +
+            String(dx) +
+            "px," +
+            String(dy) +
+            "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
+        });
+      });
+    }
+    if (!startItems.length) {
+      await this.nextTickAsync();
+      await this.delayAsync(24);
+      afterRects = await this.measureTeamMainPosRectsStable(team, 220);
+      MAIN_POSITIONS.forEach((targetPos) => {
+        const sourcePos = NUMBER_SOURCE_MAP[targetPos] as MainPosition;
+        const number = beforeNoMap[sourcePos] || "?";
+        const fromRect = beforeRects[sourcePos];
+        const toRect = afterRects[targetPos];
+        if (!fromRect || !toRect) {
+          return;
+        }
+        const dx = toRect.left - fromRect.left;
+        const dy = toRect.top - fromRect.top;
+        const id = team + "-retry-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
+        const baseStyle =
+          "left:" +
+          String(fromRect.left) +
+          "px;top:" +
+          String(fromRect.top) +
+          "px;width:" +
+          String(fromRect.width) +
+          "px;height:" +
+          String(fromRect.height) +
+          "px;";
+        const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
+        startItems.push({
+          id,
+          team,
+          number,
+          isCaptain,
+          style: baseStyle + "transform:translate(0,0);transition:none;",
+        });
+        endItems.push({
+          id,
+          team,
+          number,
+          isCaptain,
+          style:
+            baseStyle +
+            "transform:translate(" +
+            String(dx) +
+            "px," +
+            String(dy) +
+            "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
+        });
+      });
+    }
+    if (!startItems.length) {
       return;
     }
     if (team === "A") {
@@ -590,8 +796,18 @@ Page({
     const bMainGrid = buildMainGridByOrder(room.teamB.players, getMainOrderForTeam("B", teamASide));
     const teamAColor = room.teamA.color || TEAM_COLOR_OPTIONS[0].value;
     const teamBColor = room.teamB.color || TEAM_COLOR_OPTIONS[1].value;
+    const leftTeam: TeamCode = nextSwapped ? "B" : "A";
+    const rightTeam: TeamCode = leftTeam === "A" ? "B" : "A";
+    const leftScore = leftTeam === "A" ? room.match.aScore : room.match.bScore;
+    const rightScore = rightTeam === "A" ? room.match.aScore : room.match.bScore;
     const leftSetWins = nextSwapped ? room.match.bSetWins : room.match.aSetWins;
     const rightSetWins = nextSwapped ? room.match.aSetWins : room.match.bSetWins;
+    const displayLastScoringTeam: TeamCode | "" =
+      room.match.lastScoringTeam === leftTeam
+        ? "A"
+        : room.match.lastScoringTeam === rightTeam
+          ? "B"
+          : "";
     const setNoText = room.match.isFinished ? "已结束" : "第" + String(room.match.setNo || 1) + "局";
     const setWinsText = String(leftSetWins || 0) + " : " + String(rightSetWins || 0);
     const timerStartAt = Number((room.match as any).setTimerStartAt) || 0;
@@ -610,13 +826,14 @@ Page({
       teamBName: room.teamB.name,
       teamAColor: teamAColor,
       teamBColor: teamBColor,
+      roomPassword: String(room.password || ""),
       teamACaptainNo: normalizeNumberInput(String((room.teamA as any).captainNo || "")),
       teamBCaptainNo: normalizeNumberInput(String((room.teamB as any).captainNo || "")),
       teamARGB: hexToRgbTriplet(teamAColor),
       teamBRGB: hexToRgbTriplet(teamBColor),
-      aScore: room.match.aScore,
-      bScore: room.match.bScore,
-      lastScoringTeam: room.match.lastScoringTeam === "B" ? "B" : room.match.lastScoringTeam === "A" ? "A" : "",
+      aScore: leftScore,
+      bScore: rightScore,
+      lastScoringTeam: displayLastScoringTeam,
       setTimerText: timerText,
       servingTeam: room.match.servingTeam,
       setNo: room.match.setNo || 1,
@@ -651,7 +868,13 @@ Page({
 
   async onScoreChange(e: WechatMiniprogram.CustomEvent) {
     const detail = e.detail as { team?: TeamCode; type?: "add" | "sub" };
-    const team = detail.team;
+    const displayTeam = detail.team;
+    const team =
+      displayTeam === "A" || displayTeam === "B"
+        ? this.data.isSwapped
+          ? (displayTeam === "A" ? "B" : "A")
+          : displayTeam
+        : undefined;
     const type = detail.type || "add";
     if (team !== "A" && team !== "B") {
       return;
@@ -661,13 +884,22 @@ Page({
       return;
     }
     const roomId = this.data.roomId;
-    let setEndedMessage = "";
-    let matchEndedMessage = "";
-    let setElapsedText = "00:00";
+    let setEndSummary: null | {
+      setNo: number;
+      teamAName: string;
+      teamBName: string;
+      smallScoreA: number;
+      smallScoreB: number;
+      bigScoreA: number;
+      bigScoreB: number;
+      winnerName: string;
+      durationText: string;
+      matchFinished: boolean;
+    } = null;
     let rotatedTeam: TeamCode | "" = "";
     let needDecidingSetSwitchChoice = false;
     const beforeRotateRects =
-      type === "add" && this.data.servingTeam !== team ? await this.measureTeamMainPosRects(team) : null;
+      type === "add" && this.data.servingTeam !== team ? await this.measureTeamMainPosRectsStable(team, 1000) : null;
     const beforeRotateNoMap = beforeRotateRects ? this.getTeamMainNumberMap(team) : null;
     const beforeRotateCaptain = beforeRotateRects ? (team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo) : "";
 
@@ -722,12 +954,15 @@ Page({
         }
 
         if (setWinner) {
+          const endedSetNo = Number(room.match.setNo || 1);
+          const endedScoreA = Number(room.match.aScore || 0);
+          const endedScoreB = Number(room.match.bScore || 0);
           const startedAt = Number(room.match.setTimerStartAt) || 0;
           const baseElapsed = Number(room.match.setTimerElapsedMs) || 0;
           const finalElapsed = startedAt > 0 ? baseElapsed + (Date.now() - startedAt) : baseElapsed;
           room.match.setTimerElapsedMs = finalElapsed;
           room.match.setTimerStartAt = 0;
-          setElapsedText = formatDurationMMSS(finalElapsed);
+          const setElapsedText = formatDurationMMSS(finalElapsed);
           if (setWinner === "A") {
             room.match.aSetWins += 1;
           } else {
@@ -737,23 +972,16 @@ Page({
             room,
             "set_end",
             "第" +
-              String(room.match.setNo) +
+              String(endedSetNo) +
               "局结束：" +
               (setWinner === "A" ? room.teamA.name : room.teamB.name) +
               " 胜（" +
-              String(room.match.aScore) +
+              String(endedScoreA) +
               ":" +
-              String(room.match.bScore) +
+              String(endedScoreB) +
               "）",
             setWinner
           );
-          setEndedMessage =
-            "第" +
-            String(room.match.setNo) +
-            "局结束，" +
-            (setWinner === "A" ? room.teamA.name : room.teamB.name) +
-            "胜，用时" +
-            setElapsedText;
 
           const reachedWins =
             setWinner === "A"
@@ -762,7 +990,6 @@ Page({
           if (reachedWins) {
             room.match.isFinished = true;
             const matchWinnerName = setWinner === "A" ? room.teamA.name : room.teamB.name;
-            const matchFinalSetScore = String(room.match.aSetWins) + ":" + String(room.match.bSetWins);
             appendMatchLog(
               room,
               "match_end",
@@ -775,8 +1002,31 @@ Page({
                 " 获胜",
               setWinner
             );
-            matchEndedMessage = "整场比分 " + matchFinalSetScore + "，" + matchWinnerName + "获胜";
+            setEndSummary = {
+              setNo: endedSetNo,
+              teamAName: room.teamA.name,
+              teamBName: room.teamB.name,
+              smallScoreA: endedScoreA,
+              smallScoreB: endedScoreB,
+              bigScoreA: room.match.aSetWins,
+              bigScoreB: room.match.bSetWins,
+              winnerName: matchWinnerName,
+              durationText: setElapsedText,
+              matchFinished: true,
+            };
           } else {
+            setEndSummary = {
+              setNo: endedSetNo,
+              teamAName: room.teamA.name,
+              teamBName: room.teamB.name,
+              smallScoreA: endedScoreA,
+              smallScoreB: endedScoreB,
+              bigScoreA: room.match.aSetWins,
+              bigScoreB: room.match.bSetWins,
+              winnerName: setWinner === "A" ? room.teamA.name : room.teamB.name,
+              durationText: setElapsedText,
+              matchFinished: false,
+            };
             room.match.setNo += 1;
             room.match.aScore = 0;
             room.match.bScore = 0;
@@ -797,14 +1047,25 @@ Page({
       return;
     }
 
-    const showMessages = () => {
-      if (setEndedMessage) {
-        if (matchEndedMessage) {
-          showBlockHint(setEndedMessage + "；" + matchEndedMessage + "；比赛结束");
-        } else {
-          showToastHint(setEndedMessage);
-        }
+    const showSetEndModal = () => {
+      if (!setEndSummary) {
+        return;
       }
+      this.setData({
+        showSetEndModal: true,
+        setEndTitleTop: "第" + String(setEndSummary.setNo) + "局结束",
+        setEndTitleBottom: setEndSummary.matchFinished ? "比赛结束" : "",
+        setEndTeamAName: setEndSummary.teamAName,
+        setEndTeamBName: setEndSummary.teamBName,
+        setEndSmallScoreA: setEndSummary.smallScoreA,
+        setEndSmallScoreB: setEndSummary.smallScoreB,
+        setEndBigScoreA: setEndSummary.bigScoreA,
+        setEndBigScoreB: setEndSummary.bigScoreB,
+        setEndWinnerName: setEndSummary.winnerName,
+        setEndDurationText: setEndSummary.durationText,
+        setEndMatchFinished: setEndSummary.matchFinished,
+        setEndActionText: setEndSummary.matchFinished ? "返回首页" : "继续",
+      });
     };
 
     const showDecidingSetSwitchChoice = () => {
@@ -828,7 +1089,7 @@ Page({
 
     if (!rotatedTeam) {
       this.loadRoom(roomId, true);
-      showMessages();
+      showSetEndModal();
       showDecidingSetSwitchChoice();
       return;
     }
@@ -837,7 +1098,7 @@ Page({
     if (beforeRotateRects && beforeRotateNoMap) {
       await this.playTeamRotateMotion(rotatedTeam, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
     }
-    showMessages();
+    showSetEndModal();
     showDecidingSetSwitchChoice();
   },
 
@@ -877,7 +1138,7 @@ Page({
     const dataset = e.currentTarget.dataset as { team: TeamCode };
     const team = dataset.team;
     const roomId = this.data.roomId;
-    const beforeRotateRects = await this.measureTeamMainPosRects(team);
+    const beforeRotateRects = await this.measureTeamMainPosRectsStable(team, 1000);
     const beforeRotateNoMap = this.getTeamMainNumberMap(team);
     const beforeRotateCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
     const next = updateRoom(roomId, (room) => {
@@ -923,8 +1184,8 @@ Page({
     let beforeBScore = 0;
     let undoRotateA = false;
     let undoRotateB = false;
-    const beforeARects = await this.measureTeamMainPosRects("A");
-    const beforeBRects = await this.measureTeamMainPosRects("B");
+    const beforeARects = await this.measureTeamMainPosRectsStable("A", 1000);
+    const beforeBRects = await this.measureTeamMainPosRectsStable("B", 1000);
     const beforeANoMap = this.getTeamMainNumberMap("A");
     const beforeBNoMap = this.getTeamMainNumberMap("B");
     const beforeACaptain = this.data.teamACaptainNo;

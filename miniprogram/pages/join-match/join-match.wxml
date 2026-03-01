@@ -1,5 +1,13 @@
-<view class="entry-container">
+<view class="entry-container" style="--custom-nav-offset: {{customNavOffset}};">
+  <view class="custom-nav-bg" style="height: {{customNavOffset}};"></view>
   <view class="entry-shell">
+    <view class="custom-nav" style="top: {{customNavTop}};">
+      <view class="custom-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
+        <view class="custom-nav-back-icon"></view>
+      </view>
+      <view class="custom-nav-space"></view>
+    </view>
+
     <view class="form-block">
       <text class="title">加入已有的</text>
       <text class="title title-second">裁判协作</text>

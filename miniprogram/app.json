@@ -3,7 +3,8 @@
     "pages/create-room/create-room",
     "pages/join-match/join-match",
     "pages/room/room",
-    "pages/match/match"
+    "pages/match/match",
+    "pages/lineup-adjust/lineup-adjust"
   ],
   "window": {
     "navigationBarTextStyle": "black",

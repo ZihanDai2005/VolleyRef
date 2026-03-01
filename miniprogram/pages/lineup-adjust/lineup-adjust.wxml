@@ -1,0 +1,203 @@
+<view
+  class="adjust-page"
+  style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}}; --safe-pad-top: {{safePadTop}}; --safe-pad-right: {{safePadRight}}; --safe-pad-bottom: {{safePadBottom}}; --safe-pad-left: {{safePadLeft}};"
+>
+  <view class="match-nav">
+    <view class="match-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
+      <view class="match-nav-back-icon"></view>
+    </view>
+    <view class="match-nav-title">裁判团队编号 {{roomId}}</view>
+    <view class="match-nav-space"></view>
+  </view>
+
+  <view class="adjust-head-block">
+    <text class="adjust-head-title">确认下一局的球员配置</text>
+    <text class="adjust-head-hint">已自动沿用上一局的首发阵容并左右换边，可点击球员进行撤换</text>
+  </view>
+
+  <view class="court-row {{isSwapped ? 'swapped' : ''}} {{switchingOut ? 'switch-out' : ''}} {{switchingIn ? 'switch-in' : ''}}">
+    <view class="team-court-wrap">
+      <view class="team-panel team-a">
+        <view class="team-head">
+          <view class="rotate-btn {{isSwapped ? 'right' : 'left'}} pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
+            <view class="rotate-icon"></view>
+          </view>
+          <text class="team-title">{{teamAName}}</text>
+        </view>
+        <view class="lineup-grid {{isSwapped ? 'swap-layout' : ''}}">
+          <view class="libero-col">
+            <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
+              <input
+                adjust-position="false"
+                class="player-input pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-input' : ''}}"
+                placeholder-class="player-placeholder"
+                type="number"
+                maxlength="2"
+                value="{{item.number === '?' ? '' : item.number}}"
+                placeholder="?"
+                data-team="A"
+                data-index="{{item.index}}"
+                bindinput="onPlayerNumberInput"
+                bindblur="onPlayerNumberBlur"
+              />
+              <text class="sub-text">{{item.pos}}</text>
+            </view>
+          </view>
+          <view class="main-col">
+            <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
+              <view class="player-card {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+                <input
+                  adjust-position="false"
+                  class="player-input pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-input' : ''}} {{hideTeamAMainNumbers ? 'player-input-hidden' : ''}}"
+                  placeholder-class="player-placeholder"
+                  type="number"
+                  maxlength="2"
+                  value="{{item.number === '?' ? '' : item.number}}"
+                  placeholder="?"
+                  data-team="A"
+                  data-index="{{item.index}}"
+                  bindinput="onPlayerNumberInput"
+                  bindblur="onPlayerNumberBlur"
+                />
+                <text class="sub-text">{{item.pos}}</text>
+                <text class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}">发</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view
+        class="panel-captain-btn pressable {{teamACaptainPickDisabled ? 'disabled' : ''}}"
+        hover-class="tap-active"
+        data-team="A"
+        bindtap="onCaptainPickTap"
+      >
+        <text class="panel-captain-btn-text">{{teamACaptainBtnText}}</text>
+      </view>
+    </view>
+
+    <view class="team-court-wrap">
+      <view class="team-panel team-b">
+        <view class="team-head">
+          <text class="team-title">{{teamBName}}</text>
+          <view class="rotate-btn {{isSwapped ? 'left' : 'right'}} pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
+            <view class="rotate-icon"></view>
+          </view>
+        </view>
+        <view class="lineup-grid reverse {{isSwapped ? 'swap-layout' : ''}}">
+          <view class="main-col">
+            <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
+              <view class="player-card {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+                <input
+                  adjust-position="false"
+                  class="player-input pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-input' : ''}} {{hideTeamBMainNumbers ? 'player-input-hidden' : ''}}"
+                  placeholder-class="player-placeholder"
+                  type="number"
+                  maxlength="2"
+                  value="{{item.number === '?' ? '' : item.number}}"
+                  placeholder="?"
+                  data-team="B"
+                  data-index="{{item.index}}"
+                  bindinput="onPlayerNumberInput"
+                  bindblur="onPlayerNumberBlur"
+                />
+                <text class="sub-text">{{item.pos}}</text>
+                <text class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}">发</text>
+              </view>
+            </view>
+          </view>
+          <view class="libero-col">
+            <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
+              <input
+                adjust-position="false"
+                class="player-input pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-input' : ''}}"
+                placeholder-class="player-placeholder"
+                type="number"
+                maxlength="2"
+                value="{{item.number === '?' ? '' : item.number}}"
+                placeholder="?"
+                data-team="B"
+                data-index="{{item.index}}"
+                bindinput="onPlayerNumberInput"
+                bindblur="onPlayerNumberBlur"
+              />
+              <text class="sub-text">{{item.pos}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view
+        class="panel-captain-btn pressable {{teamBCaptainPickDisabled ? 'disabled' : ''}}"
+        hover-class="tap-active"
+        data-team="B"
+        bindtap="onCaptainPickTap"
+      >
+        <text class="panel-captain-btn-text">{{teamBCaptainBtnText}}</text>
+      </view>
+    </view>
+  </view>
+
+  <view class="rotate-fly-layer" wx:if="{{rotateFlyItems.length}}">
+    <view
+      wx:for="{{rotateFlyItems}}"
+      wx:key="id"
+      wx:for-item="item"
+      class="rotate-fly-item team-{{item.team === 'A' ? 'a' : 'b'}}"
+      style="{{item.style}}"
+    >
+      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+    </view>
+  </view>
+
+  <view class="adjust-footer">
+    <button class="entry-btn {{continueBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onContinueTap">
+      <view class="entry-btn-content">
+        <text class="entry-btn-text">继续</text>
+        <view class="entry-btn-icon"></view>
+      </view>
+    </button>
+  </view>
+
+  <view class="captain-picker-mask" wx:if="{{showCaptainPicker}}" catchtouchmove="noop" bindtap="onCaptainPickerCancel">
+    <view class="captain-picker-panel" catchtap="noop">
+      <view class="captain-picker-title">{{captainPickerTitle}}</view>
+      <view class="captain-picker-tip">队长不在场上，请选择一位球员作为场上队长</view>
+      <view class="lineup-grid captain-picker-grid {{captainPickerTeam === 'A' ? 'team-a' : 'team-b'}}">
+        <view class="main-col">
+          <view class="player-row row-two" wx:for="{{captainPickerMainGrid}}" wx:key="index" wx:for-item="row">
+            <view
+              class="player-card captain-option-card {{captainPickerSelectedNo === item.number ? 'captain-option-selected' : ''}} {{item.number === '?' ? 'captain-option-disabled' : ''}}"
+              wx:for="{{row}}"
+              wx:key="pos"
+              wx:for-item="item"
+              data-number="{{item.number}}"
+              hover-class="tap-active"
+              bindtap="onCaptainPickerSelect"
+            >
+              <text class="num-text">{{item.number}}</text>
+              <text class="sub-text">{{item.pos}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="libero-col">
+          <view
+            class="player-card libero captain-option-card {{captainPickerSelectedNo === item.number ? 'captain-option-selected' : ''}} {{item.number === '?' ? 'captain-option-disabled' : ''}}"
+            wx:for="{{captainPickerLibero}}"
+            wx:key="pos"
+            wx:for-item="item"
+            data-number="{{item.number}}"
+            hover-class="tap-active"
+            bindtap="onCaptainPickerSelect"
+          >
+            <text class="num-text">{{item.number}}</text>
+            <text class="sub-text">{{item.pos}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="captain-picker-actions">
+        <button class="captain-picker-btn cancel" bindtap="onCaptainPickerCancel">取消</button>
+        <button class="captain-picker-btn confirm" bindtap="onCaptainPickerConfirm">确定</button>
+      </view>
+    </view>
+  </view>
+</view>

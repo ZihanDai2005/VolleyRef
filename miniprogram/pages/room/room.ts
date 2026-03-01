@@ -231,6 +231,8 @@ Page({
     updatedAt: 0,
     createInviteBtnFx: false,
     createContinueBtnFx: false,
+    customNavTop: "10px",
+    customNavOffset: "54px",
   },
 
   pollTimer: 0 as number,
@@ -239,6 +241,7 @@ Page({
 
   onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
+    this.syncCustomNavTop();
     if (!this.themeOff) {
       this.themeOff = bindThemeChange(() => {
         this.applyNavigationTheme();
@@ -287,6 +290,7 @@ Page({
 
   onShow() {
     this.applyNavigationTheme();
+    this.syncCustomNavTop();
     if (this.data.createMode) {
       return;
     }
@@ -325,6 +329,49 @@ Page({
 
   applyNavigationTheme() {
     applyNavigationBarTheme();
+  },
+
+  syncCustomNavTop() {
+    const sys = wx.getSystemInfoSync();
+    const fallback = Number(sys.statusBarHeight || 0) + 6;
+    let navTop = fallback;
+    try {
+      const menu = wx.getMenuButtonBoundingClientRect();
+      if (
+        menu &&
+        typeof menu.top === "number" &&
+        typeof menu.height === "number" &&
+        menu.top >= 0 &&
+        menu.height > 0
+      ) {
+        // Align custom 44px nav row to the capsule center.
+        navTop = menu.top - (44 - menu.height) / 2;
+      }
+    } catch (e) {}
+    const roundedTop = Math.max(0, Math.round(navTop));
+    this.setData({
+      customNavTop: String(roundedTop) + "px",
+      customNavOffset: String(roundedTop + 44) + "px",
+    });
+  },
+
+  onBackTap() {
+    const pages = getCurrentPages();
+    if (pages.length > 1) {
+      wx.navigateBack({ delta: 1 });
+      return;
+    }
+    wx.reLaunch({ url: "/pages/create-room/create-room" });
+  },
+
+  onRoomIdInfoTap() {
+    wx.showModal({
+      title: "裁判团队编号说明",
+      content:
+        "裁判团队编号由系统自动分配，不可修改，可用于邀请其他裁判或观众加入比赛。此编号自正式进入比赛时开始生效，其他裁判可加入，有效期12小时，未进入比赛页面或超过12小时将自动回收。",
+      showCancel: false,
+      confirmText: "我知道了",
+    });
   },
 
   handleRoomClosed() {

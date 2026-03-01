@@ -1,5 +1,6 @@
 {
   "navigationBarTitleText": "比赛界面",
+  "navigationStyle": "custom",
   "pageOrientation": "landscape",
   "usingComponents": {
     "score-board": "/components/score-board/score-board"

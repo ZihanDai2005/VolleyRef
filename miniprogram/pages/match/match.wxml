@@ -2,6 +2,14 @@
   class="match-container"
   style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}}; --safe-pad-top: {{safePadTop}}; --safe-pad-right: {{safePadRight}}; --safe-pad-bottom: {{safePadBottom}}; --safe-pad-left: {{safePadLeft}};"
 >
+  <view class="match-nav">
+    <view class="match-nav-back pressable" hover-class="tap-active" bindtap="confirmBackToHome">
+      <view class="match-nav-back-icon"></view>
+    </view>
+    <view class="match-nav-title">裁判团队编号 {{roomId}}</view>
+    <view class="match-nav-space"></view>
+  </view>
+
   <view class="top-control-row">
     <view class="x-zone">
       <view class="x-row">
@@ -114,6 +122,72 @@
       style="{{item.style}}"
     >
       <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+    </view>
+  </view>
+
+  <view class="set-end-mask" wx:if="{{showSetEndModal}}" bindtap="onSetEndModalTap">
+    <view class="set-end-modal" catchtap="onSetEndModalTap">
+      <view class="set-end-title-top">{{setEndTitleTop}}</view>
+      <view class="set-end-title-bottom" wx:if="{{setEndTitleBottom}}">{{setEndTitleBottom}}</view>
+
+      <view class="set-end-body">
+        <view class="set-end-score-panels">
+          <view class="set-end-score-panel">
+            <text class="set-end-section-label">小比分</text>
+            <view class="set-end-compare-line">
+              <text class="set-end-compare-left">{{setEndTeamAName}}</text>
+              <text class="set-end-compare-colon">:</text>
+              <text class="set-end-compare-right">{{setEndTeamBName}}</text>
+            </view>
+            <view class="set-end-score-line">
+              <text class="set-end-score">{{setEndSmallScoreA}}</text>
+              <text class="set-end-score-sep">:</text>
+              <text class="set-end-score">{{setEndSmallScoreB}}</text>
+            </view>
+          </view>
+          <view class="set-end-score-panel">
+            <text class="set-end-section-label">大比分</text>
+            <view class="set-end-compare-line">
+              <text class="set-end-compare-left">{{setEndTeamAName}}</text>
+              <text class="set-end-compare-colon">:</text>
+              <text class="set-end-compare-right">{{setEndTeamBName}}</text>
+            </view>
+            <view class="set-end-score-line">
+              <text class="set-end-score">{{setEndBigScoreA}}</text>
+              <text class="set-end-score-sep">:</text>
+              <text class="set-end-score">{{setEndBigScoreB}}</text>
+            </view>
+          </view>
+        </view>
+
+        <text class="set-end-winner">本局{{setEndWinnerName}}队胜</text>
+        <text class="set-end-duration">局时间 {{setEndDurationText}}</text>
+        <text class="set-end-winner" wx:if="{{setEndMatchFinished}}">比赛结束 {{setEndWinnerName}}队胜</text>
+      </view>
+
+      <view class="set-end-actions">
+        <view class="set-end-btn-home primary pressable" hover-class="tap-active" bindtap="onSetEndContinue">
+          <view class="set-end-btn-content">
+            <text class="set-end-btn-text">{{setEndActionText}}</text>
+            <view class="set-end-btn-icon"></view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="back-exit-mask" wx:if="{{showBackExitModal}}" bindtap="onBackExitCancel">
+    <view class="back-exit-modal" catchtap="onBackExitModalTap">
+      <view class="back-exit-title">退出确认</view>
+      <view class="back-exit-text">
+        退出房间将返回首页，再次进入需要提供完整的裁判团队编号和密码，确认退出吗？
+      </view>
+      <view class="back-exit-subtext">可先复制邀请信息，返回后在加入页面粘贴快速重新加入。</view>
+      <view class="back-exit-actions">
+        <view class="back-exit-btn pressable" hover-class="tap-active" bindtap="onBackExitCancel">取消</view>
+        <view class="back-exit-btn danger pressable" hover-class="tap-active" bindtap="onBackExitDirect">退出</view>
+        <view class="back-exit-btn primary pressable" hover-class="tap-active" bindtap="onBackExitCopyAndLeave">复制邀请并退出</view>
+      </view>
     </view>
   </view>
 
