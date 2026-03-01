@@ -9,6 +9,7 @@ import {
 import { showBlockHint, showToastHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
+import { computeLandscapeSafePad } from "../../utils/safe-pad";
 
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
@@ -158,6 +159,8 @@ function pushUndoSnapshot(room: any): void {
     aScore: room.match.aScore,
     bScore: room.match.bScore,
     lastScoringTeam: room.match.lastScoringTeam || "",
+    teamACurrentCaptainNo: String((room.match as any).teamACurrentCaptainNo || room.teamA.captainNo || ""),
+    teamBCurrentCaptainNo: String((room.match as any).teamBCurrentCaptainNo || room.teamB.captainNo || ""),
     servingTeam: room.match.servingTeam,
     teamAPlayers: room.teamA.players.slice(),
     teamBPlayers: room.teamB.players.slice(),
@@ -325,6 +328,12 @@ Page({
     });
     this.setData({ roomId: roomId });
     this.syncSafePadding();
+    setTimeout(() => {
+      this.syncSafePadding();
+    }, 80);
+    setTimeout(() => {
+      this.syncSafePadding();
+    }, 260);
     if ((wx as any).onWindowResize) {
       (wx as any).onWindowResize(this.onWindowResize);
     }
@@ -332,6 +341,13 @@ Page({
   },
 
   onShow() {
+    this.syncSafePadding();
+    setTimeout(() => {
+      this.syncSafePadding();
+    }, 80);
+    setTimeout(() => {
+      this.syncSafePadding();
+    }, 260);
     this.applyNavigationTheme();
     this.startTimerTick();
     this.startPolling();
@@ -441,43 +457,33 @@ Page({
   },
 
   syncSafePadding() {
-    const info: any = (wx as any).getWindowInfo ? (wx as any).getWindowInfo() : wx.getSystemInfoSync();
-    const safe = info && info.safeArea;
-    const windowWidth = Number(info && info.windowWidth) || Number(info && info.screenWidth) || 0;
-    const windowHeight = Number(info && info.windowHeight) || Number(info && info.screenHeight) || 0;
-    if (!safe || !windowWidth || !windowHeight) {
+    const safePad = computeLandscapeSafePad(wx);
+    if (!safePad.safeAreaAvailable) {
       this.setData({
-        safePadTop: "10px",
-        safePadRight: "0px",
-        safePadBottom: "25px",
-        safePadLeft: "0px",
+        safePadTop: safePad.safePadTop,
+        safePadRight: safePad.safePadRight,
+        safePadBottom: safePad.safePadBottom,
+        safePadLeft: safePad.safePadLeft,
         safeDebugText: "safeArea unavailable",
       });
       return;
     }
-    const insetTop = Math.max(0, Number(safe.top) || 0);
-    const insetLeft = Math.max(0, Number(safe.left) || 0);
-    const insetRight = Math.max(0, windowWidth - (Number(safe.right) || windowWidth));
-    const insetBottom = Math.max(0, windowHeight - (Number(safe.bottom) || windowHeight));
-    // 比赛页统一策略：左右用安全边距，顶部/底部使用固定值便于稳定布局。
-    // 部分机型会把危险区上报到 top，这里也映射到左右，避免“左右贴边+顶部空白”。
-    const sideInset = Math.max(insetLeft, insetRight, insetTop, insetBottom);
     this.setData({
-      safePadTop: "10px",
-      safePadRight: String(sideInset) + "px",
-      safePadBottom: "25px",
-      safePadLeft: String(sideInset) + "px",
+      safePadTop: safePad.safePadTop,
+      safePadRight: safePad.safePadRight,
+      safePadBottom: safePad.safePadBottom,
+      safePadLeft: safePad.safePadLeft,
       safeDebugText:
-        "side-only | ww:" +
-        String(windowWidth) +
+        "side-adapt | ww:" +
+        String(safePad.windowWidth) +
         " wh:" +
-        String(windowHeight) +
+        String(safePad.windowHeight) +
         " | safe t/l/r/b:" +
-        [safe.top, safe.left, safe.right, safe.bottom].join("/") +
+        safePad.safeEdges.join("/") +
         " | inset t/l/r/b:" +
-        [insetTop, insetLeft, insetRight, insetBottom].join("/") +
+        safePad.insetEdges.join("/") +
         " | pad t/r/b/l:" +
-        [10, sideInset, 25, sideInset].join("/"),
+        [10, safePad.sideInset, 25, safePad.sideInset].join("/"),
     });
   },
 
@@ -827,8 +833,12 @@ Page({
       teamAColor: teamAColor,
       teamBColor: teamBColor,
       roomPassword: String(room.password || ""),
-      teamACaptainNo: normalizeNumberInput(String((room.teamA as any).captainNo || "")),
-      teamBCaptainNo: normalizeNumberInput(String((room.teamB as any).captainNo || "")),
+      teamACaptainNo: normalizeNumberInput(
+        String((room.match as any).teamACurrentCaptainNo || (room.teamA as any).captainNo || "")
+      ),
+      teamBCaptainNo: normalizeNumberInput(
+        String((room.match as any).teamBCurrentCaptainNo || (room.teamB as any).captainNo || "")
+      ),
       teamARGB: hexToRgbTriplet(teamAColor),
       teamBRGB: hexToRgbTriplet(teamBColor),
       aScore: leftScore,
@@ -1032,7 +1042,8 @@ Page({
             room.match.bScore = 0;
             room.match.lastScoringTeam = "";
             room.match.setTimerStartAt = 0;
-            room.match.setTimerElapsedMs = 0;
+            // 小局结束后先保持上一局局时间，等待中场配置页返回比赛后再清零。
+            room.match.setTimerElapsedMs = finalElapsed;
             room.match.servingTeam = setWinner;
             room.match.isSwapped = false;
             room.match.decidingSetEightHandled = false;
@@ -1222,6 +1233,8 @@ Page({
       room.match.aScore = last.aScore;
       room.match.bScore = last.bScore;
       room.match.lastScoringTeam = last.lastScoringTeam === "B" ? "B" : last.lastScoringTeam === "A" ? "A" : "";
+      (room.match as any).teamACurrentCaptainNo = String(last.teamACurrentCaptainNo || room.teamA.captainNo || "");
+      (room.match as any).teamBCurrentCaptainNo = String(last.teamBCurrentCaptainNo || room.teamB.captainNo || "");
       room.match.servingTeam = last.servingTeam;
       room.match.isSwapped = !!last.isSwapped;
       room.match.decidingSetEightHandled = !!last.decidingSetEightHandled;

@@ -1,6 +1,7 @@
 import { getRoom, updateRoom, TEAM_COLOR_OPTIONS } from "../../utils/room-service";
 import { showToastHint } from "../../utils/hint";
 import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
+import { computeLandscapeSafePad } from "../../utils/safe-pad";
 
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
@@ -210,10 +211,22 @@ Page({
     teamBRGB: "102, 185, 122",
     teamACaptainNo: "",
     teamBCaptainNo: "",
+    teamAInitialCaptainNo: "",
+    teamBInitialCaptainNo: "",
+    teamAManualCaptainChosen: false,
+    teamBManualCaptainChosen: false,
+    teamACaptainSource: "" as "" | "auto" | "manual",
+    teamBCaptainSource: "" as "" | "auto" | "manual",
     teamACaptainPickDisabled: false,
     teamBCaptainPickDisabled: false,
     teamACaptainBtnText: "选择场上队长",
     teamBCaptainBtnText: "选择场上队长",
+    teamACaptainResolved: false,
+    teamBCaptainResolved: false,
+    teamAShowCaptainCheck: false,
+    teamBShowCaptainCheck: false,
+    teamAShowCaptainRepick: false,
+    teamBShowCaptainRepick: false,
     teamAPlayers: [] as PlayerSlot[],
     teamBPlayers: [] as PlayerSlot[],
     teamALibero: [] as DisplayPlayerSlot[],
@@ -252,6 +265,12 @@ Page({
 
   onShow() {
     this.syncSafePadding();
+    setTimeout(() => {
+      this.syncSafePadding();
+    }, 80);
+    setTimeout(() => {
+      this.syncSafePadding();
+    }, 260);
     this.loadRoom();
   },
 
@@ -289,16 +308,61 @@ Page({
     return players.some((p) => MAIN_POSITIONS.indexOf(p.pos as MainPosition) >= 0 && normalizeNumberInput(p.number) === target);
   },
 
+  isCaptainOnCourt(players: PlayerSlot[], captainNo: string): boolean {
+    const target = normalizeNumberInput(captainNo);
+    if (!target) {
+      return false;
+    }
+    return players.some((p) => normalizeNumberInput(p.number) === target);
+  },
+
   syncCaptainPickState(teamAPlayersArg?: PlayerSlot[], teamBPlayersArg?: PlayerSlot[]) {
     const teamAPlayers = teamAPlayersArg || this.data.teamAPlayers;
     const teamBPlayers = teamBPlayersArg || this.data.teamBPlayers;
-    const aInMain = this.isCaptainInMain(teamAPlayers, this.data.teamACaptainNo);
-    const bInMain = this.isCaptainInMain(teamBPlayers, this.data.teamBCaptainNo);
+    const aNo = normalizeNumberInput(this.data.teamACaptainNo);
+    const bNo = normalizeNumberInput(this.data.teamBCaptainNo);
+    const aInitNo = normalizeNumberInput(this.data.teamAInitialCaptainNo);
+    const bInitNo = normalizeNumberInput(this.data.teamBInitialCaptainNo);
+    const aAutoLocked = !!aInitNo && this.isCaptainInMain(teamAPlayers, aInitNo);
+    const bAutoLocked = !!bInitNo && this.isCaptainInMain(teamBPlayers, bInitNo);
+    const nextACaptainNo = aAutoLocked ? aInitNo : aNo;
+    const nextBCaptainNo = bAutoLocked ? bInitNo : bNo;
+    const aOnCourt = this.isCaptainOnCourt(teamAPlayers, nextACaptainNo);
+    const bOnCourt = this.isCaptainOnCourt(teamBPlayers, nextBCaptainNo);
+    const aManualMode = !aAutoLocked && !!this.data.teamAManualCaptainChosen && aOnCourt;
+    const bManualMode = !bAutoLocked && !!this.data.teamBManualCaptainChosen && bOnCourt;
+
+    const aResolved = aAutoLocked || aManualMode;
+    const bResolved = bAutoLocked || bManualMode;
+
+    const aText = aAutoLocked
+      ? "队长号码 " + nextACaptainNo
+      : aManualMode
+        ? "下一局场上队长 " + nextACaptainNo
+        : "选择场上队长";
+    const bText = bAutoLocked
+      ? "队长号码 " + nextBCaptainNo
+      : bManualMode
+        ? "下一局场上队长 " + nextBCaptainNo
+        : "选择场上队长";
+
     this.setData({
-      teamACaptainPickDisabled: aInMain,
-      teamBCaptainPickDisabled: bInMain,
-      teamACaptainBtnText: aInMain ? "队长在场上，无需选择场上队长" : "选择场上队长",
-      teamBCaptainBtnText: bInMain ? "队长在场上，无需选择场上队长" : "选择场上队长",
+      teamACaptainNo: nextACaptainNo,
+      teamBCaptainNo: nextBCaptainNo,
+      teamAManualCaptainChosen: aManualMode,
+      teamBManualCaptainChosen: bManualMode,
+      teamACaptainSource: aAutoLocked ? "auto" : aManualMode ? "manual" : "",
+      teamBCaptainSource: bAutoLocked ? "auto" : bManualMode ? "manual" : "",
+      teamACaptainResolved: aResolved,
+      teamBCaptainResolved: bResolved,
+      teamACaptainPickDisabled: aAutoLocked || aManualMode,
+      teamBCaptainPickDisabled: bAutoLocked || bManualMode,
+      teamACaptainBtnText: aText,
+      teamBCaptainBtnText: bText,
+      teamAShowCaptainCheck: aResolved,
+      teamBShowCaptainCheck: bResolved,
+      teamAShowCaptainRepick: aManualMode,
+      teamBShowCaptainRepick: bManualMode,
     });
   },
 
@@ -322,6 +386,8 @@ Page({
     }
 
     const preset = getPresetLineupFromPreviousSet(room);
+    const roomTeamACaptain = normalizeNumberInput(room.teamA.captainNo || "");
+    const roomTeamBCaptain = normalizeNumberInput(room.teamB.captainNo || "");
     this.setData(
       {
         teamAName: room.teamA.name || "甲",
@@ -330,8 +396,14 @@ Page({
         teamBColor: room.teamB.color || TEAM_COLOR_OPTIONS[6].value,
         teamARGB: hexToRgbTriplet(room.teamA.color || TEAM_COLOR_OPTIONS[2].value),
         teamBRGB: hexToRgbTriplet(room.teamB.color || TEAM_COLOR_OPTIONS[6].value),
-        teamACaptainNo: normalizeNumberInput(room.teamA.captainNo || ""),
-        teamBCaptainNo: normalizeNumberInput(room.teamB.captainNo || ""),
+        teamACaptainNo: roomTeamACaptain,
+        teamBCaptainNo: roomTeamBCaptain,
+        teamAInitialCaptainNo: roomTeamACaptain,
+        teamBInitialCaptainNo: roomTeamBCaptain,
+        teamAManualCaptainChosen: false,
+        teamBManualCaptainChosen: false,
+        teamACaptainSource: "",
+        teamBCaptainSource: "",
         servingTeam: preset.servingTeam,
       },
       () => {
@@ -398,25 +470,25 @@ Page({
     }
 
     if (!current || current === "?") {
-      this.syncCaptainPickState();
+      if (team === "A") {
+        this.syncCaptainPickState(players, this.data.teamBPlayers);
+      } else {
+        this.syncCaptainPickState(this.data.teamAPlayers, players);
+      }
     } else {
       const duplicateCount = players.filter((p) => normalizeNumberInput(p.number) === current).length;
       if (duplicateCount > 1) {
         showToastHint("球员号码重复");
       }
-      this.syncCaptainPickState();
+      if (team === "A") {
+        this.syncCaptainPickState(players, this.data.teamBPlayers);
+      } else {
+        this.syncCaptainPickState(this.data.teamAPlayers, players);
+      }
     }
   },
 
-  onCaptainPickTap(e: WechatMiniprogram.TouchEvent) {
-    const team = String((e.currentTarget.dataset as { team?: string }).team || "") as TeamCode;
-    if (team !== "A" && team !== "B") {
-      return;
-    }
-    const disabled = team === "A" ? this.data.teamACaptainPickDisabled : this.data.teamBCaptainPickDisabled;
-    if (disabled) {
-      return;
-    }
+  openCaptainPicker(team: TeamCode) {
     const teamASide: TeamCode = this.data.isSwapped ? "B" : "A";
     const players = team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers;
     const teamName = (team === "A" ? this.data.teamAName : this.data.teamBName).trim() || (team === "A" ? "甲" : "乙");
@@ -428,6 +500,30 @@ Page({
       captainPickerLibero: buildTeamRows(players).libero,
       captainPickerSelectedNo: "",
     });
+  },
+
+  onCaptainPickTap(e: WechatMiniprogram.TouchEvent) {
+    const team = String((e.currentTarget.dataset as { team?: string }).team || "") as TeamCode;
+    if (team !== "A" && team !== "B") {
+      return;
+    }
+    const disabled = team === "A" ? this.data.teamACaptainPickDisabled : this.data.teamBCaptainPickDisabled;
+    if (disabled) {
+      return;
+    }
+    this.openCaptainPicker(team);
+  },
+
+  onCaptainRepickTap(e: WechatMiniprogram.TouchEvent) {
+    const team = String((e.currentTarget.dataset as { team?: string }).team || "") as TeamCode;
+    if (team !== "A" && team !== "B") {
+      return;
+    }
+    const canRepick = team === "A" ? this.data.teamAShowCaptainRepick : this.data.teamBShowCaptainRepick;
+    if (!canRepick) {
+      return;
+    }
+    this.openCaptainPicker(team);
   },
 
   noop() {},
@@ -456,7 +552,10 @@ Page({
       return;
     }
     const team = this.data.captainPickerTeam;
-    const nextPatch = team === "A" ? { teamACaptainNo: value } : { teamBCaptainNo: value };
+    const nextPatch =
+      team === "A"
+        ? { teamACaptainNo: value, teamAManualCaptainChosen: true }
+        : { teamBCaptainNo: value, teamBManualCaptainChosen: true };
     this.setData(
       {
         ...nextPatch,
@@ -472,14 +571,33 @@ Page({
   },
 
   onContinueTap() {
+    if (!this.data.teamACaptainResolved || !this.data.teamBCaptainResolved) {
+      wx.showModal({
+        title: "无法继续",
+        content: "请先为两队确定下一局场上队长后再继续。",
+        showCancel: false,
+        confirmText: "知道了",
+      });
+      return;
+    }
     this.setData({ continueBtnFx: true });
     const roomId = String(this.data.roomId || "");
     if (roomId) {
       updateRoom(roomId, (room) => {
         room.teamA.players = this.data.teamAPlayers.slice();
         room.teamB.players = this.data.teamBPlayers.slice();
-        room.teamA.captainNo = this.data.teamACaptainNo;
-        room.teamB.captainNo = this.data.teamBCaptainNo;
+        (room.match as any).teamACurrentCaptainNo = this.data.teamACaptainNo;
+        (room.match as any).teamBCurrentCaptainNo = this.data.teamBCaptainNo;
+        // 中场配置完成返回比赛页时，才清零下一局局时间。
+        if (
+          room.match &&
+          !room.match.isFinished &&
+          Number(room.match.aScore || 0) === 0 &&
+          Number(room.match.bScore || 0) === 0
+        ) {
+          (room.match as any).setTimerStartAt = 0;
+          (room.match as any).setTimerElapsedMs = 0;
+        }
         room.match.isSwapped = this.data.isSwapped;
         room.match.servingTeam = this.data.servingTeam;
         return room;
@@ -677,29 +795,21 @@ Page({
   },
 
   syncSafePadding() {
-    const info: any = (wx as any).getWindowInfo ? (wx as any).getWindowInfo() : wx.getSystemInfoSync();
-    const safe = info && info.safeArea;
-    const windowWidth = Number(info && info.windowWidth) || Number(info && info.screenWidth) || 0;
-    const windowHeight = Number(info && info.windowHeight) || Number(info && info.screenHeight) || 0;
-    if (!safe || !windowWidth || !windowHeight) {
+    const safePad = computeLandscapeSafePad(wx);
+    if (!safePad.safeAreaAvailable) {
       this.setData({
-        safePadTop: "10px",
-        safePadRight: "0px",
-        safePadBottom: "25px",
-        safePadLeft: "0px",
+        safePadTop: safePad.safePadTop,
+        safePadRight: safePad.safePadRight,
+        safePadBottom: safePad.safePadBottom,
+        safePadLeft: safePad.safePadLeft,
       });
       return;
     }
-    const insetTop = Math.max(0, Number(safe.top) || 0);
-    const insetLeft = Math.max(0, Number(safe.left) || 0);
-    const insetRight = Math.max(0, windowWidth - (Number(safe.right) || windowWidth));
-    const insetBottom = Math.max(0, windowHeight - (Number(safe.bottom) || windowHeight));
-    const sideInset = Math.max(insetLeft, insetRight, insetTop, insetBottom);
     this.setData({
-      safePadTop: "10px",
-      safePadRight: String(sideInset) + "px",
-      safePadBottom: "25px",
-      safePadLeft: String(sideInset) + "px",
+      safePadTop: safePad.safePadTop,
+      safePadRight: safePad.safePadRight,
+      safePadBottom: safePad.safePadBottom,
+      safePadLeft: safePad.safePadLeft,
     });
   },
 });

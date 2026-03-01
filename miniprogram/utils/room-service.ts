@@ -23,6 +23,8 @@ export interface MatchState {
   aScore: number;
   bScore: number;
   lastScoringTeam: "A" | "B" | "";
+  teamACurrentCaptainNo: string;
+  teamBCurrentCaptainNo: string;
   setTimerStartAt: number;
   setTimerElapsedMs: number;
   servingTeam: "A" | "B";
@@ -36,6 +38,8 @@ export interface MatchState {
     aScore: number;
     bScore: number;
     lastScoringTeam?: "A" | "B" | "";
+    teamACurrentCaptainNo?: string;
+    teamBCurrentCaptainNo?: string;
     setTimerStartAt?: number;
     setTimerElapsedMs?: number;
     servingTeam: "A" | "B";
@@ -179,6 +183,8 @@ function createDefaultRoom(roomId: string): RoomState {
       aScore: 0,
       bScore: 0,
       lastScoringTeam: "",
+      teamACurrentCaptainNo: "",
+      teamBCurrentCaptainNo: "",
       setTimerStartAt: 0,
       setTimerElapsedMs: 0,
       servingTeam: "A",
@@ -261,6 +267,16 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
       : input.match && (input.match as any).lastScoringTeam === "A"
         ? "A"
         : "";
+  base.match.teamACurrentCaptainNo = String(
+    (input.match && (input.match as any).teamACurrentCaptainNo) ||
+      (input.teamA && (input.teamA as any).captainNo) ||
+      ""
+  );
+  base.match.teamBCurrentCaptainNo = String(
+    (input.match && (input.match as any).teamBCurrentCaptainNo) ||
+      (input.teamB && (input.teamB as any).captainNo) ||
+      ""
+  );
   base.match.setTimerStartAt = Math.max(0, Number(input.match && (input.match as any).setTimerStartAt) || 0);
   base.match.setTimerElapsedMs = Math.max(0, Number(input.match && (input.match as any).setTimerElapsedMs) || 0);
   base.match.servingTeam = input.match && input.match.servingTeam === "B" ? "B" : "A";
@@ -278,6 +294,8 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
         aScore: Math.max(0, Number(item.aScore) || 0),
         bScore: Math.max(0, Number(item.bScore) || 0),
         lastScoringTeam: item.lastScoringTeam === "B" ? "B" : item.lastScoringTeam === "A" ? "A" : "",
+        teamACurrentCaptainNo: String(item.teamACurrentCaptainNo || base.match.teamACurrentCaptainNo || ""),
+        teamBCurrentCaptainNo: String(item.teamBCurrentCaptainNo || base.match.teamBCurrentCaptainNo || ""),
         setTimerStartAt: Math.max(0, Number(item.setTimerStartAt) || 0),
         setTimerElapsedMs: Math.max(0, Number(item.setTimerElapsedMs) || 0),
         servingTeam: item.servingTeam === "B" ? "B" : "A",
@@ -424,6 +442,8 @@ export function createRoom(input: {
     color: normalizeHexColor(input.teamBColor, DEFAULT_TEAM_B_COLOR),
     players: normalizePlayers(input.teamBPlayers),
   };
+  room.match.teamACurrentCaptainNo = room.teamA.captainNo;
+  room.match.teamBCurrentCaptainNo = room.teamB.captainNo;
   if (room.teamA.color === room.teamB.color) {
     room.teamB.color = DEFAULT_TEAM_B_COLOR;
     if (room.teamA.color === room.teamB.color) {

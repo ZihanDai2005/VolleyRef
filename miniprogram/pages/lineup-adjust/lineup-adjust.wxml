@@ -66,13 +66,27 @@
           </view>
         </view>
       </view>
-      <view
-        class="panel-captain-btn pressable {{teamACaptainPickDisabled ? 'disabled' : ''}}"
-        hover-class="tap-active"
-        data-team="A"
-        bindtap="onCaptainPickTap"
-      >
-        <text class="panel-captain-btn-text">{{teamACaptainBtnText}}</text>
+      <view class="panel-captain-actions">
+        <view
+          class="panel-captain-btn {{teamACaptainPickDisabled ? 'disabled' : 'pressable'}}"
+          hover-class="{{teamACaptainPickDisabled ? '' : 'tap-active'}}"
+          data-team="A"
+          bindtap="onCaptainPickTap"
+        >
+          <view class="panel-captain-btn-main">
+            <view wx:if="{{teamAShowCaptainCheck}}" class="panel-captain-check-icon"></view>
+            <text class="panel-captain-btn-text">{{teamACaptainBtnText}}</text>
+          </view>
+        </view>
+        <view
+          wx:if="{{teamAShowCaptainRepick}}"
+          class="panel-captain-btn panel-captain-btn-secondary pressable"
+          hover-class="tap-active"
+          data-team="A"
+          bindtap="onCaptainRepickTap"
+        >
+          <text class="panel-captain-btn-text">重新选择场上队长</text>
+        </view>
       </view>
     </view>
 
@@ -126,13 +140,27 @@
           </view>
         </view>
       </view>
-      <view
-        class="panel-captain-btn pressable {{teamBCaptainPickDisabled ? 'disabled' : ''}}"
-        hover-class="tap-active"
-        data-team="B"
-        bindtap="onCaptainPickTap"
-      >
-        <text class="panel-captain-btn-text">{{teamBCaptainBtnText}}</text>
+      <view class="panel-captain-actions">
+        <view
+          class="panel-captain-btn {{teamBCaptainPickDisabled ? 'disabled' : 'pressable'}}"
+          hover-class="{{teamBCaptainPickDisabled ? '' : 'tap-active'}}"
+          data-team="B"
+          bindtap="onCaptainPickTap"
+        >
+          <view class="panel-captain-btn-main">
+            <view wx:if="{{teamBShowCaptainCheck}}" class="panel-captain-check-icon"></view>
+            <text class="panel-captain-btn-text">{{teamBCaptainBtnText}}</text>
+          </view>
+        </view>
+        <view
+          wx:if="{{teamBShowCaptainRepick}}"
+          class="panel-captain-btn panel-captain-btn-secondary pressable"
+          hover-class="tap-active"
+          data-team="B"
+          bindtap="onCaptainRepickTap"
+        >
+          <text class="panel-captain-btn-text">重新选择场上队长</text>
+        </view>
       </view>
     </view>
   </view>
