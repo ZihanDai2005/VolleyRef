@@ -1,4 +1,4 @@
-import { getRoom, heartbeatRoom, verifyRoomPassword } from "../../utils/room-service";
+import { getRoomAsync, heartbeatRoomAsync, verifyRoomPasswordAsync } from "../../utils/room-service";
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
@@ -128,7 +128,7 @@ Page({
     };
   },
 
-  onJoinRoomSubmit() {
+  async onJoinRoomSubmit() {
     const clientId = getApp<IAppOption>().globalData.clientId;
     const roomId = this.data.joinRoomId.trim();
     const password = this.data.joinPassword.trim();
@@ -142,14 +142,14 @@ Page({
       return;
     }
 
-    const check = verifyRoomPassword(roomId, password);
+    const check = await verifyRoomPasswordAsync(roomId, password);
     if (!check.ok) {
       showBlockHint(check.message);
       return;
     }
 
-    heartbeatRoom(roomId, clientId);
-    const room = getRoom(roomId);
+    await heartbeatRoomAsync(roomId, clientId);
+    const room = await getRoomAsync(roomId);
     if (!room) {
       showBlockHint("房间不存在");
       return;

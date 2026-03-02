@@ -1,4 +1,4 @@
-import { getRoom, updateRoom, TEAM_COLOR_OPTIONS } from "../../utils/room-service";
+import { getRoomAsync, updateRoomAsync, TEAM_COLOR_OPTIONS } from "../../utils/room-service";
 import { showToastHint } from "../../utils/hint";
 import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
 import { computeLandscapeSafePad } from "../../utils/safe-pad";
@@ -366,12 +366,12 @@ Page({
     });
   },
 
-  loadRoom() {
+  async loadRoom() {
     const roomId = String(this.data.roomId || "");
     if (!roomId) {
       return;
     }
-    const room = getRoom(roomId);
+    const room = await getRoomAsync(roomId);
     if (!room) {
       wx.showModal({
         title: "房间已失效",
@@ -570,7 +570,7 @@ Page({
     );
   },
 
-  onContinueTap() {
+  async onContinueTap() {
     if (!this.data.teamACaptainResolved || !this.data.teamBCaptainResolved) {
       wx.showModal({
         title: "无法继续",
@@ -583,7 +583,7 @@ Page({
     this.setData({ continueBtnFx: true });
     const roomId = String(this.data.roomId || "");
     if (roomId) {
-      updateRoom(roomId, (room) => {
+      await updateRoomAsync(roomId, (room) => {
         room.teamA.players = this.data.teamAPlayers.slice();
         room.teamB.players = this.data.teamBPlayers.slice();
         (room.match as any).teamACurrentCaptainNo = this.data.teamACaptainNo;

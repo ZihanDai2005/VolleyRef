@@ -1,11 +1,10 @@
 import {
-  createRoom,
-  getRoom,
-  updateRoom,
-  heartbeatRoom,
-  getParticipantCount,
-  leaveRoom,
-  releaseRoomId,
+  createRoomAsync,
+  getRoomAsync,
+  updateRoomAsync,
+  heartbeatRoomAsync,
+  leaveRoomAsync,
+  releaseRoomIdAsync,
   TEAM_COLOR_OPTIONS,
 } from "../../utils/room-service";
 import { showBlockHint, showToastHint } from "../../utils/hint";
@@ -310,7 +309,7 @@ Page({
     if (this.data.createMode) {
       if (!this.data.createCommitted) {
         const clientId = getApp<IAppOption>().globalData.clientId;
-        releaseRoomId(this.data.roomId, clientId);
+        releaseRoomIdAsync(this.data.roomId, clientId);
       }
       if (this.captainPickerResolver) {
         this.captainPickerResolver(null);
@@ -320,7 +319,7 @@ Page({
     }
     const roomId = this.data.roomId;
     const clientId = getApp<IAppOption>().globalData.clientId;
-    leaveRoom(roomId, clientId);
+    leaveRoomAsync(roomId, clientId);
     if (this.captainPickerResolver) {
       this.captainPickerResolver(null);
       this.captainPickerResolver = null;
@@ -405,11 +404,11 @@ Page({
     this.pollTimer = 0;
   },
 
-  loadRoom(roomId: string, force: boolean) {
+  async loadRoom(roomId: string, force: boolean) {
     const clientId = getApp<IAppOption>().globalData.clientId;
-    heartbeatRoom(roomId, clientId);
+    await heartbeatRoomAsync(roomId, clientId);
 
-    const room = getRoom(roomId);
+    const room = await getRoomAsync(roomId);
     if (!room) {
       if (force) {
         this.handleRoomClosed();
@@ -423,7 +422,7 @@ Page({
     }
 
     if (!force && room.updatedAt === this.data.updatedAt) {
-      this.setData({ participantCount: getParticipantCount(roomId) });
+      this.setData({ participantCount: Object.keys((room as any).participants || {}).length });
       return;
     }
 
@@ -431,7 +430,7 @@ Page({
     const teamBPlayers = room.teamB.players;
     this.setData({
       roomIdSpaced: roomId.split("").join(" "),
-      participantCount: getParticipantCount(roomId),
+      participantCount: Object.keys((room as any).participants || {}).length,
       roomPassword: room.password,
       roomPasswordSpaced: String(room.password || "").split("").join(" "),
       matchModeIndex: getMatchModeIndexBySettings(
@@ -830,7 +829,7 @@ Page({
     const teamAPlayers = teamAPlayersArg || this.data.teamAPlayers;
     const teamBPlayers = teamBPlayersArg || this.data.teamBPlayers;
     const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
-    updateRoom(roomId, (room) => {
+    updateRoomAsync(roomId, (room) => {
       room.password = this.data.roomPassword.trim();
       room.settings = {
         sets: mode.sets,
@@ -853,7 +852,7 @@ Page({
       room.match.servingTeam = this.data.servingTeam;
       room.match.isSwapped = this.data.teamASide === "B";
       return room;
-    });
+    }).catch(() => {});
   },
 
   async onSaveAndStart() {
@@ -912,11 +911,11 @@ Page({
     }
 
     if (createMode) {
-      if (getRoom(roomId)) {
+      if (await getRoomAsync(roomId)) {
         showBlockHint("房间号已存在");
         return;
       }
-      const created = createRoom({
+      const created = await createRoomAsync({
         roomId: roomId,
         password: roomPassword,
         settings: {
@@ -934,7 +933,11 @@ Page({
         teamBColor: this.data.teamBColor,
         teamBPlayers: this.data.teamBPlayers.slice(),
       });
-      const nextCreated = updateRoom(created.roomId, (room) => {
+      if (!created) {
+        showBlockHint("创建失败");
+        return;
+      }
+      const nextCreated = await updateRoomAsync(created.roomId, (room) => {
         room.status = "match";
         room.match.servingTeam = this.data.servingTeam;
         room.match.isSwapped = this.data.teamASide === "B";
@@ -945,13 +948,13 @@ Page({
         return;
       }
       const clientId = getApp<IAppOption>().globalData.clientId;
-      releaseRoomId(created.roomId, clientId);
+      await releaseRoomIdAsync(created.roomId, clientId);
       this.setData({ createCommitted: true });
-      heartbeatRoom(created.roomId, clientId);
+      await heartbeatRoomAsync(created.roomId, clientId);
       wx.navigateTo({ url: "/pages/match/match?roomId=" + created.roomId });
       return;
     }
-    const next = updateRoom(roomId, (room) => {
+    const next = await updateRoomAsync(roomId, (room) => {
       room.status = editMode ? room.status : "match";
       room.password = roomPassword;
       room.settings = {

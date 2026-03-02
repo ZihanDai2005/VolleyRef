@@ -1,9 +1,8 @@
 import {
-  getRoom,
-  updateRoom,
-  heartbeatRoom,
-  getParticipantCount,
-  leaveRoom,
+  updateRoomAsync,
+  getRoomAsync,
+  heartbeatRoomAsync,
+  leaveRoomAsync,
   TEAM_COLOR_OPTIONS,
 } from "../../utils/room-service";
 import { showBlockHint, showToastHint } from "../../utils/hint";
@@ -370,7 +369,7 @@ Page({
     }
     const roomId = this.data.roomId;
     const clientId = getApp<IAppOption>().globalData.clientId;
-    leaveRoom(roomId, clientId);
+    leaveRoomAsync(roomId, clientId);
   },
 
   confirmBackToHome() {
@@ -776,10 +775,10 @@ Page({
     }, 340);
   },
 
-  loadRoom(roomId: string, force: boolean) {
+  async loadRoom(roomId: string, force: boolean) {
     const clientId = getApp<IAppOption>().globalData.clientId;
-    heartbeatRoom(roomId, clientId);
-    const room = getRoom(roomId);
+    await heartbeatRoomAsync(roomId, clientId);
+    const room = await getRoomAsync(roomId);
     if (!room) {
       if (force) {
         this.handleRoomClosed();
@@ -827,7 +826,7 @@ Page({
       title: "裁判团队编号 " + roomId,
     });
     this.setData({
-      participantCount: getParticipantCount(roomId),
+      participantCount: Object.keys((room as any).participants || {}).length,
       teamAName: room.teamA.name,
       teamBName: room.teamB.name,
       teamAColor: teamAColor,
@@ -913,7 +912,7 @@ Page({
     const beforeRotateNoMap = beforeRotateRects ? this.getTeamMainNumberMap(team) : null;
     const beforeRotateCaptain = beforeRotateRects ? (team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo) : "";
 
-    const next = updateRoom(roomId, (room) => {
+    const next = await updateRoomAsync(roomId, (room) => {
       if (room.match.isFinished) {
         return room;
       }
@@ -1117,19 +1116,24 @@ Page({
     const roomId = this.data.roomId;
     this.setData({ switchingOut: true, switchingIn: false });
     setTimeout(() => {
-      const next = updateRoom(roomId, (room) => {
+      updateRoomAsync(roomId, (room) => {
         pushUndoSnapshot(room);
         room.match.isSwapped = !room.match.isSwapped;
         appendMatchLog(room, "switch_sides", logNote);
         return room;
-      });
-      this.setData({ switchingOut: false, switchingIn: true });
-      if (next) {
-        this.loadRoom(roomId, true);
-      }
-      setTimeout(() => {
-        this.setData({ switchingIn: false });
-      }, 220);
+      })
+        .then((next) => {
+          this.setData({ switchingOut: false, switchingIn: true });
+          if (next) {
+            this.loadRoom(roomId, true);
+          }
+          setTimeout(() => {
+            this.setData({ switchingIn: false });
+          }, 220);
+        })
+        .catch(() => {
+          this.setData({ switchingOut: false, switchingIn: false });
+        });
     }, 150);
   },
 
@@ -1152,7 +1156,7 @@ Page({
     const beforeRotateRects = await this.measureTeamMainPosRectsStable(team, 1000);
     const beforeRotateNoMap = this.getTeamMainNumberMap(team);
     const beforeRotateCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
-    const next = updateRoom(roomId, (room) => {
+    const next = await updateRoomAsync(roomId, (room) => {
       pushUndoSnapshot(room);
       rotateTeamAndLog(room, team, "手动轮转");
       return room;
@@ -1165,9 +1169,9 @@ Page({
     await this.playTeamRotateMotion(team, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
   },
 
-  onResetScore() {
+  async onResetScore() {
     const roomId = this.data.roomId;
-    const next = updateRoom(roomId, (room) => {
+    const next = await updateRoomAsync(roomId, (room) => {
       pushUndoSnapshot(room);
       room.match.aScore = 0;
       room.match.bScore = 0;
@@ -1201,7 +1205,7 @@ Page({
     const beforeBNoMap = this.getTeamMainNumberMap("B");
     const beforeACaptain = this.data.teamACaptainNo;
     const beforeBCaptain = this.data.teamBCaptainNo;
-    const next = updateRoom(roomId, (room) => {
+    const next = await updateRoomAsync(roomId, (room) => {
       beforeAScore = room.match.aScore;
       beforeBScore = room.match.bScore;
       const stack = room.match.undoStack;

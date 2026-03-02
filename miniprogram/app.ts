@@ -4,6 +4,15 @@ App<IAppOption>({
     clientId: "",
   },
   onLaunch() {
+    if (wx.cloud) {
+      wx.cloud.init({
+        env: "cloudbase-2gckz40md6b7a105",
+        traceUser: true,
+      });
+    } else {
+      console.warn("当前基础库不支持云开发，请升级后重试。");
+    }
+
     const rawShowToast = wx.showToast.bind(wx);
     (wx as any).showToast = (options: WechatMiniprogram.ShowToastOption) => {
       return rawShowToast({

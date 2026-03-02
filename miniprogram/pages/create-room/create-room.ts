@@ -1,4 +1,4 @@
-import { isRoomIdBlocked, reserveRoomId } from "../../utils/room-service";
+import { isRoomIdBlockedAsync, reserveRoomIdAsync } from "../../utils/room-service";
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
@@ -40,25 +40,25 @@ Page({
     return Math.floor(100000 + Math.random() * 900000).toString();
   },
 
-  allocateRoomId(clientId: string): string {
+  async allocateRoomId(clientId: string): Promise<string> {
     let attempts = 0;
     while (attempts < 5000) {
       const roomId = this.generateRoomId();
       attempts += 1;
-      if (isRoomIdBlocked(roomId)) {
+      if (await isRoomIdBlockedAsync(roomId)) {
         continue;
       }
-      if (reserveRoomId(roomId, clientId)) {
+      if (await reserveRoomIdAsync(roomId, clientId)) {
         return roomId;
       }
     }
     return "";
   },
 
-  onCreateRoomSubmit() {
+  async onCreateRoomSubmit() {
     const clientId = getApp<IAppOption>().globalData.clientId;
 
-    const roomId = this.allocateRoomId(clientId);
+    const roomId = await this.allocateRoomId(clientId);
     if (!roomId) {
       showBlockHint("系统繁忙，请稍后重试");
       return;

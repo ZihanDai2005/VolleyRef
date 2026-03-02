@@ -78,11 +78,11 @@ interface RoomStore {
   [roomId: string]: RoomState;
 }
 
-const ROOMS_KEY = "volleyball.rooms.v1";
-const ROOM_LOCKS_KEY = "volleyball.roomLocks.v1";
 const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 20 * 1000;
 const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
+const CLOUD_PULL_INTERVAL_MS = 500;
+const ROOM_API_FUNCTION = "roomApi";
 const POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
 const DEFAULT_TEAM_A_COLOR = "#6C63BE";
 const DEFAULT_TEAM_B_COLOR = "#66B97A";
@@ -101,6 +101,40 @@ export const TEAM_COLOR_OPTIONS: Array<{ label: string; value: string }> = [
   { label: "红色", value: "#C95A5A" }
 ];
 
+const cloudPullingMap: Record<string, boolean> = {};
+const cloudPullAtMap: Record<string, number> = {};
+const roomMemoryStore: RoomStore = {};
+const roomLockMemoryStore: Record<string, { owner: string; ts: number }> = {};
+
+function canUseCloud(): boolean {
+  return !!(wx as any).cloud && typeof (wx as any).cloud.callFunction === "function";
+}
+
+function callRoomApi<T = any>(action: string, payload: Record<string, any>): Promise<T> {
+  if (!canUseCloud()) {
+    return Promise.reject(new Error("cloud-not-ready"));
+  }
+  return new Promise<T>((resolve, reject) => {
+    (wx as any).cloud
+      .callFunction({
+        name: ROOM_API_FUNCTION,
+        data: {
+          action: action,
+          ...payload,
+        },
+      })
+      .then((res: any) => {
+        const result = (res && res.result) || {};
+        if (result && result.ok === false) {
+          reject(new Error(String(result.message || "cloud-api-failed")));
+          return;
+        }
+        resolve(result as T);
+      })
+      .catch(reject);
+  });
+}
+
 function normalizeHexColor(color: unknown, fallback: string): string {
   const raw = String(color || "").trim().toUpperCase();
   if (!/^#[0-9A-F]{6}$/.test(raw)) {
@@ -117,15 +151,16 @@ function now(): number {
 }
 
 function saveStore(store: RoomStore): void {
-  wx.setStorageSync(ROOMS_KEY, store);
+  Object.keys(roomMemoryStore).forEach(function (roomId) {
+    delete roomMemoryStore[roomId];
+  });
+  Object.keys(store).forEach(function (roomId) {
+    roomMemoryStore[roomId] = cloneRoom(store[roomId]);
+  });
 }
 
 function loadRoomLocks(): Record<string, { owner: string; ts: number }> {
-  const raw = wx.getStorageSync(ROOM_LOCKS_KEY);
-  if (!raw || typeof raw !== "object") {
-    return {};
-  }
-  const input = raw as Record<string, { owner?: string; ts?: number }>;
+  const input = roomLockMemoryStore as Record<string, { owner?: string; ts?: number }>;
   const output: Record<string, { owner: string; ts: number }> = {};
   const nowTs = now();
   Object.keys(input).forEach(function (roomId) {
@@ -144,7 +179,15 @@ function loadRoomLocks(): Record<string, { owner: string; ts: number }> {
 }
 
 function saveRoomLocks(locks: Record<string, { owner: string; ts: number }>): void {
-  wx.setStorageSync(ROOM_LOCKS_KEY, locks);
+  Object.keys(roomLockMemoryStore).forEach(function (roomId) {
+    delete roomLockMemoryStore[roomId];
+  });
+  Object.keys(locks).forEach(function (roomId) {
+    roomLockMemoryStore[roomId] = {
+      owner: String(locks[roomId].owner || ""),
+      ts: Number(locks[roomId].ts || 0),
+    };
+  });
 }
 
 function randomRoomId(): string {
@@ -368,19 +411,60 @@ function cleanupExpiredRooms(store: RoomStore): boolean {
 }
 
 function getStore(): RoomStore {
-  const raw = wx.getStorageSync(ROOMS_KEY);
-  if (!raw || typeof raw !== "object") {
-    return {};
-  }
-  const source = raw as Record<string, unknown>;
   const store: RoomStore = {};
-  Object.keys(source).forEach(function (roomId) {
-    store[roomId] = normalizeRoom(roomId, source[roomId]);
+  Object.keys(roomMemoryStore).forEach(function (roomId) {
+    store[roomId] = normalizeRoom(roomId, roomMemoryStore[roomId]);
   });
   if (cleanupExpiredRooms(store)) {
     saveStore(store);
   }
   return store;
+}
+
+function saveRoomToStore(room: RoomState): void {
+  const store = getStore();
+  store[room.roomId] = normalizeRoom(room.roomId, room);
+  saveStore(store);
+}
+
+function saveCloudRoomRaw(raw: any): RoomState {
+  const roomId = String(raw && raw.roomId ? raw.roomId : raw && raw._id ? raw._id : "");
+  const room = normalizeRoom(roomId, raw || {});
+  saveRoomToStore(room);
+  return room;
+}
+
+function cloudPullRoom(roomId: string): void {
+  if (!canUseCloud() || !roomId) {
+    return;
+  }
+  if (cloudPullingMap[roomId]) {
+    return;
+  }
+  const nowTs = now();
+  const last = cloudPullAtMap[roomId] || 0;
+  if (nowTs - last < CLOUD_PULL_INTERVAL_MS) {
+    return;
+  }
+  cloudPullAtMap[roomId] = nowTs;
+  cloudPullingMap[roomId] = true;
+  callRoomApi<{ room?: any }>("getRoom", { roomId: roomId })
+    .then((res) => {
+      if (res && res.room) {
+        saveCloudRoomRaw(res.room);
+      }
+    })
+    .catch(() => {})
+    .finally(() => {
+      cloudPullingMap[roomId] = false;
+    });
+}
+
+function cloudUpsertRoom(room: RoomState): void {
+  if (!canUseCloud() || !room || !room.roomId) {
+    return;
+  }
+  callRoomApi("upsertRoom", { room: room }).catch(() => {});
 }
 
 export function createInitialPlayers(): PlayerSlot[] {
@@ -453,11 +537,15 @@ export function createRoom(input: {
 
   store[roomId] = room;
   saveStore(store);
+  cloudUpsertRoom(room);
   return cloneRoom(room);
 }
 
 export function getRoom(roomId: string): RoomState | null {
   const room = getStore()[roomId];
+  if (roomId) {
+    cloudPullRoom(roomId);
+  }
   return room ? cloneRoom(room) : null;
 }
 
@@ -492,6 +580,7 @@ export function reserveRoomId(roomId: string, ownerId: string): boolean {
     ts: now(),
   };
   saveRoomLocks(locks);
+  callRoomApi("reserveRoomId", { roomId: id, ownerId: owner }).catch(() => {});
   return true;
 }
 
@@ -511,18 +600,22 @@ export function releaseRoomId(roomId: string, ownerId?: string): void {
   }
   delete locks[id];
   saveRoomLocks(locks);
+  callRoomApi("releaseRoomId", { roomId: id, ownerId: owner }).catch(() => {});
 }
 
 export function getParticipantCount(roomId: string): number {
   const room = getStore()[roomId];
   if (!room) {
+    cloudPullRoom(roomId);
     return 0;
   }
+  cloudPullRoom(roomId);
   return Object.keys(room.participants).length;
 }
 
 export function verifyRoomPassword(roomId: string, password: string): { ok: boolean; message: string } {
   const room = getStore()[roomId];
+  cloudPullRoom(roomId);
   if (!room) {
     return { ok: false, message: "房间不存在，请确认是否有误，或确认其他裁判已经完成团队设置" };
   }
@@ -543,6 +636,13 @@ export function heartbeatRoom(roomId: string, clientId: string): number {
   cleanupRoomParticipants(room);
   store[roomId] = room;
   saveStore(store);
+  callRoomApi<{ room?: any }>("heartbeatRoom", { roomId: roomId, clientId: clientId })
+    .then((res) => {
+      if (res && res.room) {
+        saveCloudRoomRaw(res.room);
+      }
+    })
+    .catch(() => {});
   return Object.keys(room.participants).length;
 }
 
@@ -558,6 +658,13 @@ export function leaveRoom(roomId: string, clientId: string): void {
     store[roomId] = room;
     saveStore(store);
   }
+  callRoomApi<{ room?: any }>("leaveRoom", { roomId: roomId, clientId: clientId })
+    .then((res) => {
+      if (res && res.room) {
+        saveCloudRoomRaw(res.room);
+      }
+    })
+    .catch(() => {});
 }
 
 export function updateRoom(
@@ -573,5 +680,163 @@ export function updateRoom(
   next.updatedAt = now();
   store[roomId] = next;
   saveStore(store);
+  cloudUpsertRoom(next);
   return cloneRoom(next);
+}
+
+export async function isRoomIdBlockedAsync(roomId: string): Promise<boolean> {
+  try {
+    const res = await callRoomApi<{ blocked: boolean }>("isRoomIdBlocked", { roomId: roomId });
+    return !!(res && res.blocked);
+  } catch (e) {
+    return false;
+  }
+}
+
+export async function reserveRoomIdAsync(roomId: string, ownerId: string): Promise<boolean> {
+  try {
+    const res = await callRoomApi<{ ok: boolean; reserved: boolean }>("reserveRoomId", {
+      roomId: roomId,
+      ownerId: ownerId,
+    });
+    return !!(res && (res as any).reserved);
+  } catch (e) {
+    return false;
+  }
+}
+
+export async function releaseRoomIdAsync(roomId: string, ownerId?: string): Promise<void> {
+  try {
+    await callRoomApi("releaseRoomId", { roomId: roomId, ownerId: String(ownerId || "") });
+  } catch (e) {}
+}
+
+export async function createRoomAsync(input: {
+  roomId?: string;
+  password: string;
+  settings: MatchSettings;
+  teamAName: string;
+  teamBName: string;
+  teamACaptainNo?: string;
+  teamBCaptainNo?: string;
+  teamAColor?: string;
+  teamBColor?: string;
+  teamAPlayers: PlayerSlot[];
+  teamBPlayers: PlayerSlot[];
+}): Promise<RoomState | null> {
+  const roomId = String(input.roomId || randomRoomId());
+  const room = createDefaultRoom(roomId);
+  room.password = String(input.password || "");
+  room.settings = {
+    sets: Number(input.settings.sets) || 5,
+    wins: Number(input.settings.wins) || 3,
+    maxScore: Number(input.settings.maxScore) || 25,
+    tiebreakScore: Number(input.settings.tiebreakScore) || 15,
+  };
+  room.teamA = {
+    name: input.teamAName || "甲",
+    captainNo: String(input.teamACaptainNo || ""),
+    color: normalizeHexColor(input.teamAColor, DEFAULT_TEAM_A_COLOR),
+    players: normalizePlayers(input.teamAPlayers),
+  };
+  room.teamB = {
+    name: input.teamBName || "乙",
+    captainNo: String(input.teamBCaptainNo || ""),
+    color: normalizeHexColor(input.teamBColor, DEFAULT_TEAM_B_COLOR),
+    players: normalizePlayers(input.teamBPlayers),
+  };
+  room.match.teamACurrentCaptainNo = room.teamA.captainNo;
+  room.match.teamBCurrentCaptainNo = room.teamB.captainNo;
+  if (room.teamA.color === room.teamB.color) {
+    room.teamB.color = DEFAULT_TEAM_B_COLOR;
+    if (room.teamA.color === room.teamB.color) {
+      room.teamB.color = TEAM_COLOR_OPTIONS[2].value;
+    }
+  }
+  try {
+    const res = await callRoomApi<{ room?: any }>("createRoom", { room: room });
+    if (res && res.room) {
+      return cloneRoom(saveCloudRoomRaw(res.room));
+    }
+  } catch (e) {}
+  return null;
+}
+
+export async function getRoomAsync(roomId: string): Promise<RoomState | null> {
+  try {
+    const res = await callRoomApi<{ room?: any }>("getRoom", { roomId: roomId });
+    if (res && res.room) {
+      return cloneRoom(saveCloudRoomRaw(res.room));
+    }
+  } catch (e) {}
+  return null;
+}
+
+export async function verifyRoomPasswordAsync(
+  roomId: string,
+  password: string
+): Promise<{ ok: boolean; message: string }> {
+  try {
+    const res = await callRoomApi<{ ok: boolean; message: string; room?: any }>("verifyRoomPassword", {
+      roomId: roomId,
+      password: password,
+    });
+    if (res && (res as any).room) {
+      saveCloudRoomRaw((res as any).room);
+    }
+    return {
+      ok: !!(res && res.ok),
+      message: String((res && res.message) || (res && res.ok ? "ok" : "校验失败")),
+    };
+  } catch (e) {
+    return {
+      ok: false,
+      message: "网络异常，请稍后重试",
+    };
+  }
+}
+
+export async function heartbeatRoomAsync(roomId: string, clientId: string): Promise<number> {
+  try {
+    const res = await callRoomApi<{ room?: any; participantCount?: number }>("heartbeatRoom", {
+      roomId: roomId,
+      clientId: clientId,
+    });
+    if (res && res.room) {
+      const room = saveCloudRoomRaw(res.room);
+      return Object.keys(room.participants).length;
+    }
+    if (res && typeof res.participantCount === "number") {
+      return res.participantCount;
+    }
+  } catch (e) {}
+  return 0;
+}
+
+export async function leaveRoomAsync(roomId: string, clientId: string): Promise<void> {
+  try {
+    const res = await callRoomApi<{ room?: any }>("leaveRoom", { roomId: roomId, clientId: clientId });
+    if (res && res.room) {
+      saveCloudRoomRaw(res.room);
+    }
+  } catch (e) {}
+}
+
+export async function updateRoomAsync(
+  roomId: string,
+  updater: (room: RoomState) => RoomState
+): Promise<RoomState | null> {
+  const baseRoom = await getRoomAsync(roomId);
+  if (!baseRoom) {
+    return null;
+  }
+  const next = normalizeRoom(roomId, updater(cloneRoom(baseRoom)));
+  next.updatedAt = now();
+  try {
+    const res = await callRoomApi<{ room?: any }>("upsertRoom", { room: next });
+    if (res && res.room) {
+      return cloneRoom(saveCloudRoomRaw(res.room));
+    }
+  } catch (e) {}
+  return null;
 }
