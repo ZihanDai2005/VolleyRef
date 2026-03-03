@@ -689,23 +689,29 @@ export async function isRoomIdBlockedAsync(roomId: string): Promise<boolean> {
     const res = await callRoomApi<{ blocked: boolean }>("isRoomIdBlocked", { roomId: roomId });
     return !!(res && res.blocked);
   } catch (e) {
-    return false;
+    return isRoomIdBlocked(roomId);
   }
 }
 
 export async function reserveRoomIdAsync(roomId: string, ownerId: string): Promise<boolean> {
+  const localReserved = reserveRoomId(roomId, ownerId);
   try {
     const res = await callRoomApi<{ ok: boolean; reserved: boolean }>("reserveRoomId", {
       roomId: roomId,
       ownerId: ownerId,
     });
-    return !!(res && (res as any).reserved);
+    const reserved = !!(res && (res as any).reserved);
+    if (!reserved && localReserved) {
+      releaseRoomId(roomId, ownerId);
+    }
+    return reserved;
   } catch (e) {
-    return false;
+    return localReserved;
   }
 }
 
 export async function releaseRoomIdAsync(roomId: string, ownerId?: string): Promise<void> {
+  releaseRoomId(roomId, ownerId);
   try {
     await callRoomApi("releaseRoomId", { roomId: roomId, ownerId: String(ownerId || "") });
   } catch (e) {}

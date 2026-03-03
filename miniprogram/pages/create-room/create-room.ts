@@ -8,6 +8,7 @@ Page({
     joinBtnFx: false,
   },
   themeOff: null as null | (() => void),
+  creating: false as boolean,
 
   onLoad() {
     this.applyNavigationTheme();
@@ -40,33 +41,55 @@ Page({
     return Math.floor(100000 + Math.random() * 900000).toString();
   },
 
+  async reserveWithTimeout(roomId: string, clientId: string, timeoutMs = 2000): Promise<boolean> {
+    try {
+      const result = await Promise.race<boolean>([
+        reserveRoomIdAsync(roomId, clientId),
+        new Promise<boolean>((resolve) => setTimeout(() => resolve(false), timeoutMs)),
+      ]);
+      return !!result;
+    } catch (e) {
+      return false;
+    }
+  },
+
   async allocateRoomId(clientId: string): Promise<string> {
+    const deadline = Date.now() + 12000;
     let attempts = 0;
-    while (attempts < 5000) {
+    while (attempts < 120 && Date.now() < deadline) {
       const roomId = this.generateRoomId();
       attempts += 1;
+      if (await this.reserveWithTimeout(roomId, clientId)) {
+        return roomId;
+      }
+      // Only do an extra blocked check when reserve failed, to avoid doubled request cost.
       if (await isRoomIdBlockedAsync(roomId)) {
         continue;
-      }
-      if (await reserveRoomIdAsync(roomId, clientId)) {
-        return roomId;
       }
     }
     return "";
   },
 
   async onCreateRoomSubmit() {
-    const clientId = getApp<IAppOption>().globalData.clientId;
-
-    const roomId = await this.allocateRoomId(clientId);
-    if (!roomId) {
-      showBlockHint("系统繁忙，请稍后重试");
+    if (this.creating) {
       return;
     }
-
-    wx.navigateTo({
-      url: "/pages/room/room?roomId=" + roomId + "&create=1",
-    });
+    this.creating = true;
+    wx.showLoading({ title: "初始化中", mask: true });
+    const clientId = getApp<IAppOption>().globalData.clientId;
+    try {
+      const roomId = await this.allocateRoomId(clientId);
+      if (!roomId) {
+        showBlockHint("系统繁忙，请重试");
+        return;
+      }
+      wx.navigateTo({
+        url: "/pages/room/room?roomId=" + roomId + "&create=1",
+      });
+    } finally {
+      this.creating = false;
+      wx.hideLoading();
+    }
   },
 
   onCreateEntryTap() {
