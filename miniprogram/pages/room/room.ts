@@ -235,6 +235,7 @@ Page({
   },
 
   pollTimer: 0 as number,
+  heartbeatTimer: 0 as number,
   themeOff: null as null | (() => void),
   captainPickerResolver: null as null | ((value: string | null) => void),
 
@@ -293,11 +294,13 @@ Page({
     if (this.data.createMode) {
       return;
     }
+    this.startHeartbeat();
     this.startPolling();
   },
 
   onHide() {
     this.stopPolling();
+    this.stopHeartbeat();
   },
 
   onUnload() {
@@ -306,6 +309,7 @@ Page({
       this.themeOff = null;
     }
     this.stopPolling();
+    this.stopHeartbeat();
     if (this.data.createMode) {
       if (!this.data.createCommitted) {
         const clientId = getApp<IAppOption>().globalData.clientId;
@@ -404,15 +408,48 @@ Page({
     this.pollTimer = 0;
   },
 
-  async loadRoom(roomId: string, force: boolean) {
-    const clientId = getApp<IAppOption>().globalData.clientId;
-    await heartbeatRoomAsync(roomId, clientId);
+  startHeartbeat() {
+    this.stopHeartbeat();
+    this.sendHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      this.sendHeartbeat();
+    }, 5000) as unknown as number;
+  },
 
+  stopHeartbeat() {
+    if (!this.heartbeatTimer) {
+      return;
+    }
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = 0;
+  },
+
+  sendHeartbeat() {
+    const roomId = this.data.roomId;
+    if (!roomId) {
+      return;
+    }
+    const clientId = getApp<IAppOption>().globalData.clientId;
+    heartbeatRoomAsync(roomId, clientId)
+      .then((count) => {
+        if (typeof count === "number" && count > 0 && count !== this.data.participantCount) {
+          this.setData({ participantCount: count });
+        }
+      })
+      .catch(() => {});
+  },
+
+  async loadRoom(roomId: string, force: boolean) {
     const room = await getRoomAsync(roomId);
     if (!room) {
       if (force) {
         this.handleRoomClosed();
       }
+      return;
+    }
+    const currentUpdatedAt = Number(this.data.updatedAt || 0);
+    const incomingUpdatedAt = Number(room.updatedAt || 0);
+    if (!force && incomingUpdatedAt < currentUpdatedAt) {
       return;
     }
 
@@ -421,7 +458,7 @@ Page({
       return;
     }
 
-    if (!force && room.updatedAt === this.data.updatedAt) {
+    if (!force && incomingUpdatedAt === currentUpdatedAt) {
       this.setData({ participantCount: Object.keys((room as any).participants || {}).length });
       return;
     }

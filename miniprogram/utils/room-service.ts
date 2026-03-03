@@ -65,6 +65,7 @@ export interface RoomState {
   roomId: string;
   password: string;
   status: "setup" | "match";
+  syncVersion: number;
   settings: MatchSettings;
   teamA: TeamState;
   teamB: TeamState;
@@ -204,6 +205,7 @@ function createDefaultRoom(roomId: string): RoomState {
     roomId: roomId,
     password: "",
     status: "setup",
+    syncVersion: 1,
     settings: {
       sets: 5,
       wins: 3,
@@ -282,6 +284,7 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
 
   base.password = String((input as any).password || "");
   base.status = input.status === "match" ? "match" : "setup";
+  base.syncVersion = Math.max(1, Number((input as any).syncVersion) || 1);
   base.settings.sets = Number(input.settings && input.settings.sets) || 5;
   base.settings.wins = Number(input.settings && input.settings.wins) || 3;
   base.settings.maxScore = Number(input.settings && input.settings.maxScore) || 25;
@@ -430,6 +433,17 @@ function saveRoomToStore(room: RoomState): void {
 function saveCloudRoomRaw(raw: any): RoomState {
   const roomId = String(raw && raw.roomId ? raw.roomId : raw && raw._id ? raw._id : "");
   const room = normalizeRoom(roomId, raw || {});
+  const current = getStore()[roomId];
+  if (current) {
+    const currentVersion = Math.max(1, Number((current as any).syncVersion) || 1);
+    const nextVersion = Math.max(1, Number((room as any).syncVersion) || 1);
+    if (nextVersion < currentVersion) {
+      return cloneRoom(current);
+    }
+    if (nextVersion === currentVersion && Number(room.updatedAt || 0) < Number(current.updatedAt || 0)) {
+      return cloneRoom(current);
+    }
+  }
   saveRoomToStore(room);
   return room;
 }
@@ -677,6 +691,7 @@ export function updateRoom(
     return null;
   }
   const next = normalizeRoom(roomId, updater(cloneRoom(current)));
+  next.syncVersion = Math.max(1, Number((current as any).syncVersion) || 1) + 1;
   next.updatedAt = now();
   store[roomId] = next;
   saveStore(store);
@@ -769,13 +784,27 @@ export async function createRoomAsync(input: {
 }
 
 export async function getRoomAsync(roomId: string): Promise<RoomState | null> {
+  const local = getRoom(roomId);
+  if (local) {
+    void callRoomApi<{ room?: any }>("getRoom", { roomId: roomId })
+      .then((res) => {
+        if (res && res.room) {
+          saveCloudRoomRaw(res.room);
+        }
+      })
+      .catch(() => {});
+    return local;
+  }
   try {
-    const res = await callRoomApi<{ room?: any }>("getRoom", { roomId: roomId });
+    const res = await Promise.race([
+      callRoomApi<{ room?: any }>("getRoom", { roomId: roomId }),
+      new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
+    ]);
     if (res && res.room) {
       return cloneRoom(saveCloudRoomRaw(res.room));
     }
   } catch (e) {}
-  return null;
+  return local;
 }
 
 export async function verifyRoomPasswordAsync(
@@ -795,54 +824,85 @@ export async function verifyRoomPasswordAsync(
       message: String((res && res.message) || (res && res.ok ? "ok" : "校验失败")),
     };
   } catch (e) {
-    return {
-      ok: false,
-      message: "网络异常，请稍后重试",
-    };
+    const msg = String((e as any)?.message || "");
+    if (msg) {
+      return { ok: false, message: msg };
+    }
+    return verifyRoomPassword(roomId, password);
   }
 }
 
 export async function heartbeatRoomAsync(roomId: string, clientId: string): Promise<number> {
-  try {
-    const res = await callRoomApi<{ room?: any; participantCount?: number }>("heartbeatRoom", {
-      roomId: roomId,
-      clientId: clientId,
-    });
-    if (res && res.room) {
-      const room = saveCloudRoomRaw(res.room);
-      return Object.keys(room.participants).length;
-    }
-    if (res && typeof res.participantCount === "number") {
-      return res.participantCount;
-    }
-  } catch (e) {}
-  return 0;
+  const local = heartbeatRoom(roomId, clientId);
+  void callRoomApi<{ room?: any; participantCount?: number }>("heartbeatRoom", {
+    roomId: roomId,
+    clientId: clientId,
+  })
+    .then((res) => {
+      if (res && res.room) {
+        saveCloudRoomRaw(res.room);
+      }
+    })
+    .catch(() => {});
+  return local;
 }
 
 export async function leaveRoomAsync(roomId: string, clientId: string): Promise<void> {
-  try {
-    const res = await callRoomApi<{ room?: any }>("leaveRoom", { roomId: roomId, clientId: clientId });
-    if (res && res.room) {
-      saveCloudRoomRaw(res.room);
-    }
-  } catch (e) {}
+  leaveRoom(roomId, clientId);
+  void callRoomApi<{ room?: any }>("leaveRoom", { roomId: roomId, clientId: clientId })
+    .then((res) => {
+      if (res && res.room) {
+        saveCloudRoomRaw(res.room);
+      }
+    })
+    .catch(() => {});
 }
 
 export async function updateRoomAsync(
   roomId: string,
   updater: (room: RoomState) => RoomState
 ): Promise<RoomState | null> {
-  const baseRoom = await getRoomAsync(roomId);
+  let baseRoom = getRoom(roomId);
+  try {
+    if (!baseRoom) {
+      const remote = await getRoomAsync(roomId);
+      if (remote) {
+        baseRoom = remote;
+      }
+    }
+  } catch (e) {}
   if (!baseRoom) {
     return null;
   }
   const next = normalizeRoom(roomId, updater(cloneRoom(baseRoom)));
+  next.syncVersion = Math.max(1, Number((baseRoom as any).syncVersion) || 1) + 1;
   next.updatedAt = now();
+  saveRoomToStore(next);
+
+  void callRoomApi<{ room?: any }>("upsertRoom", { room: next })
+    .then((res) => {
+      if (res && res.room) {
+        saveCloudRoomRaw(res.room);
+      }
+    })
+    .catch(() => {});
+  return cloneRoom(next);
+}
+
+export async function getParticipantCountAsync(roomId: string): Promise<number> {
+  const room = await getRoomAsync(roomId);
+  if (!room) {
+    return 0;
+  }
+  return Object.keys(room.participants || {}).length;
+}
+
+export async function forcePullRoomAsync(roomId: string): Promise<RoomState | null> {
   try {
-    const res = await callRoomApi<{ room?: any }>("upsertRoom", { room: next });
+    const res = await callRoomApi<{ room?: any }>("getRoom", { roomId: roomId });
     if (res && res.room) {
       return cloneRoom(saveCloudRoomRaw(res.room));
     }
   } catch (e) {}
-  return null;
+  return getRoom(roomId);
 }

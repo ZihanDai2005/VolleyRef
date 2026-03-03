@@ -34,6 +34,10 @@ type RotateFlyItem = {
   isCaptain: boolean;
   style: string;
 };
+type RotateStep = {
+  team: TeamCode;
+  reverse: boolean;
+};
 
 const ALL_POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
 const MAIN_POSITIONS: MainPosition[] = ["I", "II", "III", "IV", "V", "VI"];
@@ -137,6 +141,87 @@ function formatLogTime(ts: number): string {
   return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
 }
 
+function clonePlayerList(players: PlayerSlot[]): PlayerSlot[] {
+  return (players || []).map(function (item) {
+    return { pos: item.pos, number: item.number };
+  });
+}
+
+function rotateTeamReverseByRule(players: PlayerSlot[]): PlayerSlot[] {
+  const byPos: Record<string, PlayerSlot> = {};
+  players.forEach(function (p) {
+    byPos[p.pos] = p;
+  });
+  const reverseSourceMap: Record<Position, Position> = {
+    I: "VI",
+    II: "I",
+    III: "II",
+    IV: "III",
+    V: "IV",
+    VI: "V",
+    L1: "L1",
+    L2: "L2",
+  };
+  return ALL_POSITIONS.map(function (pos) {
+    const sourcePos = reverseSourceMap[pos];
+    const source = byPos[sourcePos];
+    return {
+      pos: pos,
+      number: source ? source.number : "?",
+    };
+  });
+}
+
+function buildRotateReplayQueue(logs: MatchLogItem[], lastSeenLogId: string): RotateStep[] {
+  if (!Array.isArray(logs) || logs.length === 0) {
+    return [];
+  }
+  if (!lastSeenLogId) {
+    return [];
+  }
+  const idx = logs.findIndex(function (item) {
+    return String(item.id || "") === lastSeenLogId;
+  });
+  if (idx < 0) {
+    return [];
+  }
+  return logs
+    .slice(idx + 1)
+    .filter(function (item) {
+      return item.action === "rotate" && (item.team === "A" || item.team === "B");
+    })
+    .map(function (item): RotateStep {
+      return { team: item.team as TeamCode, reverse: false };
+    });
+}
+
+function buildRotateStepsByDiff(beforePlayers: PlayerSlot[], afterPlayers: PlayerSlot[], team: TeamCode): RotateStep[] {
+  const before = clonePlayerList(beforePlayers || []);
+  const after = clonePlayerList(afterPlayers || []);
+  if (!isMainMapChanged(before, after)) {
+    return [];
+  }
+  let temp = clonePlayerList(before);
+  for (let i = 1; i <= 5; i += 1) {
+    temp = rotateTeamByRule(temp);
+    if (!isMainMapChanged(temp, after)) {
+      return Array.from({ length: i }).map(function (): RotateStep {
+        return { team: team, reverse: false };
+      });
+    }
+  }
+  temp = clonePlayerList(before);
+  for (let i = 1; i <= 5; i += 1) {
+    temp = rotateTeamReverseByRule(temp);
+    if (!isMainMapChanged(temp, after)) {
+      return Array.from({ length: i }).map(function (): RotateStep {
+        return { team: team, reverse: true };
+      });
+    }
+  }
+  return [];
+}
+
 function appendMatchLog(room: any, action: string, note: string, team?: TeamCode): void {
   if (!room.match.logs) {
     room.match.logs = [];
@@ -214,6 +299,12 @@ function isOneStepRotationBetween(beforePlayers: PlayerSlot[], afterPlayers: Pla
   const before = buildMainMap(beforePlayers || []);
   const after = buildMainMap(afterPlayers || []);
   return sameMainMap(after, rotateMainMapOnce(before)) || sameMainMap(before, rotateMainMapOnce(after));
+}
+
+function isMainMapChanged(beforePlayers: PlayerSlot[], afterPlayers: PlayerSlot[]): boolean {
+  const before = buildMainMap(beforePlayers || []);
+  const after = buildMainMap(afterPlayers || []);
+  return !sameMainMap(before, after);
 }
 
 function hexToRgbTriplet(hex: string): string {
@@ -304,11 +395,16 @@ Page({
   },
 
   pollTimer: 0 as number,
+  heartbeatTimer: 0 as number,
   timerTick: 0 as number,
   timerStartAtMs: 0 as number,
   timerElapsedBaseMs: 0 as number,
   lastRenderedTimerText: "00:00",
   themeOff: null as null | (() => void),
+  roomLoadInFlight: false as boolean,
+  roomLoadPending: false as boolean,
+  roomLoadPendingForce: false as boolean,
+  lastSeenLogId: "" as string,
 
   onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
@@ -348,12 +444,14 @@ Page({
       this.syncSafePadding();
     }, 260);
     this.applyNavigationTheme();
+    this.startHeartbeat();
     this.startTimerTick();
     this.startPolling();
   },
 
   onHide() {
     this.stopPolling();
+    this.stopHeartbeat();
     this.stopTimerTick();
   },
 
@@ -363,6 +461,7 @@ Page({
       this.themeOff = null;
     }
     this.stopPolling();
+    this.stopHeartbeat();
     this.stopTimerTick();
     if ((wx as any).offWindowResize) {
       (wx as any).offWindowResize(this.onWindowResize);
@@ -503,6 +602,37 @@ Page({
     }
     clearInterval(this.pollTimer);
     this.pollTimer = 0;
+  },
+
+  startHeartbeat() {
+    this.stopHeartbeat();
+    this.sendHeartbeat();
+    this.heartbeatTimer = setInterval(() => {
+      this.sendHeartbeat();
+    }, 5000) as unknown as number;
+  },
+
+  stopHeartbeat() {
+    if (!this.heartbeatTimer) {
+      return;
+    }
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = 0;
+  },
+
+  sendHeartbeat() {
+    const roomId = this.data.roomId;
+    if (!roomId) {
+      return;
+    }
+    const clientId = getApp<IAppOption>().globalData.clientId;
+    heartbeatRoomAsync(roomId, clientId)
+      .then((count) => {
+        if (typeof count === "number" && count > 0 && count !== this.data.participantCount) {
+          this.setData({ participantCount: count });
+        }
+      })
+      .catch(() => {});
   },
 
   startTimerTick() {
@@ -776,103 +906,205 @@ Page({
   },
 
   async loadRoom(roomId: string, force: boolean) {
-    const clientId = getApp<IAppOption>().globalData.clientId;
-    await heartbeatRoomAsync(roomId, clientId);
-    const room = await getRoomAsync(roomId);
-    if (!room) {
-      if (force) {
-        this.handleRoomClosed();
+    if (this.roomLoadInFlight) {
+      this.roomLoadPending = true;
+      this.roomLoadPendingForce = this.roomLoadPendingForce || force;
+      return;
+    }
+    this.roomLoadInFlight = true;
+    try {
+      const room = await getRoomAsync(roomId);
+      if (!room) {
+        if (force) {
+          this.handleRoomClosed();
+        }
+        return;
       }
-      return;
-    }
-    if (room.status === "setup") {
-      wx.redirectTo({ url: "/pages/room/room?roomId=" + roomId });
-      return;
-    }
-    if (!force && room.updatedAt === this.data.updatedAt) {
-      return;
-    }
+      const currentUpdatedAt = Number(this.data.updatedAt || 0);
+      const incomingUpdatedAt = Number(room.updatedAt || 0);
+      if (!force && incomingUpdatedAt < currentUpdatedAt) {
+        return;
+      }
+      if (room.status === "setup") {
+        wx.redirectTo({ url: "/pages/room/room?roomId=" + roomId });
+        return;
+      }
+      if (!force && incomingUpdatedAt === currentUpdatedAt) {
+        return;
+      }
+      const incomingLogs = Array.isArray(room.match.logs) ? (room.match.logs as MatchLogItem[]) : [];
+      const latestLogId = incomingLogs.length
+        ? String(incomingLogs[incomingLogs.length - 1].id || "")
+        : "";
+      const prevAPlayers = this.data.teamAPlayers || [];
+      const prevBPlayers = this.data.teamBPlayers || [];
+      const shouldAutoAnimate = !force && this.data.updatedAt > 0 && prevAPlayers.length > 0 && prevBPlayers.length > 0;
 
-    const nextSwapped = !!room.match.isSwapped;
-    const teamASide: TeamCode = nextSwapped ? "B" : "A";
-    const aRows = buildTeamRows(room.teamA.players);
-    const bRows = buildTeamRows(room.teamB.players);
-    const aMainGrid = buildMainGridByOrder(room.teamA.players, getMainOrderForTeam("A", teamASide));
-    const bMainGrid = buildMainGridByOrder(room.teamB.players, getMainOrderForTeam("B", teamASide));
-    const teamAColor = room.teamA.color || TEAM_COLOR_OPTIONS[0].value;
-    const teamBColor = room.teamB.color || TEAM_COLOR_OPTIONS[1].value;
-    const leftTeam: TeamCode = nextSwapped ? "B" : "A";
-    const rightTeam: TeamCode = leftTeam === "A" ? "B" : "A";
-    const leftScore = leftTeam === "A" ? room.match.aScore : room.match.bScore;
-    const rightScore = rightTeam === "A" ? room.match.aScore : room.match.bScore;
-    const leftSetWins = nextSwapped ? room.match.bSetWins : room.match.aSetWins;
-    const rightSetWins = nextSwapped ? room.match.aSetWins : room.match.bSetWins;
-    const displayLastScoringTeam: TeamCode | "" =
-      room.match.lastScoringTeam === leftTeam
-        ? "A"
-        : room.match.lastScoringTeam === rightTeam
-          ? "B"
-          : "";
-    const setNoText = room.match.isFinished ? "已结束" : "第" + String(room.match.setNo || 1) + "局";
-    const setWinsText = String(leftSetWins || 0) + " : " + String(rightSetWins || 0);
-    const timerStartAt = Number((room.match as any).setTimerStartAt) || 0;
-    const timerElapsedMs = Number((room.match as any).setTimerElapsedMs) || 0;
-    this.timerStartAtMs = timerStartAt;
-    this.timerElapsedBaseMs = timerElapsedMs;
-    const liveTimerMs = timerStartAt > 0 ? timerElapsedMs + (Date.now() - timerStartAt) : timerElapsedMs;
-    const timerText = formatDurationMMSS(liveTimerMs);
-    this.lastRenderedTimerText = timerText;
-    wx.setNavigationBarTitle({
-      title: "裁判团队编号 " + roomId,
-    });
-    this.setData({
-      participantCount: Object.keys((room as any).participants || {}).length,
-      teamAName: room.teamA.name,
-      teamBName: room.teamB.name,
-      teamAColor: teamAColor,
-      teamBColor: teamBColor,
-      roomPassword: String(room.password || ""),
-      teamACaptainNo: normalizeNumberInput(
-        String((room.match as any).teamACurrentCaptainNo || (room.teamA as any).captainNo || "")
-      ),
-      teamBCaptainNo: normalizeNumberInput(
-        String((room.match as any).teamBCurrentCaptainNo || (room.teamB as any).captainNo || "")
-      ),
-      teamARGB: hexToRgbTriplet(teamAColor),
-      teamBRGB: hexToRgbTriplet(teamBColor),
-      aScore: leftScore,
-      bScore: rightScore,
-      lastScoringTeam: displayLastScoringTeam,
-      setTimerText: timerText,
-      servingTeam: room.match.servingTeam,
-      setNo: room.match.setNo || 1,
-      aSetWins: room.match.aSetWins || 0,
-      bSetWins: room.match.bSetWins || 0,
-      setNoText: setNoText,
-      setWinsText: setWinsText,
-      isMatchFinished: !!room.match.isFinished,
-      isSwapped: nextSwapped,
-      teamAPlayers: room.teamA.players,
-      teamBPlayers: room.teamB.players,
-      teamALibero: aRows.libero,
-      teamAMainGrid: aMainGrid,
-      teamBLibero: bRows.libero,
-      teamBMainGrid: bMainGrid,
-      logs: (room.match.logs || [])
-        .slice()
-        .reverse()
-        .map(function (item: MatchLogItem) {
-          return {
-            id: item.id,
-            ts: item.ts,
-            action: item.action,
-            team: item.team || "",
-            note: item.note,
-            timeText: formatLogTime(item.ts),
-          };
-        }),
-      updatedAt: room.updatedAt,
-    });
+      const nextSwapped = !!room.match.isSwapped;
+      const shouldSwapAnimate = !force && this.data.updatedAt > 0 && nextSwapped !== !!this.data.isSwapped;
+      let rotateReplayQueue =
+        !force && !shouldSwapAnimate
+          ? buildRotateReplayQueue(incomingLogs, this.lastSeenLogId)
+          : [];
+      if (!rotateReplayQueue.length && shouldAutoAnimate && !shouldSwapAnimate) {
+        rotateReplayQueue = rotateReplayQueue
+          .concat(buildRotateStepsByDiff(prevAPlayers, room.teamA.players || [], "A"))
+          .concat(buildRotateStepsByDiff(prevBPlayers, room.teamB.players || [], "B"));
+      }
+      const useReplayQueue = shouldAutoAnimate && rotateReplayQueue.length > 0;
+      const autoAnimateA = false;
+      const autoAnimateB = false;
+      const beforeARects = autoAnimateA ? await this.measureTeamMainPosRectsStable("A", 1000) : null;
+      const beforeBRects = autoAnimateB ? await this.measureTeamMainPosRectsStable("B", 1000) : null;
+      const beforeANoMap = autoAnimateA ? this.getTeamMainNumberMap("A") : null;
+      const beforeBNoMap = autoAnimateB ? this.getTeamMainNumberMap("B") : null;
+      const beforeACaptain = autoAnimateA ? this.data.teamACaptainNo : "";
+      const beforeBCaptain = autoAnimateB ? this.data.teamBCaptainNo : "";
+      const teamASide: TeamCode = nextSwapped ? "B" : "A";
+      const aRows = buildTeamRows(room.teamA.players);
+      const bRows = buildTeamRows(room.teamB.players);
+      const aMainGrid = buildMainGridByOrder(room.teamA.players, getMainOrderForTeam("A", teamASide));
+      const bMainGrid = buildMainGridByOrder(room.teamB.players, getMainOrderForTeam("B", teamASide));
+      const prevARows = buildTeamRows(prevAPlayers);
+      const prevBRows = buildTeamRows(prevBPlayers);
+      const prevAMainGrid = buildMainGridByOrder(prevAPlayers, getMainOrderForTeam("A", teamASide));
+      const prevBMainGrid = buildMainGridByOrder(prevBPlayers, getMainOrderForTeam("B", teamASide));
+      const teamAColor = room.teamA.color || TEAM_COLOR_OPTIONS[0].value;
+      const teamBColor = room.teamB.color || TEAM_COLOR_OPTIONS[1].value;
+      const leftTeam: TeamCode = nextSwapped ? "B" : "A";
+      const rightTeam: TeamCode = leftTeam === "A" ? "B" : "A";
+      const leftScore = leftTeam === "A" ? room.match.aScore : room.match.bScore;
+      const rightScore = rightTeam === "A" ? room.match.aScore : room.match.bScore;
+      const leftSetWins = nextSwapped ? room.match.bSetWins : room.match.aSetWins;
+      const rightSetWins = nextSwapped ? room.match.aSetWins : room.match.bSetWins;
+      const displayLastScoringTeam: TeamCode | "" =
+        room.match.lastScoringTeam === leftTeam
+          ? "A"
+          : room.match.lastScoringTeam === rightTeam
+            ? "B"
+            : "";
+      const setNoText = room.match.isFinished ? "已结束" : "第" + String(room.match.setNo || 1) + "局";
+      const setWinsText = String(leftSetWins || 0) + " : " + String(rightSetWins || 0);
+      const timerStartAt = Number((room.match as any).setTimerStartAt) || 0;
+      const timerElapsedMs = Number((room.match as any).setTimerElapsedMs) || 0;
+      this.timerStartAtMs = timerStartAt;
+      this.timerElapsedBaseMs = timerElapsedMs;
+      const liveTimerMs = timerStartAt > 0 ? timerElapsedMs + (Date.now() - timerStartAt) : timerElapsedMs;
+      const timerText = formatDurationMMSS(liveTimerMs);
+      this.lastRenderedTimerText = timerText;
+      wx.setNavigationBarTitle({
+        title: "裁判团队编号 " + roomId,
+      });
+      if (shouldSwapAnimate) {
+        this.setData({ switchingOut: true, switchingIn: false });
+        await this.delayAsync(120);
+      }
+      this.setData({
+        participantCount: Object.keys((room as any).participants || {}).length,
+        teamAName: room.teamA.name,
+        teamBName: room.teamB.name,
+        teamAColor: teamAColor,
+        teamBColor: teamBColor,
+        roomPassword: String(room.password || ""),
+        teamACaptainNo: normalizeNumberInput(
+          String((room.match as any).teamACurrentCaptainNo || (room.teamA as any).captainNo || "")
+        ),
+        teamBCaptainNo: normalizeNumberInput(
+          String((room.match as any).teamBCurrentCaptainNo || (room.teamB as any).captainNo || "")
+        ),
+        teamARGB: hexToRgbTriplet(teamAColor),
+        teamBRGB: hexToRgbTriplet(teamBColor),
+        aScore: leftScore,
+        bScore: rightScore,
+        lastScoringTeam: displayLastScoringTeam,
+        setTimerText: timerText,
+        servingTeam: room.match.servingTeam,
+        setNo: room.match.setNo || 1,
+        aSetWins: room.match.aSetWins || 0,
+        bSetWins: room.match.bSetWins || 0,
+        setNoText: setNoText,
+        setWinsText: setWinsText,
+        isMatchFinished: !!room.match.isFinished,
+        isSwapped: nextSwapped,
+        teamAPlayers: useReplayQueue ? prevAPlayers : room.teamA.players,
+        teamBPlayers: useReplayQueue ? prevBPlayers : room.teamB.players,
+        teamALibero: useReplayQueue ? prevARows.libero : aRows.libero,
+        teamAMainGrid: useReplayQueue ? prevAMainGrid : aMainGrid,
+        teamBLibero: useReplayQueue ? prevBRows.libero : bRows.libero,
+        teamBMainGrid: useReplayQueue ? prevBMainGrid : bMainGrid,
+        logs: (room.match.logs || [])
+          .slice()
+          .reverse()
+          .map(function (item: MatchLogItem) {
+            return {
+              id: item.id,
+              ts: item.ts,
+              action: item.action,
+              team: item.team || "",
+              note: item.note,
+              timeText: formatLogTime(item.ts),
+            };
+          }),
+        updatedAt: room.updatedAt,
+        switchingOut: false,
+        switchingIn: shouldSwapAnimate,
+      });
+      if (shouldSwapAnimate) {
+        setTimeout(() => {
+          this.setData({ switchingIn: false });
+        }, 220);
+      }
+      if (useReplayQueue) {
+        let tempAPlayers = clonePlayerList(prevAPlayers);
+        let tempBPlayers = clonePlayerList(prevBPlayers);
+        for (let i = 0; i < rotateReplayQueue.length; i += 1) {
+          const step = rotateReplayQueue[i];
+          const team = step.team;
+          const beforeRects = await this.measureTeamMainPosRectsStable(team, 1000);
+          const beforeNoMap = this.getTeamMainNumberMap(team);
+          const beforeCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
+          if (team === "A") {
+            tempAPlayers = step.reverse ? rotateTeamReverseByRule(tempAPlayers) : rotateTeamByRule(tempAPlayers);
+          } else {
+            tempBPlayers = step.reverse ? rotateTeamReverseByRule(tempBPlayers) : rotateTeamByRule(tempBPlayers);
+          }
+          const tempARows = buildTeamRows(tempAPlayers);
+          const tempBRows = buildTeamRows(tempBPlayers);
+          this.setData({
+            teamAPlayers: tempAPlayers,
+            teamBPlayers: tempBPlayers,
+            teamALibero: tempARows.libero,
+            teamAMainGrid: buildMainGridByOrder(tempAPlayers, getMainOrderForTeam("A", teamASide)),
+            teamBLibero: tempBRows.libero,
+            teamBMainGrid: buildMainGridByOrder(tempBPlayers, getMainOrderForTeam("B", teamASide)),
+          });
+          await this.playTeamRotateMotion(team, beforeRects, beforeNoMap, beforeCaptain);
+        }
+        this.setData({
+          teamAPlayers: room.teamA.players,
+          teamBPlayers: room.teamB.players,
+          teamALibero: aRows.libero,
+          teamAMainGrid: aMainGrid,
+          teamBLibero: bRows.libero,
+          teamBMainGrid: bMainGrid,
+        });
+      }
+      if (autoAnimateA && beforeARects && beforeANoMap) {
+        await this.playTeamRotateMotion("A", beforeARects, beforeANoMap, beforeACaptain);
+      }
+      if (autoAnimateB && beforeBRects && beforeBNoMap) {
+        await this.playTeamRotateMotion("B", beforeBRects, beforeBNoMap, beforeBCaptain);
+      }
+      this.lastSeenLogId = latestLogId;
+    } finally {
+      this.roomLoadInFlight = false;
+      if (this.roomLoadPending) {
+        const pendingForce = !!this.roomLoadPendingForce;
+        this.roomLoadPending = false;
+        this.roomLoadPendingForce = false;
+        this.loadRoom(roomId, pendingForce);
+      }
+    }
   },
 
   async onScoreChange(e: WechatMiniprogram.CustomEvent) {
