@@ -18,6 +18,7 @@ type MatchLogItem = {
   action: string;
   team: TeamCode | "";
   note: string;
+  setNo?: number;
 };
 type DisplayLogItem = MatchLogItem & { timeText: string };
 type TeamRows = {
@@ -232,6 +233,7 @@ function appendMatchLog(room: any, action: string, note: string, team?: TeamCode
     action: action,
     team: team || "",
     note: note,
+    setNo: Math.max(1, Number(room.match.setNo || 1)),
   });
   if (room.match.logs.length > 300) {
     room.match.logs.shift();
@@ -333,10 +335,17 @@ function formatDurationMMSS(ms: number): string {
   return mmText + ":" + ssText;
 }
 
+function setKeepScreenOnSafe(keepScreenOn: boolean): void {
+  wx.setKeepScreenOn({
+    keepScreenOn,
+    fail: () => {},
+  });
+}
+
 Page({
   data: {
     roomId: "",
-    participantCount: 0,
+    participantCount: 1,
     teamAName: "甲",
     teamBName: "乙",
     teamAColor: TEAM_COLOR_OPTIONS[0].value,
@@ -360,6 +369,9 @@ Page({
     isSwapped: false,
     showLogPanel: false,
     logs: [] as DisplayLogItem[],
+    logSetSwitchVisible: false,
+    logSetOptions: [] as number[],
+    selectedLogSet: 1,
     hideTeamAMainNumbers: false,
     hideTeamBMainNumbers: false,
     rotateFlyItems: [] as RotateFlyItem[],
@@ -379,6 +391,7 @@ Page({
     updatedAt: 0,
     backConfirming: false,
     showBackExitModal: false,
+    showStartMatchModal: false,
     showSetEndModal: false,
     setEndTitleTop: "",
     setEndTitleBottom: "",
@@ -405,6 +418,34 @@ Page({
   roomLoadPending: false as boolean,
   roomLoadPendingForce: false as boolean,
   lastSeenLogId: "" as string,
+  allLogs: [] as MatchLogItem[],
+
+  buildLogSetOptions(sets: number): number[] {
+    const count = Math.max(1, Number(sets || 1));
+    return Array.from({ length: count }).map((_, i) => i + 1);
+  },
+
+  getDisplayLogsBySet(logs: MatchLogItem[], setNo: number): DisplayLogItem[] {
+    const targetSet = Math.max(1, Number(setNo || 1));
+    return (logs || [])
+      .filter((item) => {
+        const itemSetNo = Math.max(1, Number((item as any).setNo || 1));
+        return itemSetNo === targetSet;
+      })
+      .slice()
+      .reverse()
+      .map(function (item: MatchLogItem) {
+        return {
+          id: item.id,
+          ts: item.ts,
+          action: item.action,
+          team: item.team || "",
+          note: item.note,
+          setNo: item.setNo,
+          timeText: formatLogTime(item.ts),
+        };
+      });
+  },
 
   onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
@@ -436,6 +477,7 @@ Page({
   },
 
   onShow() {
+    setKeepScreenOnSafe(true);
     this.syncSafePadding();
     setTimeout(() => {
       this.syncSafePadding();
@@ -450,12 +492,14 @@ Page({
   },
 
   onHide() {
+    setKeepScreenOnSafe(false);
     this.stopPolling();
     this.stopHeartbeat();
     this.stopTimerTick();
   },
 
   onUnload() {
+    setKeepScreenOnSafe(false);
     if (this.themeOff) {
       this.themeOff();
       this.themeOff = null;
@@ -525,13 +569,57 @@ Page({
 
   onSetEndModalTap() {},
 
-  onSetEndContinue() {
-    this.setData({ showSetEndModal: false });
-    if (this.data.setEndMatchFinished) {
-      wx.reLaunch({ url: "/pages/create-room/create-room" });
+  onStartMatchModalTap() {},
+
+  async onStartMatchConfirm() {
+    const roomId = this.data.roomId;
+    if (!roomId) {
       return;
     }
-    wx.navigateTo({ url: "/pages/lineup-adjust/lineup-adjust?roomId=" + this.data.roomId });
+    const next = await updateRoomAsync(roomId, (room) => {
+      if (!room.match || room.match.isFinished) {
+        return room;
+      }
+      if (
+        Number(room.match.setNo || 1) === 1 &&
+        Number(room.match.aScore || 0) === 0 &&
+        Number(room.match.bScore || 0) === 0 &&
+        Number((room.match as any).setTimerStartAt || 0) <= 0
+      ) {
+        if (!(room as any).matchStartedAt) {
+          (room as any).matchStartedAt = Date.now();
+        }
+        (room.match as any).setTimerStartAt = Date.now();
+        (room.match as any).setTimerElapsedMs = 0;
+        appendMatchLog(room, "timer_start", "开始比赛，第一局计时启动");
+      }
+      return room;
+    });
+    if (!next) {
+      return;
+    }
+    this.setData({ showStartMatchModal: false });
+    this.loadRoom(roomId, true);
+  },
+
+  async onSetEndContinue() {
+    this.setData({ showSetEndModal: false });
+    if (!this.data.setEndMatchFinished) {
+      wx.navigateTo({ url: "/pages/lineup-adjust/lineup-adjust?roomId=" + this.data.roomId });
+      return;
+    }
+    const roomId = this.data.roomId;
+    await updateRoomAsync(roomId, (room) => {
+      const lockTs = Date.now();
+      room.status = "result";
+      room.match.isFinished = true;
+      (room as any).resultLockedAt = lockTs;
+      (room as any).resultExpireAt = lockTs + 24 * 60 * 60 * 1000;
+      (room as any).expiresAt = (room as any).resultExpireAt;
+      appendMatchLog(room, "result_locked", "敲定比分，比赛结果已锁定");
+      return room;
+    });
+    wx.redirectTo({ url: "/pages/result/result?roomId=" + roomId });
   },
 
   onWindowResize() {
@@ -628,8 +716,11 @@ Page({
     const clientId = getApp<IAppOption>().globalData.clientId;
     heartbeatRoomAsync(roomId, clientId)
       .then((count) => {
-        if (typeof count === "number" && count > 0 && count !== this.data.participantCount) {
-          this.setData({ participantCount: count });
+        if (typeof count === "number") {
+          const displayCount = Math.max(1, Math.floor(count));
+          if (displayCount !== this.data.participantCount) {
+            this.setData({ participantCount: displayCount });
+          }
         }
       })
       .catch(() => {});
@@ -929,10 +1020,23 @@ Page({
         wx.redirectTo({ url: "/pages/room/room?roomId=" + roomId });
         return;
       }
+      if (room.status === "result") {
+        wx.redirectTo({ url: "/pages/result/result?roomId=" + roomId });
+        return;
+      }
       if (!force && incomingUpdatedAt === currentUpdatedAt) {
         return;
       }
       const incomingLogs = Array.isArray(room.match.logs) ? (room.match.logs as MatchLogItem[]) : [];
+      this.allLogs = incomingLogs.slice();
+      const sets = Math.max(1, Number((room.settings && room.settings.sets) || 1));
+      const wins = Math.max(1, Number((room.settings && room.settings.wins) || 1));
+      const logSetSwitchVisible = wins > 1;
+      const currentSetNo = Math.max(1, Number(room.match.setNo || 1));
+      const prevSelectedLogSet = Math.max(1, Number(this.data.selectedLogSet || 1));
+      const selectedLogSet =
+        logSetSwitchVisible && prevSelectedLogSet <= sets ? prevSelectedLogSet : Math.min(currentSetNo, sets);
+      const logsForSet = this.getDisplayLogsBySet(incomingLogs, selectedLogSet);
       const latestLogId = incomingLogs.length
         ? String(incomingLogs[incomingLogs.length - 1].id || "")
         : "";
@@ -987,6 +1091,13 @@ Page({
       const setWinsText = String(leftSetWins || 0) + " : " + String(rightSetWins || 0);
       const timerStartAt = Number((room.match as any).setTimerStartAt) || 0;
       const timerElapsedMs = Number((room.match as any).setTimerElapsedMs) || 0;
+      const shouldShowStartMatchModal =
+        !room.match.isFinished &&
+        Number(room.match.setNo || 1) === 1 &&
+        Number(room.match.aScore || 0) === 0 &&
+        Number(room.match.bScore || 0) === 0 &&
+        timerStartAt <= 0 &&
+        timerElapsedMs <= 0;
       this.timerStartAtMs = timerStartAt;
       this.timerElapsedBaseMs = timerElapsedMs;
       const liveTimerMs = timerStartAt > 0 ? timerElapsedMs + (Date.now() - timerStartAt) : timerElapsedMs;
@@ -1000,7 +1111,7 @@ Page({
         await this.delayAsync(120);
       }
       this.setData({
-        participantCount: Object.keys((room as any).participants || {}).length,
+        participantCount: Math.max(1, Object.keys((room as any).participants || {}).length),
         teamAName: room.teamA.name,
         teamBName: room.teamB.name,
         teamAColor: teamAColor,
@@ -1025,6 +1136,7 @@ Page({
         setNoText: setNoText,
         setWinsText: setWinsText,
         isMatchFinished: !!room.match.isFinished,
+        showStartMatchModal: shouldShowStartMatchModal,
         isSwapped: nextSwapped,
         teamAPlayers: useReplayQueue ? prevAPlayers : room.teamA.players,
         teamBPlayers: useReplayQueue ? prevBPlayers : room.teamB.players,
@@ -1032,19 +1144,10 @@ Page({
         teamAMainGrid: useReplayQueue ? prevAMainGrid : aMainGrid,
         teamBLibero: useReplayQueue ? prevBRows.libero : bRows.libero,
         teamBMainGrid: useReplayQueue ? prevBMainGrid : bMainGrid,
-        logs: (room.match.logs || [])
-          .slice()
-          .reverse()
-          .map(function (item: MatchLogItem) {
-            return {
-              id: item.id,
-              ts: item.ts,
-              action: item.action,
-              team: item.team || "",
-              note: item.note,
-              timeText: formatLogTime(item.ts),
-            };
-          }),
+        logs: logsForSet,
+        logSetSwitchVisible: logSetSwitchVisible,
+        logSetOptions: this.buildLogSetOptions(sets),
+        selectedLogSet: selectedLogSet,
         updatedAt: room.updatedAt,
         switchingOut: false,
         switchingIn: shouldSwapAnimate,
@@ -1149,11 +1252,10 @@ Page({
         return room;
       }
       if (type === "add") {
-        pushUndoSnapshot(room);
-        if (room.match.aScore === 0 && room.match.bScore === 0 && !room.match.setTimerStartAt) {
-          room.match.setTimerStartAt = Date.now();
-          room.match.setTimerElapsedMs = 0;
+        if (!room.match.setTimerStartAt) {
+          return room;
         }
+        pushUndoSnapshot(room);
 
         if (team === "A") {
           room.match.aScore += 1;
@@ -1306,7 +1408,7 @@ Page({
         setEndWinnerName: setEndSummary.winnerName,
         setEndDurationText: setEndSummary.durationText,
         setEndMatchFinished: setEndSummary.matchFinished,
-        setEndActionText: setEndSummary.matchFinished ? "返回首页" : "继续",
+        setEndActionText: setEndSummary.matchFinished ? "敲定比分" : "继续",
       });
     };
 
@@ -1465,6 +1567,12 @@ Page({
       if (!last) {
         return room;
       }
+      const currentSetNo = Math.max(1, Number(room.match.setNo || 1));
+      const lastSetNo = Math.max(1, Number(last.setNo || currentSetNo));
+      if (lastSetNo !== currentSetNo) {
+        stack.push(last);
+        return room;
+      }
       undone = true;
       room.match.aScore = last.aScore;
       room.match.bScore = last.bScore;
@@ -1502,7 +1610,6 @@ Page({
       return;
     }
     if (!undone) {
-      showToastHint("暂无可撤回积分");
       return;
     }
     this.loadRoom(roomId, true);
@@ -1515,12 +1622,23 @@ Page({
   },
 
   onOpenLogPanel() {
-    this.setData({ showLogPanel: true });
+    this.setData({
+      showLogPanel: true,
+      logs: this.getDisplayLogsBySet(this.allLogs, this.data.selectedLogSet),
+    });
   },
 
-  onSwitchPlayer() {
-    // Reserved: substitution behavior to be implemented later.
+  onSelectLogSet(e: WechatMiniprogram.TouchEvent) {
+    const setNo = Math.max(1, Number((e.currentTarget.dataset as { setNo?: number }).setNo || 1));
+    if (setNo === this.data.selectedLogSet) {
+      return;
+    }
+    this.setData({
+      selectedLogSet: setNo,
+      logs: this.getDisplayLogsBySet(this.allLogs, setNo),
+    });
   },
+
 
   onCloseLogPanel() {
     this.setData({ showLogPanel: false });

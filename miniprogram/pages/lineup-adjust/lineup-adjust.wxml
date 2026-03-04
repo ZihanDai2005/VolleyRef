@@ -3,9 +3,7 @@
   style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}}; --safe-pad-top: {{safePadTop}}; --safe-pad-right: {{safePadRight}}; --safe-pad-bottom: {{safePadBottom}}; --safe-pad-left: {{safePadLeft}};"
 >
   <view class="match-nav">
-    <view class="match-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
-      <view class="match-nav-back-icon"></view>
-    </view>
+    <view class="match-nav-space"></view>
     <view class="match-nav-title">裁判团队编号 {{roomId}}</view>
     <view class="match-nav-space"></view>
   </view>
@@ -180,7 +178,7 @@
   <view class="adjust-footer">
     <button class="entry-btn {{continueBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onContinueTap">
       <view class="entry-btn-content">
-        <text class="entry-btn-text">继续</text>
+        <text class="entry-btn-text">继续比赛 启动计时</text>
         <view class="entry-btn-icon"></view>
       </view>
     </button>

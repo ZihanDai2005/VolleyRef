@@ -63,13 +63,57 @@
           <view class="create-head-mode-arrow"></view>
         </view>
       </picker>
+      <view class="create-head-hint-alert-row">
+        <text class="create-head-hint create-head-hint-alert">请妥善保存团队编号和密码，否则退出后无法重新进入。</text>
+      </view>
 
       <view class="create-head-divider-wrap">
         <view class="create-head-divider"></view>
       </view>
 
       <text class="create-head-section-title">甲队设置</text>
-      <text class="create-head-hint">名称/颜色</text>
+      <view class="create-head-color-draw-wrap">
+        <view class="create-head-color-col">
+          <text class="create-head-hint">颜色</text>
+          <view class="color-options create-head-color-options">
+            <view
+              class="color-option {{teamAColor === item.value ? 'active' : ''}} {{teamBColor === item.value ? 'disabled' : ''}}"
+              wx:for="{{colorOptions}}"
+              wx:key="value"
+              style="color: {{item.value}};"
+              data-team="A"
+              data-color="{{item.value}}"
+              hover-class="{{createMode ? 'color-option-hover' : ''}}"
+              bindtap="onTeamColorSelect"
+            >
+              <view class="color-dot" style="background-color: {{item.value}};"></view>
+            </view>
+          </view>
+        </view>
+        <view class="create-head-draw-col">
+          <text class="create-head-hint">抽签结果</text>
+          <view class="team-switches create-head-draw-switches">
+            <view
+              class="toggle-item switch-btn pressable {{servingTeam === 'A' ? 'on' : ''}} {{servePulseTeam === 'A' ? 'switch-pulse' : ''}}"
+              data-team="A"
+              hover-class="tap-active"
+              bindtap="onTeamServeButton"
+            >
+              <view class="draw-toggle-content">
+                <view class="serve-toggle-icon draw-toggle-icon"></view>
+                <text class="toggle-text draw-toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
+              </view>
+            </view>
+            <view class="side-toggle-btn switch-btn pressable {{teamASide === 'A' ? 'on' : ''}} {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
+              <view class="draw-toggle-content">
+                <view class="side-toggle-icon draw-toggle-icon"></view>
+                <text class="toggle-text draw-toggle-text">{{teamASide === 'A' ? 'A场区' : 'B场区'}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <text class="create-head-hint">名称</text>
       <view class="create-head-input-wrap create-team-input-wrap">
         <input adjust-position="false"
           class="create-head-name-input create-team-input"
@@ -82,37 +126,8 @@
           bindinput="onInputChange"
         />
       </view>
-      <view class="color-options create-head-color-options">
-        <view
-          class="color-option {{teamAColor === item.value ? 'active' : ''}} {{teamBColor === item.value ? 'disabled' : ''}}"
-          wx:for="{{colorOptions}}"
-          wx:key="value"
-          data-team="A"
-          data-color="{{item.value}}"
-          hover-class="{{createMode ? 'color-option-hover' : ''}}"
-          bindtap="onTeamColorSelect"
-        >
-          <view class="color-dot" style="background-color: {{item.value}};"></view>
-        </view>
-      </view>
-
       <view class="create-head-lineup-row">
         <text class="create-head-hint create-head-lineup-hint">首发队员</text>
-        <view class="team-switches">
-          <view
-            class="toggle-item switch-btn pressable {{servingTeam === 'A' ? 'on' : ''}} {{servePulseTeam === 'A' ? 'switch-pulse' : ''}}"
-            data-team="A"
-            hover-class="tap-active"
-            bindtap="onTeamServeButton"
-          >
-            <text class="toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
-            <view class="serve-toggle-icon"></view>
-          </view>
-          <view class="side-toggle-btn switch-btn pressable {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
-            <text>{{teamASide === 'A' ? 'A场区' : 'B场区'}}</text>
-            <view class="side-toggle-icon"></view>
-          </view>
-        </view>
       </view>
 
       <view class="create-head-lineup-card">
@@ -176,7 +191,48 @@
       </view>
 
       <text class="create-head-section-title create-head-team-gap">乙队设置</text>
-      <text class="create-head-hint">名称/颜色</text>
+      <view class="create-head-color-draw-wrap">
+        <view class="create-head-color-col">
+          <text class="create-head-hint">颜色</text>
+          <view class="color-options create-head-color-options">
+            <view
+              class="color-option {{teamBColor === item.value ? 'active' : ''}} {{teamAColor === item.value ? 'disabled' : ''}}"
+              wx:for="{{colorOptions}}"
+              wx:key="value"
+              style="color: {{item.value}};"
+              data-team="B"
+              data-color="{{item.value}}"
+              hover-class="{{createMode ? 'color-option-hover' : ''}}"
+              bindtap="onTeamColorSelect"
+            >
+              <view class="color-dot" style="background-color: {{item.value}};"></view>
+            </view>
+          </view>
+        </view>
+        <view class="create-head-draw-col">
+          <text class="create-head-hint">抽签结果</text>
+          <view class="team-switches create-head-draw-switches">
+            <view
+              class="toggle-item switch-btn pressable {{servingTeam === 'B' ? 'on' : ''}} {{servePulseTeam === 'B' ? 'switch-pulse' : ''}}"
+              data-team="B"
+              hover-class="tap-active"
+              bindtap="onTeamServeButton"
+            >
+              <view class="draw-toggle-content">
+                <view class="serve-toggle-icon draw-toggle-icon"></view>
+                <text class="toggle-text draw-toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
+              </view>
+            </view>
+            <view class="side-toggle-btn switch-btn pressable {{teamASide === 'B' ? 'on' : ''}} {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
+              <view class="draw-toggle-content">
+                <view class="side-toggle-icon draw-toggle-icon"></view>
+                <text class="toggle-text draw-toggle-text">{{teamASide === 'B' ? 'A场区' : 'B场区'}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <text class="create-head-hint">名称</text>
       <view class="create-head-input-wrap create-team-input-wrap">
         <input adjust-position="false"
           class="create-head-name-input create-team-input"
@@ -189,37 +245,8 @@
           bindinput="onInputChange"
         />
       </view>
-      <view class="color-options create-head-color-options">
-        <view
-          class="color-option {{teamBColor === item.value ? 'active' : ''}} {{teamAColor === item.value ? 'disabled' : ''}}"
-          wx:for="{{colorOptions}}"
-          wx:key="value"
-          data-team="B"
-          data-color="{{item.value}}"
-          hover-class="{{createMode ? 'color-option-hover' : ''}}"
-          bindtap="onTeamColorSelect"
-        >
-          <view class="color-dot" style="background-color: {{item.value}};"></view>
-        </view>
-      </view>
-
       <view class="create-head-lineup-row">
         <text class="create-head-hint create-head-lineup-hint">首发队员</text>
-        <view class="team-switches">
-          <view
-            class="toggle-item switch-btn pressable {{servingTeam === 'B' ? 'on' : ''}} {{servePulseTeam === 'B' ? 'switch-pulse' : ''}}"
-            data-team="B"
-            hover-class="tap-active"
-            bindtap="onTeamServeButton"
-          >
-            <text class="toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
-            <view class="serve-toggle-icon"></view>
-          </view>
-          <view class="side-toggle-btn switch-btn pressable {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
-            <text>{{teamASide === 'B' ? 'A场区' : 'B场区'}}</text>
-            <view class="side-toggle-icon"></view>
-          </view>
-        </view>
       </view>
 
       <view class="create-head-lineup-card">

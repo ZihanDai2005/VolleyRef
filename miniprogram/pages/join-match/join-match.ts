@@ -154,7 +154,7 @@ Page({
       showBlockHint("房间不存在");
       return;
     }
-    const target = room.status === "match" ? "match" : "room";
+    const target = room.status === "result" ? "result" : room.status === "match" ? "match" : "room";
     wx.navigateTo({ url: "/pages/" + target + "/" + target + "?roomId=" + roomId });
   },
 

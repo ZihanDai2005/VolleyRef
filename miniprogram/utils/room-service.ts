@@ -64,8 +64,13 @@ export interface MatchState {
 export interface RoomState {
   roomId: string;
   password: string;
-  status: "setup" | "match";
+  status: "setup" | "match" | "result";
   syncVersion: number;
+  expiresAt: number;
+  matchStartedAt: number;
+  extraTimeGranted: boolean;
+  resultLockedAt: number;
+  resultExpireAt: number;
   settings: MatchSettings;
   teamA: TeamState;
   teamB: TeamState;
@@ -79,7 +84,9 @@ interface RoomStore {
   [roomId: string]: RoomState;
 }
 
-const ROOM_TTL_MS = 12 * 60 * 60 * 1000;
+const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+const ROOM_EXTRA_TTL_MS = 3 * 60 * 60 * 1000;
+const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 20 * 1000;
 const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
 const CLOUD_PULL_INTERVAL_MS = 500;
@@ -206,6 +213,11 @@ function createDefaultRoom(roomId: string): RoomState {
     password: "",
     status: "setup",
     syncVersion: 1,
+    expiresAt: ts + ROOM_TTL_MS,
+    matchStartedAt: 0,
+    extraTimeGranted: false,
+    resultLockedAt: 0,
+    resultExpireAt: 0,
     settings: {
       sets: 5,
       wins: 3,
@@ -283,8 +295,13 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   const base = createDefaultRoom(roomId);
 
   base.password = String((input as any).password || "");
-  base.status = input.status === "match" ? "match" : "setup";
+  base.status = input.status === "result" ? "result" : input.status === "match" ? "match" : "setup";
   base.syncVersion = Math.max(1, Number((input as any).syncVersion) || 1);
+  base.expiresAt = Math.max(0, Number((input as any).expiresAt) || 0);
+  base.matchStartedAt = Math.max(0, Number((input as any).matchStartedAt) || 0);
+  base.extraTimeGranted = !!(input as any).extraTimeGranted;
+  base.resultLockedAt = Math.max(0, Number((input as any).resultLockedAt) || 0);
+  base.resultExpireAt = Math.max(0, Number((input as any).resultExpireAt) || 0);
   base.settings.sets = Number(input.settings && input.settings.sets) || 5;
   base.settings.wins = Number(input.settings && input.settings.wins) || 3;
   base.settings.maxScore = Number(input.settings && input.settings.maxScore) || 25;
@@ -379,6 +396,21 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   base.createdAt = Number(input.createdAt) || base.createdAt;
   base.updatedAt = Number(input.updatedAt) || base.updatedAt;
 
+  if (!base.expiresAt) {
+    base.expiresAt = base.createdAt + ROOM_TTL_MS;
+  }
+  if (base.status === "result") {
+    if (!base.resultLockedAt) {
+      base.resultLockedAt = Math.max(base.updatedAt || 0, base.createdAt || 0, now());
+    }
+    if (!base.resultExpireAt) {
+      base.resultExpireAt = base.resultLockedAt + RESULT_KEEP_MS;
+    }
+  } else {
+    base.resultLockedAt = 0;
+    base.resultExpireAt = 0;
+  }
+
   return base;
 }
 
@@ -405,7 +437,36 @@ function cleanupExpiredRooms(store: RoomStore): boolean {
     if (cleanupRoomParticipants(room)) {
       changed = true;
     }
-    if (ts - room.updatedAt > ROOM_TTL_MS) {
+    if (room.status === "result") {
+      if (room.resultExpireAt > 0 && ts > room.resultExpireAt) {
+        delete store[roomId];
+        changed = true;
+      }
+      return;
+    }
+
+    if (!room.matchStartedAt && room.expiresAt > 0 && ts > room.expiresAt) {
+      delete store[roomId];
+      changed = true;
+      return;
+    }
+
+    if (
+      room.matchStartedAt > 0 &&
+      room.expiresAt > 0 &&
+      ts > room.expiresAt &&
+      !room.extraTimeGranted &&
+      room.status === "match" &&
+      !room.match.isFinished
+    ) {
+      room.expiresAt = room.expiresAt + ROOM_EXTRA_TTL_MS;
+      room.extraTimeGranted = true;
+      room.updatedAt = ts;
+      changed = true;
+      return;
+    }
+
+    if (room.expiresAt > 0 && ts > room.expiresAt) {
       delete store[roomId];
       changed = true;
     }

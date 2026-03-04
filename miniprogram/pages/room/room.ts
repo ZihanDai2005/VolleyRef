@@ -371,7 +371,7 @@ Page({
     wx.showModal({
       title: "裁判团队编号说明",
       content:
-        "裁判团队编号由系统自动分配，不可修改，可用于邀请其他裁判或观众加入比赛。此编号自正式进入比赛时开始生效，其他裁判可加入，有效期12小时，未进入比赛页面或超过12小时将自动回收。",
+        "裁判团队编号由系统自动分配，不可修改。编号自进入比赛页开始生效，可用于邀请其他用户加入比赛，未进入比赛页就退出或房间创建6小时后将自动回收，全场比赛结束起比赛数据将保留24小时后清除，不可恢复。",
       showCancel: false,
       confirmText: "我知道了",
     });
@@ -450,6 +450,11 @@ Page({
     const currentUpdatedAt = Number(this.data.updatedAt || 0);
     const incomingUpdatedAt = Number(room.updatedAt || 0);
     if (!force && incomingUpdatedAt < currentUpdatedAt) {
+      return;
+    }
+
+    if (room.status === "result" && !this.data.editMode) {
+      wx.redirectTo({ url: "/pages/result/result?roomId=" + roomId });
       return;
     }
 

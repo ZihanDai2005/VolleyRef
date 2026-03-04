@@ -1,0 +1,13 @@
+<view class="result-page">
+  <view class="result-nav" style="padding-top: {{customNavTop}};">
+    <view class="result-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
+      <view class="result-nav-back-icon"></view>
+    </view>
+    <view class="result-nav-title">比赛结果</view>
+    <view class="result-nav-space"></view>
+  </view>
+  <view class="result-nav-spacer" style="height: {{customNavOffset}};"></view>
+  <view class="result-content">
+    <text class="result-countdown" wx:if="{{clearCountdownText}}">{{clearCountdownText}}</text>
+  </view>
+</view>

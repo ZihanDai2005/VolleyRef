@@ -23,10 +23,6 @@
         </view>
       </view>
       <view class="x-row">
-        <view class="top-btn pressable" hover-class="tap-active" bindtap="onSwitchPlayer">
-          <view class="btn-icon icon-substitute"></view>
-          <text>换人</text>
-        </view>
         <view class="action-btn pressable" hover-class="tap-active" bindtap="onUndoLastScore">
           <view class="btn-icon icon-undo"></view>
           <text>撤回</text>
@@ -125,6 +121,21 @@
     </view>
   </view>
 
+  <view class="set-end-mask start-match-mask" wx:if="{{showStartMatchModal}}" bindtap="onStartMatchModalTap">
+    <view class="set-end-modal start-match-modal" catchtap="onStartMatchModalTap">
+      <view class="set-end-title-top">开始比赛确认</view>
+      <view class="start-match-note">开始比赛后将启动本局计时</view>
+      <view class="set-end-actions start-match-actions">
+        <view class="set-end-btn-home primary pressable" hover-class="tap-active" bindtap="onStartMatchConfirm">
+          <view class="set-end-btn-content">
+            <text class="set-end-btn-text">开始比赛</text>
+            <view class="set-end-btn-icon"></view>
+          </view>
+        </view>
+      </view>
+    </view>
+  </view>
+
   <view class="set-end-mask" wx:if="{{showSetEndModal}}" bindtap="onSetEndModalTap">
     <view class="set-end-modal" catchtap="onSetEndModalTap">
       <view class="set-end-title-top">{{setEndTitleTop}}</view>
@@ -169,7 +180,7 @@
         <view class="set-end-btn-home primary pressable" hover-class="tap-active" bindtap="onSetEndContinue">
           <view class="set-end-btn-content">
             <text class="set-end-btn-text">{{setEndActionText}}</text>
-            <view class="set-end-btn-icon"></view>
+            <view class="set-end-btn-icon {{setEndMatchFinished ? 'confirm' : ''}}"></view>
           </view>
         </view>
       </view>
@@ -195,7 +206,22 @@
     <view class="log-panel" catchtap="onLogPanelTap">
       <view class="log-head">
         <text class="log-title">操作记录（开发中）</text>
-        <button class="plain-btn small" size="mini" bindtap="onCloseLogPanel">关闭</button>
+        <view class="log-head-right">
+          <view class="log-set-switch" wx:if="{{logSetSwitchVisible}}">
+            <text class="log-set-label">局</text>
+            <view class="log-set-seg">
+              <view
+                class="log-set-item {{selectedLogSet === item ? 'active' : ''}}"
+                wx:for="{{logSetOptions}}"
+                wx:key="*this"
+                wx:for-item="item"
+                data-set-no="{{item}}"
+                bindtap="onSelectLogSet"
+              >{{item}}</view>
+            </view>
+          </view>
+          <button class="plain-btn small" size="mini" bindtap="onCloseLogPanel">关闭</button>
+        </view>
       </view>
       <scroll-view class="log-list" scroll-y="true">
         <view class="log-item" wx:for="{{logs}}" wx:key="id" wx:for-item="item">

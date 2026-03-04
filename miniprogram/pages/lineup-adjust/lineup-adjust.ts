@@ -1,5 +1,5 @@
 import { getRoomAsync, updateRoomAsync, TEAM_COLOR_OPTIONS } from "../../utils/room-service";
-import { showToastHint } from "../../utils/hint";
+import { showBlockHint, showToastHint } from "../../utils/hint";
 import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
 import { computeLandscapeSafePad } from "../../utils/safe-pad";
 
@@ -18,6 +18,19 @@ type RotateFlyItem = {
   style: string;
 };
 type CaptainPickerTeam = TeamCode;
+type LineupAdjustDraft = {
+  setNo: number;
+  isSwapped: boolean;
+  servingTeam: TeamCode;
+  teamAPlayers: PlayerSlot[];
+  teamBPlayers: PlayerSlot[];
+  teamACaptainNo: string;
+  teamBCaptainNo: string;
+  teamAInitialCaptainNo: string;
+  teamBInitialCaptainNo: string;
+  teamAManualCaptainChosen: boolean;
+  teamBManualCaptainChosen: boolean;
+};
 const ALL_POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
 const MAIN_POSITIONS: MainPosition[] = ["I", "II", "III", "IV", "V", "VI"];
 const NUMBER_SOURCE_MAP: Record<Position, Position> = {
@@ -64,6 +77,29 @@ function normalizeLiberoSlots(players: PlayerSlot[]): PlayerSlot[] {
     next[7] = { pos: l2.pos, number: "?" };
   }
   return next;
+}
+
+function validateTeamPlayers(players: PlayerSlot[], teamName: string): string | null {
+  const main = players.slice(0, 6);
+  const missingMain = main.find(function (p) {
+    return !normalizeNumberInput(p.number);
+  });
+  if (missingMain) {
+    return teamName + "队 " + missingMain.pos + " 位置未填写号码";
+  }
+
+  const numbers = players
+    .map(function (p) {
+      return normalizeNumberInput(p.number);
+    })
+    .filter(function (n) {
+      return !!n;
+    });
+  const uniq = new Set(numbers);
+  if (uniq.size !== numbers.length) {
+    return teamName + "队存在重复号码";
+  }
+  return null;
 }
 
 function rotateTeamByRule(players: PlayerSlot[]): PlayerSlot[] {
@@ -193,7 +229,16 @@ function getPresetLineupFromPreviousSet(room: any): {
   };
 }
 
+function setKeepScreenOnSafe(keepScreenOn: boolean): void {
+  wx.setKeepScreenOn({
+    keepScreenOn,
+    fail: () => {},
+  });
+}
+
 Page({
+  currentSetNo: 1 as number,
+  draftSaveTimer: 0 as number,
   data: {
     continueBtnFx: false,
     isSwapped: false,
@@ -264,6 +309,7 @@ Page({
   },
 
   onShow() {
+    setKeepScreenOnSafe(true);
     this.syncSafePadding();
     setTimeout(() => {
       this.syncSafePadding();
@@ -275,13 +321,68 @@ Page({
   },
 
   onUnload() {
+    this.persistLineupDraftNow().catch(() => {});
+    this.clearDraftSaveTimer();
+    setKeepScreenOnSafe(false);
     if ((wx as any).offWindowResize) {
       (wx as any).offWindowResize(this.onWindowResize);
     }
   },
 
+  onHide() {
+    this.persistLineupDraftNow().catch(() => {});
+    setKeepScreenOnSafe(false);
+  },
+
   onWindowResize() {
     this.syncSafePadding();
+  },
+
+  clearDraftSaveTimer() {
+    if (!this.draftSaveTimer) {
+      return;
+    }
+    clearTimeout(this.draftSaveTimer);
+    this.draftSaveTimer = 0;
+  },
+
+  buildLineupDraft(): LineupAdjustDraft {
+    return {
+      setNo: Math.max(1, Number(this.currentSetNo || 1)),
+      isSwapped: !!this.data.isSwapped,
+      servingTeam: this.data.servingTeam === "B" ? "B" : "A",
+      teamAPlayers: clonePlayers(this.data.teamAPlayers || []),
+      teamBPlayers: clonePlayers(this.data.teamBPlayers || []),
+      teamACaptainNo: normalizeNumberInput(this.data.teamACaptainNo || ""),
+      teamBCaptainNo: normalizeNumberInput(this.data.teamBCaptainNo || ""),
+      teamAInitialCaptainNo: normalizeNumberInput(this.data.teamAInitialCaptainNo || ""),
+      teamBInitialCaptainNo: normalizeNumberInput(this.data.teamBInitialCaptainNo || ""),
+      teamAManualCaptainChosen: !!this.data.teamAManualCaptainChosen,
+      teamBManualCaptainChosen: !!this.data.teamBManualCaptainChosen,
+    };
+  },
+
+  async persistLineupDraftNow() {
+    this.clearDraftSaveTimer();
+    const roomId = String(this.data.roomId || "");
+    if (!roomId) {
+      return;
+    }
+    const draft = this.buildLineupDraft();
+    await updateRoomAsync(roomId, (room) => {
+      const setNo = Math.max(1, Number(room.match && room.match.setNo) || 1);
+      draft.setNo = setNo;
+      this.currentSetNo = setNo;
+      (room.match as any).lineupAdjustDraft = draft;
+      return room;
+    });
+  },
+
+  schedulePersistLineupDraft() {
+    this.clearDraftSaveTimer();
+    this.draftSaveTimer = setTimeout(() => {
+      this.persistLineupDraftNow().catch(() => {});
+    }, 120) as unknown as number;
   },
 
   applyDisplay(teamAPlayers: PlayerSlot[], teamBPlayers: PlayerSlot[], isSwapped: boolean) {
@@ -339,12 +440,16 @@ Page({
       ? "队长号码 " + nextACaptainNo
       : aManualMode
         ? "下一局场上队长 " + nextACaptainNo
-        : "选择场上队长";
+        : aInitNo
+          ? "队长" + aInitNo + "不在场上 选择场上队长"
+          : "选择场上队长";
     const bText = bAutoLocked
       ? "队长号码 " + nextBCaptainNo
       : bManualMode
         ? "下一局场上队长 " + nextBCaptainNo
-        : "选择场上队长";
+        : bInitNo
+          ? "队长" + bInitNo + "不在场上 选择场上队长"
+          : "选择场上队长";
 
     this.setData({
       teamACaptainNo: nextACaptainNo,
@@ -385,9 +490,37 @@ Page({
       return;
     }
 
+    const roomSetNo = Math.max(1, Number(room.match && room.match.setNo) || 1);
+    this.currentSetNo = roomSetNo;
     const preset = getPresetLineupFromPreviousSet(room);
     const roomTeamACaptain = normalizeNumberInput(room.teamA.captainNo || "");
     const roomTeamBCaptain = normalizeNumberInput(room.teamB.captainNo || "");
+    const draft = (room.match && (room.match as any).lineupAdjustDraft) as LineupAdjustDraft | undefined;
+    const canUseDraft =
+      !!draft &&
+      Number(draft.setNo || 0) === roomSetNo &&
+      Array.isArray(draft.teamAPlayers) &&
+      Array.isArray(draft.teamBPlayers);
+
+    const initTeamAPlayers = canUseDraft ? clonePlayers(draft!.teamAPlayers || []) : preset.teamAPlayers;
+    const initTeamBPlayers = canUseDraft ? clonePlayers(draft!.teamBPlayers || []) : preset.teamBPlayers;
+    const initIsSwapped = canUseDraft ? !!draft!.isSwapped : preset.isSwapped;
+    const initServingTeam: TeamCode = canUseDraft ? (draft!.servingTeam === "B" ? "B" : "A") : preset.servingTeam;
+    const initTeamAInitialCaptainNo = canUseDraft
+      ? normalizeNumberInput(draft!.teamAInitialCaptainNo || roomTeamACaptain)
+      : roomTeamACaptain;
+    const initTeamBInitialCaptainNo = canUseDraft
+      ? normalizeNumberInput(draft!.teamBInitialCaptainNo || roomTeamBCaptain)
+      : roomTeamBCaptain;
+    const initTeamACaptainNo = canUseDraft
+      ? normalizeNumberInput(draft!.teamACaptainNo || roomTeamACaptain)
+      : roomTeamACaptain;
+    const initTeamBCaptainNo = canUseDraft
+      ? normalizeNumberInput(draft!.teamBCaptainNo || roomTeamBCaptain)
+      : roomTeamBCaptain;
+    const initTeamAManualCaptainChosen = canUseDraft ? !!draft!.teamAManualCaptainChosen : false;
+    const initTeamBManualCaptainChosen = canUseDraft ? !!draft!.teamBManualCaptainChosen : false;
+
     this.setData(
       {
         teamAName: room.teamA.name || "甲",
@@ -396,18 +529,18 @@ Page({
         teamBColor: room.teamB.color || TEAM_COLOR_OPTIONS[6].value,
         teamARGB: hexToRgbTriplet(room.teamA.color || TEAM_COLOR_OPTIONS[2].value),
         teamBRGB: hexToRgbTriplet(room.teamB.color || TEAM_COLOR_OPTIONS[6].value),
-        teamACaptainNo: roomTeamACaptain,
-        teamBCaptainNo: roomTeamBCaptain,
-        teamAInitialCaptainNo: roomTeamACaptain,
-        teamBInitialCaptainNo: roomTeamBCaptain,
-        teamAManualCaptainChosen: false,
-        teamBManualCaptainChosen: false,
+        teamACaptainNo: initTeamACaptainNo,
+        teamBCaptainNo: initTeamBCaptainNo,
+        teamAInitialCaptainNo: initTeamAInitialCaptainNo,
+        teamBInitialCaptainNo: initTeamBInitialCaptainNo,
+        teamAManualCaptainChosen: initTeamAManualCaptainChosen,
+        teamBManualCaptainChosen: initTeamBManualCaptainChosen,
         teamACaptainSource: "",
         teamBCaptainSource: "",
-        servingTeam: preset.servingTeam,
+        servingTeam: initServingTeam,
       },
       () => {
-        this.applyDisplay(preset.teamAPlayers, preset.teamBPlayers, preset.isSwapped);
+        this.applyDisplay(initTeamAPlayers, initTeamBPlayers, initIsSwapped);
       }
     );
   },
@@ -427,6 +560,7 @@ Page({
       }
       players[index] = { pos: current.pos, number: number };
       this.applyDisplay(players, this.data.teamBPlayers, this.data.isSwapped);
+      this.schedulePersistLineupDraft();
     } else {
       const players = this.data.teamBPlayers.slice();
       const current = players[index];
@@ -435,6 +569,7 @@ Page({
       }
       players[index] = { pos: current.pos, number: number };
       this.applyDisplay(this.data.teamAPlayers, players, this.data.isSwapped);
+      this.schedulePersistLineupDraft();
     }
   },
 
@@ -486,6 +621,7 @@ Page({
         this.syncCaptainPickState(this.data.teamAPlayers, players);
       }
     }
+    this.schedulePersistLineupDraft();
   },
 
   openCaptainPicker(team: TeamCode) {
@@ -566,11 +702,25 @@ Page({
       },
       () => {
         this.syncCaptainPickState();
+        this.schedulePersistLineupDraft();
       }
     );
   },
 
   async onContinueTap() {
+    const teamAName = (this.data.teamAName || "").trim() || "甲";
+    const teamBName = (this.data.teamBName || "").trim() || "乙";
+    const errA = validateTeamPlayers(this.data.teamAPlayers, teamAName);
+    if (errA) {
+      showBlockHint(errA);
+      return;
+    }
+    const errB = validateTeamPlayers(this.data.teamBPlayers, teamBName);
+    if (errB) {
+      showBlockHint(errB);
+      return;
+    }
+
     if (!this.data.teamACaptainResolved || !this.data.teamBCaptainResolved) {
       wx.showModal({
         title: "无法继续",
@@ -588,18 +738,19 @@ Page({
         room.teamB.players = this.data.teamBPlayers.slice();
         (room.match as any).teamACurrentCaptainNo = this.data.teamACaptainNo;
         (room.match as any).teamBCurrentCaptainNo = this.data.teamBCaptainNo;
-        // 中场配置完成返回比赛页时，才清零下一局局时间。
+        // 点击“继续比赛 启动计时”返回比赛页时，立刻启动下一局计时。
         if (
           room.match &&
           !room.match.isFinished &&
           Number(room.match.aScore || 0) === 0 &&
           Number(room.match.bScore || 0) === 0
         ) {
-          (room.match as any).setTimerStartAt = 0;
+          (room.match as any).setTimerStartAt = Date.now();
           (room.match as any).setTimerElapsedMs = 0;
         }
         room.match.isSwapped = this.data.isSwapped;
         room.match.servingTeam = this.data.servingTeam;
+        delete (room.match as any).lineupAdjustDraft;
         return room;
       });
     }
@@ -623,6 +774,10 @@ Page({
     wx.reLaunch({ url: "/pages/create-room/create-room" });
   },
 
+  onBackPress() {
+    return true;
+  },
+
   async onRotateTeam(e: WechatMiniprogram.TouchEvent) {
     const team = String((e.currentTarget.dataset as { team?: string }).team || "") as TeamCode;
     if (team !== "A" && team !== "B") {
@@ -636,6 +791,7 @@ Page({
       }
       const rotated = rotateTeamByRule(this.data.teamAPlayers);
       this.applyDisplay(rotated, this.data.teamBPlayers, this.data.isSwapped);
+      this.schedulePersistLineupDraft();
       await this.playTeamRotateMotion("A", beforeRects, beforeNoMap, this.data.teamACaptainNo);
     } else {
       if (this.data.hideTeamBMainNumbers) {
@@ -643,6 +799,7 @@ Page({
       }
       const rotated = rotateTeamByRule(this.data.teamBPlayers);
       this.applyDisplay(this.data.teamAPlayers, rotated, this.data.isSwapped);
+      this.schedulePersistLineupDraft();
       await this.playTeamRotateMotion("B", beforeRects, beforeNoMap, this.data.teamBCaptainNo);
     }
   },

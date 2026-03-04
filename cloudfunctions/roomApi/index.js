@@ -8,6 +8,9 @@ const locksCol = db.collection("room_locks");
 
 const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 20 * 1000;
+const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
+const ROOM_EXTRA_TTL_MS = 3 * 60 * 60 * 1000;
+const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
 
 function now() {
   return Date.now();
@@ -23,7 +26,64 @@ async function getRoomDoc(roomId) {
     if (!res || !res.data) {
       return null;
     }
-    return res.data;
+    const room = res.data;
+    const ts = now();
+    let changed = false;
+
+    if (!room.expiresAt) {
+      room.expiresAt = Number(room.createdAt || ts) + ROOM_TTL_MS;
+      changed = true;
+    }
+    room.matchStartedAt = Math.max(0, Number(room.matchStartedAt || 0));
+    room.extraTimeGranted = !!room.extraTimeGranted;
+
+    if (room.status === "result") {
+      if (!room.resultLockedAt) {
+        room.resultLockedAt = Math.max(Number(room.updatedAt || 0), Number(room.createdAt || 0), ts);
+        changed = true;
+      }
+      if (!room.resultExpireAt) {
+        room.resultExpireAt = room.resultLockedAt + RESULT_KEEP_MS;
+        changed = true;
+      }
+      if (ts > Number(room.resultExpireAt || 0)) {
+        await roomsCol.doc(roomId).remove();
+        return null;
+      }
+      if (changed) {
+        room.updatedAt = ts;
+        await roomsCol.doc(roomId).set({ data: room });
+      }
+      return room;
+    }
+
+    if (!room.matchStartedAt && ts > Number(room.expiresAt || 0)) {
+      await roomsCol.doc(roomId).remove();
+      return null;
+    }
+
+    if (
+      room.matchStartedAt > 0 &&
+      ts > Number(room.expiresAt || 0) &&
+      !room.extraTimeGranted &&
+      room.status === "match" &&
+      !(room.match && room.match.isFinished)
+    ) {
+      room.expiresAt = Number(room.expiresAt || ts) + ROOM_EXTRA_TTL_MS;
+      room.extraTimeGranted = true;
+      changed = true;
+    }
+
+    if (ts > Number(room.expiresAt || 0)) {
+      await roomsCol.doc(roomId).remove();
+      return null;
+    }
+
+    if (changed) {
+      room.updatedAt = ts;
+      await roomsCol.doc(roomId).set({ data: room });
+    }
+    return room;
   } catch (e) {
     return null;
   }
@@ -34,10 +94,32 @@ async function putRoomDoc(room) {
   if (!roomId) {
     throw new Error("roomId required");
   }
+  const ts = now();
+  const normalized = room && typeof room === "object" ? { ...room } : {};
+  if (!normalized.createdAt) {
+    normalized.createdAt = ts;
+  }
+  if (!normalized.expiresAt) {
+    normalized.expiresAt = Number(normalized.createdAt || ts) + ROOM_TTL_MS;
+  }
+  normalized.matchStartedAt = Math.max(0, Number(normalized.matchStartedAt || 0));
+  normalized.extraTimeGranted = !!normalized.extraTimeGranted;
+  if (normalized.status === "result") {
+    if (!normalized.resultLockedAt) {
+      normalized.resultLockedAt = ts;
+    }
+    if (!normalized.resultExpireAt) {
+      normalized.resultExpireAt = Number(normalized.resultLockedAt || ts) + RESULT_KEEP_MS;
+    }
+    normalized.expiresAt = Number(normalized.resultExpireAt || normalized.expiresAt || ts);
+  } else {
+    normalized.resultLockedAt = 0;
+    normalized.resultExpireAt = 0;
+  }
   const next = {
-    ...room,
+    ...normalized,
     roomId: roomId,
-    updatedAt: now(),
+    updatedAt: ts,
   };
   await roomsCol.doc(roomId).set({ data: next });
   return next;
