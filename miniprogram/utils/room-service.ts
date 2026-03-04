@@ -59,6 +59,26 @@ export interface MatchState {
     team: "A" | "B" | "";
     note: string;
   }>;
+  setEndState?: {
+    active: boolean;
+    phase: "pending" | "lineup";
+    ownerClientId: string;
+    setNo: number;
+    matchFinished: boolean;
+    summary: {
+      setNo: number;
+      teamAName: string;
+      teamBName: string;
+      smallScoreA: number;
+      smallScoreB: number;
+      bigScoreA: number;
+      bigScoreB: number;
+      winnerName: string;
+      durationText: string;
+      matchFinished: boolean;
+    };
+  };
+  lineupAdjustDraft?: any;
 }
 
 export interface RoomState {
@@ -261,6 +281,8 @@ function createDefaultRoom(roomId: string): RoomState {
       isFinished: false,
       undoStack: [],
       logs: [],
+      setEndState: undefined,
+      lineupAdjustDraft: undefined,
     },
     participants: {},
     createdAt: ts,
@@ -398,6 +420,38 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
     });
   } else {
     base.match.logs = [];
+  }
+
+  const rawSetEndState = input.match && (input.match as any).setEndState;
+  if (rawSetEndState && typeof rawSetEndState === "object") {
+    const summary = (rawSetEndState as any).summary || {};
+    (base.match as any).setEndState = {
+      active: !!(rawSetEndState as any).active,
+      phase: (rawSetEndState as any).phase === "lineup" ? "lineup" : "pending",
+      ownerClientId: String((rawSetEndState as any).ownerClientId || ""),
+      setNo: Math.max(1, Number((rawSetEndState as any).setNo) || 1),
+      matchFinished: !!(rawSetEndState as any).matchFinished,
+      summary: {
+        setNo: Math.max(1, Number(summary.setNo) || 1),
+        teamAName: String(summary.teamAName || base.teamA.name || "甲"),
+        teamBName: String(summary.teamBName || base.teamB.name || "乙"),
+        smallScoreA: Math.max(0, Number(summary.smallScoreA) || 0),
+        smallScoreB: Math.max(0, Number(summary.smallScoreB) || 0),
+        bigScoreA: Math.max(0, Number(summary.bigScoreA) || 0),
+        bigScoreB: Math.max(0, Number(summary.bigScoreB) || 0),
+        winnerName: String(summary.winnerName || ""),
+        durationText: String(summary.durationText || "00:00"),
+        matchFinished: !!summary.matchFinished,
+      },
+    };
+  } else {
+    (base.match as any).setEndState = undefined;
+  }
+
+  if (input.match && (input.match as any).lineupAdjustDraft) {
+    (base.match as any).lineupAdjustDraft = (input.match as any).lineupAdjustDraft;
+  } else {
+    (base.match as any).lineupAdjustDraft = undefined;
   }
 
   base.participants = normalizeParticipants((input as any).participants);

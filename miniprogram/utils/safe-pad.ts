@@ -17,12 +17,13 @@ export function computeLandscapeSafePad(wxLike: typeof wx): SafePadResult {
   const windowWidth = Number(info && info.windowWidth) || Number(info && info.screenWidth) || 0;
   const windowHeight = Number(info && info.windowHeight) || Number(info && info.screenHeight) || 0;
   if (!safe || !windowWidth || !windowHeight) {
+    const minSideInset = 25;
     return {
       safePadTop: "10px",
-      safePadRight: "0px",
+      safePadRight: String(minSideInset) + "px",
       safePadBottom: "25px",
-      safePadLeft: "0px",
-      sideInset: 0,
+      safePadLeft: String(minSideInset) + "px",
+      sideInset: minSideInset,
       windowWidth,
       windowHeight,
       safeAreaAvailable: false,
@@ -37,8 +38,8 @@ export function computeLandscapeSafePad(wxLike: typeof wx): SafePadResult {
   const insetBottom = Math.max(0, windowHeight - (Number(safe.bottom) || windowHeight));
   // 优先使用左右安全边距；若机型上报左右为 0，则回退使用 top/bottom（横屏下刘海常体现在这两个值）。
   const sideInsetRaw = Math.max(insetLeft, insetRight) || Math.max(insetTop, insetBottom);
-  const sideInsetMax = Math.max(0, Math.floor(windowWidth * 0.18));
-  const sideInset = Math.min(sideInsetRaw, sideInsetMax);
+  const minSideInset = 25;
+  const sideInset = Math.max(minSideInset, sideInsetRaw);
 
   return {
     safePadTop: "10px",

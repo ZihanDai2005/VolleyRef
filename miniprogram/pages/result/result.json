@@ -1,4 +1,6 @@
 {
   "navigationBarTitleText": "",
-  "navigationStyle": "custom"
+  "navigationStyle": "custom",
+  "disableScroll": true,
+  "disableSwipeBack": true
 }

@@ -1,5 +1,5 @@
 <view
-  class="match-container"
+  class="match-page match-container"
   style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}}; --safe-pad-top: {{safePadTop}}; --safe-pad-right: {{safePadRight}}; --safe-pad-bottom: {{safePadBottom}}; --safe-pad-left: {{safePadLeft}};"
 >
   <view class="match-nav">
@@ -40,7 +40,8 @@
 
     <view class="y-zone">
       <view class="y-row">
-        <view class="x-room-count-pill">{{matchModeText}} {{setNoText}}</view>
+        <view class="x-room-count-pill">{{matchModeText}}</view>
+        <view class="x-room-count-pill">{{setNoText}}</view>
       </view>
       <view class="y-row">
         <view class="x-room-count-pill timer-pill"><text class="timer-pill-text">局时间 {{setTimerText}}</text></view>
@@ -174,18 +175,34 @@
       </view>
 
       <view class="set-end-actions">
-        <view class="set-end-btn-home outline pressable" hover-class="tap-active" bindtap="onSetEndUndo">
-          <view class="set-end-btn-content">
-            <text class="set-end-btn-text">撤回比分</text>
-            <view class="set-end-btn-icon undo"></view>
+        <block wx:if="{{setEndWaiting}}">
+          <view class="set-end-btn-home waiting waiting-main">
+            <view class="set-end-btn-content">
+              <text class="set-end-btn-text">等待其他裁判操作中...</text>
+              <view class="set-end-btn-icon wait"></view>
+            </view>
           </view>
-        </view>
-        <view class="set-end-btn-home primary pressable" hover-class="tap-active" bindtap="onSetEndContinue">
-          <view class="set-end-btn-content">
-            <text class="set-end-btn-text">{{setEndActionText}}</text>
-            <view class="set-end-btn-icon {{setEndMatchFinished ? 'confirm' : ''}}"></view>
+          <view class="set-end-btn-home takeover waiting-takeover pressable" hover-class="tap-active" bindtap="onSetEndTakeover">
+            <view class="set-end-btn-content">
+              <text class="set-end-btn-text">接管</text>
+              <view class="set-end-btn-icon takeover"></view>
+            </view>
           </view>
-        </view>
+        </block>
+        <block wx:else>
+          <view class="set-end-btn-home outline pressable" hover-class="tap-active" bindtap="onSetEndUndo">
+            <view class="set-end-btn-content">
+              <text class="set-end-btn-text">撤回比分</text>
+              <view class="set-end-btn-icon undo"></view>
+            </view>
+          </view>
+          <view class="set-end-btn-home primary pressable" hover-class="tap-active" bindtap="onSetEndContinue">
+            <view class="set-end-btn-content">
+              <text class="set-end-btn-text">{{setEndActionText}}</text>
+              <view class="set-end-btn-icon {{setEndMatchFinished ? 'confirm' : ''}}"></view>
+            </view>
+          </view>
+        </block>
       </view>
     </view>
   </view>

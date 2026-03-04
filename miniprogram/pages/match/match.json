@@ -2,6 +2,7 @@
   "navigationBarTitleText": "比赛界面",
   "navigationStyle": "custom",
   "pageOrientation": "landscape",
+  "disableScroll": true,
   "usingComponents": {
     "score-board": "/components/score-board/score-board"
   }

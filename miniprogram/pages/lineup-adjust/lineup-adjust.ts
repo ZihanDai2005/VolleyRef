@@ -1,4 +1,4 @@
-import { getRoomAsync, updateRoomAsync, TEAM_COLOR_OPTIONS } from "../../utils/room-service";
+import { getRoomAsync, updateRoomAsync, subscribeRoomWatch, TEAM_COLOR_OPTIONS } from "../../utils/room-service";
 import { showBlockHint, showToastHint } from "../../utils/hint";
 import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
 import { computeLandscapeSafePad } from "../../utils/safe-pad";
@@ -239,6 +239,7 @@ function setKeepScreenOnSafe(keepScreenOn: boolean): void {
 Page({
   currentSetNo: 1 as number,
   draftSaveTimer: 0 as number,
+  roomWatchOff: null as null | (() => void),
   data: {
     continueBtnFx: false,
     isSwapped: false,
@@ -317,6 +318,7 @@ Page({
     setTimeout(() => {
       this.syncSafePadding();
     }, 260);
+    this.startRoomWatch();
     this.loadRoom();
   },
 
@@ -327,11 +329,34 @@ Page({
     if ((wx as any).offWindowResize) {
       (wx as any).offWindowResize(this.onWindowResize);
     }
+    this.stopRoomWatch();
   },
 
   onHide() {
     this.persistLineupDraftNow().catch(() => {});
     setKeepScreenOnSafe(false);
+    this.stopRoomWatch();
+  },
+
+  startRoomWatch() {
+    if (this.roomWatchOff) {
+      return;
+    }
+    const roomId = String(this.data.roomId || "");
+    if (!roomId) {
+      return;
+    }
+    this.roomWatchOff = subscribeRoomWatch(roomId, () => {
+      this.loadRoom();
+    });
+  },
+
+  stopRoomWatch() {
+    if (!this.roomWatchOff) {
+      return;
+    }
+    this.roomWatchOff();
+    this.roomWatchOff = null;
   },
 
   onWindowResize() {
@@ -487,6 +512,15 @@ Page({
           wx.reLaunch({ url: "/pages/home/home" });
         },
       });
+      return;
+    }
+    const setEndState = (room.match && (room.match as any).setEndState) || null;
+    const setEndActive = !!(setEndState && setEndState.active);
+    const setEndPhase = String((setEndState && setEndState.phase) || "");
+    const setEndOwnerClientId = String((setEndState && setEndState.ownerClientId) || "");
+    const currentClientId = String(getApp<IAppOption>().globalData.clientId || "");
+    if (!setEndActive || setEndPhase !== "lineup" || setEndOwnerClientId !== currentClientId) {
+      wx.redirectTo({ url: "/pages/match/match?roomId=" + roomId });
       return;
     }
 
@@ -747,6 +781,7 @@ Page({
         }
         room.match.isSwapped = this.data.isSwapped;
         room.match.servingTeam = this.data.servingTeam;
+        delete (room.match as any).setEndState;
         delete (room.match as any).lineupAdjustDraft;
         return room;
       });

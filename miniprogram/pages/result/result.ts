@@ -103,6 +103,11 @@ Page({
     wx.reLaunch({ url: "/pages/home/home" });
   },
 
+  onBackPress() {
+    wx.reLaunch({ url: "/pages/home/home" });
+    return true;
+  },
+
   startCountdown() {
     this.stopCountdown();
     this.refreshCountdownText();

@@ -1,5 +1,6 @@
 {
   "navigationBarTitleText": "",
   "navigationStyle": "custom",
-  "pageOrientation": "landscape"
+  "pageOrientation": "landscape",
+  "disableScroll": true
 }

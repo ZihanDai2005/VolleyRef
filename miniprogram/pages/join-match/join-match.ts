@@ -155,6 +155,10 @@ Page({
       return;
     }
     const target = room.status === "result" ? "result" : room.status === "match" ? "match" : "room";
+    if (target === "result") {
+      wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
+      return;
+    }
     wx.navigateTo({ url: "/pages/" + target + "/" + target + "?roomId=" + roomId });
   },
 

@@ -1,4 +1,4 @@
-page {
+.match-page {
   height: 100vh;
   overflow: hidden;
 }
@@ -13,7 +13,7 @@ page {
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 0;
 }
 
 .match-nav {
@@ -24,6 +24,7 @@ page {
   align-items: center;
   flex-shrink: 0;
   background: var(--page-bg);
+  margin-bottom: 6px;
 }
 
 .match-nav-back {
@@ -62,26 +63,26 @@ page {
 
 .top-control-row {
   --xy-gap: 8px;
-  position: relative;
   width: 100%;
-  min-height: 110px;
   flex-shrink: 0;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr);
+  align-items: center;
+  column-gap: var(--xy-gap);
+  margin-bottom: 16px;
 }
 
 .x-zone,
 .y-zone {
-  position: absolute;
-  top: 50%;
-  transform: translateY(-50%);
+  position: static;
   width: auto;
   display: flex;
   flex-direction: column;
   gap: var(--xy-gap);
-  z-index: 3;
 }
 
 .x-zone {
-  left: 0;
+  justify-self: start;
   align-items: flex-start;
   justify-content: center;
 }
@@ -108,10 +109,12 @@ page {
   border: 0;
   border-radius: 999px;
   padding: 0 14px;
+  white-space: nowrap;
+  flex-shrink: 0;
 }
 
 .y-zone {
-  right: 0;
+  justify-self: end;
   align-items: flex-end;
   justify-content: center;
 }
@@ -124,17 +127,14 @@ page {
 }
 
 .score-zone {
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+  position: static;
   display: flex;
   flex-direction: column;
   align-items: center;
   justify-content: center;
   width: auto;
   gap: 6px;
-  z-index: 2;
+  justify-self: center;
 }
 
 .pressable {
@@ -279,6 +279,7 @@ page {
   align-items: stretch;
   flex: 1;
   min-height: 0;
+  margin-bottom: 0;
 }
 
 .court-row.swapped {
@@ -717,6 +718,7 @@ page {
   height: 46px;
   border-radius: 9999px;
   border: 0;
+  box-sizing: border-box;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -727,9 +729,30 @@ page {
 }
 
 .set-end-btn-home.outline {
-  border: 1px solid #111315;
+  border: 0;
+  box-shadow: inset 0 0 0 1px #111315;
   background: transparent;
   color: #111315;
+}
+
+.set-end-btn-home.waiting {
+  border: 0;
+  background: rgba(120, 126, 137, 0.18);
+  color: var(--text-secondary);
+}
+
+.set-end-btn-home.waiting-main {
+  flex: 7 1 0%;
+}
+
+.set-end-btn-home.waiting-takeover {
+  flex: 3 1 0%;
+}
+
+.set-end-btn-home.takeover {
+  border: 0;
+  background: #d94b4b;
+  color: #fff;
 }
 
 .set-end-btn-content {
@@ -751,7 +774,9 @@ page {
 
 .set-end-btn-icon {
   position: absolute;
+  top: 50%;
   right: 16px;
+  transform: translateY(-50%);
   width: 26px;
   height: 26px;
   background: currentColor;
@@ -770,9 +795,23 @@ page {
 
 .set-end-btn-icon.undo {
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M5.82843 6.99955L8.36396 9.53509L6.94975 10.9493L2 5.99955L6.94975 1.0498L8.36396 2.46402L5.82843 4.99955H13C17.4183 4.99955 21 8.58127 21 12.9996C21 17.4178 17.4183 20.9996 13 20.9996H4V18.9996H13C16.3137 18.9996 19 16.3133 19 12.9996C19 9.68584 16.3137 6.99955 13 6.99955H5.82843Z'/%3E%3C/svg%3E")
-    center / 90% 90% no-repeat;
+    center / 85% 85% no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M5.82843 6.99955L8.36396 9.53509L6.94975 10.9493L2 5.99955L6.94975 1.0498L8.36396 2.46402L5.82843 4.99955H13C17.4183 4.99955 21 8.58127 21 12.9996C21 17.4178 17.4183 20.9996 13 20.9996H4V18.9996H13C16.3137 18.9996 19 16.3133 19 12.9996C19 9.68584 16.3137 6.99955 13 6.99955H5.82843Z'/%3E%3C/svg%3E")
-    center / 90% 90% no-repeat;
+    center / 85% 85% no-repeat;
+}
+
+.set-end-btn-icon.wait {
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 2C12.5523 2 13 2.44772 13 3V6C13 6.55228 12.5523 7 12 7C11.4477 7 11 6.55228 11 6V3C11 2.44772 11.4477 2 12 2ZM12 17C12.5523 17 13 17.4477 13 18V21C13 21.5523 12.5523 22 12 22C11.4477 22 11 21.5523 11 21V18C11 17.4477 11.4477 17 12 17ZM22 12C22 12.5523 21.5523 13 21 13H18C17.4477 13 17 12.5523 17 12C17 11.4477 17.4477 11 18 11H21C21.5523 11 22 11.4477 22 12ZM7 12C7 12.5523 6.55228 13 6 13H3C2.44772 13 2 12.5523 2 12C2 11.4477 2.44772 11 3 11H6C6.55228 11 7 11.4477 7 12ZM19.0711 19.0711C18.6805 19.4616 18.0474 19.4616 17.6569 19.0711L15.5355 16.9497C15.145 16.5592 15.145 15.9261 15.5355 15.5355C15.9261 15.145 16.5592 15.145 16.9497 15.5355L19.0711 17.6569C19.4616 18.0474 19.4616 18.6805 19.0711 19.0711ZM8.46447 8.46447C8.07394 8.85499 7.44078 8.85499 7.05025 8.46447L4.92893 6.34315C4.53841 5.95262 4.53841 5.31946 4.92893 4.92893C5.31946 4.53841 5.95262 4.53841 6.34315 4.92893L8.46447 7.05025C8.85499 7.44078 8.85499 8.07394 8.46447 8.46447ZM4.92893 19.0711C4.53841 18.6805 4.53841 18.0474 4.92893 17.6569L7.05025 15.5355C7.44078 15.145 8.07394 15.145 8.46447 15.5355C8.85499 15.9261 8.85499 16.5592 8.46447 16.9497L6.34315 19.0711C5.95262 19.4616 5.31946 19.4616 4.92893 19.0711ZM15.5355 8.46447C15.145 8.07394 15.145 7.44078 15.5355 7.05025L17.6569 4.92893C18.0474 4.53841 18.6805 4.53841 19.0711 4.92893C19.4616 5.31946 19.4616 5.95262 19.0711 6.34315L16.9497 8.46447C16.5592 8.85499 15.9261 8.85499 15.5355 8.46447Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 2C12.5523 2 13 2.44772 13 3V6C13 6.55228 12.5523 7 12 7C11.4477 7 11 6.55228 11 6V3C11 2.44772 11.4477 2 12 2ZM12 17C12.5523 17 13 17.4477 13 18V21C13 21.5523 12.5523 22 12 22C11.4477 22 11 21.5523 11 21V18C11 17.4477 11.4477 17 12 17ZM22 12C22 12.5523 21.5523 13 21 13H18C17.4477 13 17 12.5523 17 12C17 11.4477 17.4477 11 18 11H21C21.5523 11 22 11.4477 22 12ZM7 12C7 12.5523 6.55228 13 6 13H3C2.44772 13 2 12.5523 2 12C2 11.4477 2.44772 11 3 11H6C6.55228 11 7 11.4477 7 12ZM19.0711 19.0711C18.6805 19.4616 18.0474 19.4616 17.6569 19.0711L15.5355 16.9497C15.145 16.5592 15.145 15.9261 15.5355 15.5355C15.9261 15.145 16.5592 15.145 16.9497 15.5355L19.0711 17.6569C19.4616 18.0474 19.4616 18.6805 19.0711 19.0711ZM8.46447 8.46447C8.07394 8.85499 7.44078 8.85499 7.05025 8.46447L4.92893 6.34315C4.53841 5.95262 4.53841 5.31946 4.92893 4.92893C5.31946 4.53841 5.95262 4.53841 6.34315 4.92893L8.46447 7.05025C8.85499 7.44078 8.85499 8.07394 8.46447 8.46447ZM4.92893 19.0711C4.53841 18.6805 4.53841 18.0474 4.92893 17.6569L7.05025 15.5355C7.44078 15.145 8.07394 15.145 8.46447 15.5355C8.85499 15.9261 8.85499 16.5592 8.46447 16.9497L6.34315 19.0711C5.95262 19.4616 5.31946 19.4616 4.92893 19.0711ZM15.5355 8.46447C15.145 8.07394 15.145 7.44078 15.5355 7.05025L17.6569 4.92893C18.0474 4.53841 18.6805 4.53841 19.0711 4.92893C19.4616 5.31946 19.4616 5.95262 19.0711 6.34315L16.9497 8.46447C16.5592 8.85499 15.9261 8.85499 15.5355 8.46447Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.set-end-btn-icon.takeover {
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12.8659 3.00017L22.3922 19.5002C22.6684 19.9785 22.5045 20.5901 22.0262 20.8662C21.8742 20.954 21.7017 21.0002 21.5262 21.0002H2.47363C1.92135 21.0002 1.47363 20.5525 1.47363 20.0002C1.47363 19.8246 1.51984 19.6522 1.60761 19.5002L11.1339 3.00017C11.41 2.52187 12.0216 2.358 12.4999 2.63414C12.6519 2.72191 12.7782 2.84815 12.8659 3.00017ZM4.20568 19.0002H19.7941L11.9999 5.50017L4.20568 19.0002ZM10.9999 16.0002H12.9999V18.0002H10.9999V16.0002ZM10.9999 9.00017H12.9999V14.0002H10.9999V9.00017Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12.8659 3.00017L22.3922 19.5002C22.6684 19.9785 22.5045 20.5901 22.0262 20.8662C21.8742 20.954 21.7017 21.0002 21.5262 21.0002H2.47363C1.92135 21.0002 1.47363 20.5525 1.47363 20.0002C1.47363 19.8246 1.51984 19.6522 1.60761 19.5002L11.1339 3.00017C11.41 2.52187 12.0216 2.358 12.4999 2.63414C12.6519 2.72191 12.7782 2.84815 12.8659 3.00017ZM4.20568 19.0002H19.7941L11.9999 5.50017L4.20568 19.0002ZM10.9999 16.0002H12.9999V18.0002H10.9999V16.0002ZM10.9999 9.00017H12.9999V14.0002H10.9999V9.00017Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
 }
 
 .back-exit-mask {
@@ -851,9 +890,19 @@ page {
   }
 
   .set-end-btn-home.outline {
-    border-color: #f5f6f8;
     color: #f5f6f8;
     background: transparent;
+    box-shadow: inset 0 0 0 1px #f5f6f8;
+  }
+
+  .set-end-btn-home.waiting {
+    background: rgba(245, 246, 248, 0.18);
+    color: #c1c6ce;
+  }
+
+  .set-end-btn-home.takeover {
+    background: #d94b4b;
+    color: #fff;
   }
 
   .back-exit-btn.primary {
@@ -864,12 +913,12 @@ page {
 
 @media (max-height: 360px) {
   .match-container {
-    gap: 6px;
+    gap: 0;
   }
 
   .top-control-row {
     --xy-gap: 6px;
-    min-height: 72px;
+    margin-bottom: 16px;
   }
 
   .action-btn,

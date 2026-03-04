@@ -499,7 +499,7 @@ Page({
     }
 
     if (room.status === "result" && !this.data.editMode) {
-      wx.redirectTo({ url: "/pages/result/result?roomId=" + roomId });
+      wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
       return;
     }
 
