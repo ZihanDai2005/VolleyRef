@@ -258,6 +258,8 @@ function pushUndoSnapshot(room: any): void {
     setNo: room.match.setNo,
     aSetWins: room.match.aSetWins,
     bSetWins: room.match.bSetWins,
+    teamATimeoutCount: Math.max(0, Math.min(2, Number((room.match as any).teamATimeoutCount) || 0)),
+    teamBTimeoutCount: Math.max(0, Math.min(2, Number((room.match as any).teamBTimeoutCount) || 0)),
     isFinished: room.match.isFinished,
   });
   if (room.match.undoStack.length > 100) {
@@ -378,6 +380,8 @@ Page({
     setNo: 1,
     aSetWins: 0,
     bSetWins: 0,
+    teamATimeoutCount: 0,
+    teamBTimeoutCount: 0,
     setNoText: "第1局",
     matchModeText: "5局3胜",
     setWinsText: "0 : 0",
@@ -1173,6 +1177,8 @@ Page({
       const setNoText = room.match.isFinished ? "已结束" : "第" + String(room.match.setNo || 1) + "局";
       const matchModeText = buildMatchModeText(room.settings || {});
       const setWinsText = String(leftSetWins || 0) + " : " + String(rightSetWins || 0);
+      const teamATimeoutCount = Math.max(0, Math.min(2, Number((room.match as any).teamATimeoutCount) || 0));
+      const teamBTimeoutCount = Math.max(0, Math.min(2, Number((room.match as any).teamBTimeoutCount) || 0));
       const timerStartAt = Number((room.match as any).setTimerStartAt) || 0;
       const timerElapsedMs = Number((room.match as any).setTimerElapsedMs) || 0;
       const shouldShowStartMatchModal =
@@ -1241,6 +1247,8 @@ Page({
         setNo: room.match.setNo || 1,
         aSetWins: room.match.aSetWins || 0,
         bSetWins: room.match.bSetWins || 0,
+        teamATimeoutCount: teamATimeoutCount,
+        teamBTimeoutCount: teamBTimeoutCount,
         setNoText: setNoText,
         matchModeText: matchModeText,
         setWinsText: setWinsText,
@@ -1525,6 +1533,8 @@ Page({
             room.match.servingTeam = setWinner;
             room.match.isSwapped = false;
             room.match.decidingSetEightHandled = false;
+            (room.match as any).teamATimeoutCount = 0;
+            (room.match as any).teamBTimeoutCount = 0;
             appendMatchLog(room, "next_set", "进入第" + String(room.match.setNo) + "局", setWinner);
           }
         }
@@ -1604,6 +1614,60 @@ Page({
     this.switchSidesWithAnimation("手动换边");
   },
 
+  async onTeamTimeoutTap(e: WechatMiniprogram.TouchEvent) {
+    if (this.data.showSetEndModal) {
+      return;
+    }
+    if (this.data.isMatchFinished) {
+      showToastHint("比赛已结束，无法暂停");
+      return;
+    }
+    const team = ((e.currentTarget.dataset as { team?: TeamCode }).team || "") as TeamCode;
+    if (team !== "A" && team !== "B") {
+      return;
+    }
+    const currentCount = team === "A" ? Number(this.data.teamATimeoutCount || 0) : Number(this.data.teamBTimeoutCount || 0);
+    if (currentCount >= 2) {
+      showToastHint("本局暂停次数已用完");
+      return;
+    }
+    const teamName = team === "A" ? String(this.data.teamAName || "甲") : String(this.data.teamBName || "乙");
+    wx.showModal({
+      title: "暂停确认",
+      content: "",
+      confirmText: "确认",
+      cancelText: "取消",
+      success: async (res) => {
+        if (!res.confirm) {
+          return;
+        }
+        const roomId = this.data.roomId;
+        let used = false;
+        await updateRoomAsync(roomId, (room) => {
+          if (room.match.isFinished) {
+            return room;
+          }
+          const key = team === "A" ? "teamATimeoutCount" : "teamBTimeoutCount";
+          const prev = Math.max(0, Math.min(2, Number((room.match as any)[key]) || 0));
+          if (prev >= 2) {
+            return room;
+          }
+          pushUndoSnapshot(room);
+          (room.match as any)[key] = prev + 1;
+          used = true;
+          const latestName = team === "A" ? String(room.teamA.name || teamName) : String(room.teamB.name || teamName);
+          appendMatchLog(room, "timeout", latestName + " 暂停（" + String(prev + 1) + "/2）", team);
+          return room;
+        });
+        if (!used) {
+          showToastHint("本局暂停次数已用完");
+          return;
+        }
+        this.loadRoom(roomId, true);
+      },
+    });
+  },
+
   async onRotateTeam(e: WechatMiniprogram.TouchEvent) {
     if (this.data.showSetEndModal) {
       return;
@@ -1645,6 +1709,8 @@ Page({
       room.match.bSetWins = 0;
       room.match.setNo = 1;
       room.match.decidingSetEightHandled = false;
+      (room.match as any).teamATimeoutCount = 0;
+      (room.match as any).teamBTimeoutCount = 0;
       room.match.isFinished = false;
       appendMatchLog(room, "score_reset", "比分清零（0:0）");
       return room;
@@ -1689,6 +1755,10 @@ Page({
         (last.setNo || room.match.setNo) === room.match.setNo &&
         (last.aSetWins || 0) === room.match.aSetWins &&
         (last.bSetWins || 0) === room.match.bSetWins &&
+        Math.max(0, Math.min(2, Number(last.teamATimeoutCount) || 0)) ===
+          Math.max(0, Math.min(2, Number((room.match as any).teamATimeoutCount) || 0)) &&
+        Math.max(0, Math.min(2, Number(last.teamBTimeoutCount) || 0)) ===
+          Math.max(0, Math.min(2, Number((room.match as any).teamBTimeoutCount) || 0)) &&
         !!last.isFinished === !!room.match.isFinished &&
         samePlayers(last.teamAPlayers || [], room.teamA.players || []) &&
         samePlayers(last.teamBPlayers || [], room.teamB.players || [])
@@ -1718,6 +1788,8 @@ Page({
       room.match.setNo = last.setNo || room.match.setNo || 1;
       room.match.aSetWins = last.aSetWins || 0;
       room.match.bSetWins = last.bSetWins || 0;
+      (room.match as any).teamATimeoutCount = Math.max(0, Math.min(2, Number(last.teamATimeoutCount) || 0));
+      (room.match as any).teamBTimeoutCount = Math.max(0, Math.min(2, Number(last.teamBTimeoutCount) || 0));
       room.match.isFinished = !!last.isFinished;
       undoRotateA = isOneStepRotationBetween(room.teamA.players || [], last.teamAPlayers || []);
       undoRotateB = isOneStepRotationBetween(room.teamB.players || [], last.teamBPlayers || []);

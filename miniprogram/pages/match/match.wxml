@@ -55,6 +55,10 @@
         <view class="rotate-btn {{isSwapped ? 'right' : 'left'}} pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
           <view class="rotate-icon"></view>
         </view>
+        <view class="timeout-btn {{isSwapped ? 'left' : 'right'}} pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
+          <view class="timeout-icon"></view>
+          <text class="timeout-count">{{teamATimeoutCount}}</text>
+        </view>
         <text class="team-title">{{teamAName}}</text>
       </view>
       <view class="lineup-grid {{isSwapped ? 'swap-layout' : ''}}">
@@ -80,6 +84,10 @@
 
     <view class="team-panel team-b">
       <view class="team-head">
+        <view class="timeout-btn {{isSwapped ? 'right' : 'left'}} pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
+          <view class="timeout-icon"></view>
+          <text class="timeout-count">{{teamBTimeoutCount}}</text>
+        </view>
         <text class="team-title">{{teamBName}}</text>
         <view class="rotate-btn {{isSwapped ? 'left' : 'right'}} pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
           <view class="rotate-icon"></view>

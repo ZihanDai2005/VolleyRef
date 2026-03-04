@@ -33,6 +33,8 @@ export interface MatchState {
   setNo: number;
   aSetWins: number;
   bSetWins: number;
+  teamATimeoutCount: number;
+  teamBTimeoutCount: number;
   isFinished: boolean;
   undoStack: Array<{
     aScore: number;
@@ -50,6 +52,8 @@ export interface MatchState {
     setNo?: number;
     aSetWins?: number;
     bSetWins?: number;
+    teamATimeoutCount?: number;
+    teamBTimeoutCount?: number;
     isFinished?: boolean;
   }>;
   logs: Array<{
@@ -278,6 +282,8 @@ function createDefaultRoom(roomId: string): RoomState {
       setNo: 1,
       aSetWins: 0,
       bSetWins: 0,
+      teamATimeoutCount: 0,
+      teamBTimeoutCount: 0,
       isFinished: false,
       undoStack: [],
       logs: [],
@@ -378,6 +384,8 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   base.match.setNo = Math.max(1, Number(input.match && (input.match as any).setNo) || 1);
   base.match.aSetWins = Math.max(0, Number(input.match && (input.match as any).aSetWins) || 0);
   base.match.bSetWins = Math.max(0, Number(input.match && (input.match as any).bSetWins) || 0);
+  base.match.teamATimeoutCount = Math.max(0, Math.min(2, Number(input.match && (input.match as any).teamATimeoutCount) || 0));
+  base.match.teamBTimeoutCount = Math.max(0, Math.min(2, Number(input.match && (input.match as any).teamBTimeoutCount) || 0));
   base.match.isFinished = !!(input.match && (input.match as any).isFinished);
 
   const rawUndoStack = input.match && (input.match as any).undoStack;
@@ -399,6 +407,8 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
         setNo: Math.max(1, Number(item.setNo) || 1),
         aSetWins: Math.max(0, Number(item.aSetWins) || 0),
         bSetWins: Math.max(0, Number(item.bSetWins) || 0),
+        teamATimeoutCount: Math.max(0, Math.min(2, Number(item.teamATimeoutCount) || 0)),
+        teamBTimeoutCount: Math.max(0, Math.min(2, Number(item.teamBTimeoutCount) || 0)),
         isFinished: !!item.isFinished,
       };
     });
