@@ -1,0 +1,27 @@
+<view class="landing-container">
+  <view class="landing-shell">
+    <text class="welcome-title">欢迎</text>
+    <text class="welcome-desc">为排球比赛而设计的裁判协同工具。</text>
+    <text class="welcome-desc spacer"></text>
+    <text class="welcome-desc">支持多位裁判实时协作，</text>
+    <text class="welcome-desc">同步比分、轮转与站位信息。</text>
+    <text class="welcome-desc spacer"></text>
+    <text class="welcome-desc">让记录更清晰，</text>
+    <text class="welcome-desc">让执裁更从容。</text>
+
+    <view class="entry-actions">
+      <button class="entry-btn {{createBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateEntryTap">
+        <view class="entry-btn-content">
+          <text class="entry-btn-text">创建比赛</text>
+          <view class="entry-btn-icon"></view>
+        </view>
+      </button>
+      <button class="entry-btn {{joinBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onJoinEntryTap">
+        <view class="entry-btn-content">
+          <text class="entry-btn-text">加入比赛</text>
+          <view class="entry-btn-icon"></view>
+        </view>
+      </button>
+    </view>
+  </view>
+</view>

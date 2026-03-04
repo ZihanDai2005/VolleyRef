@@ -76,7 +76,7 @@ Page({
       wx.navigateBack({ delta: 1 });
       return;
     }
-    wx.reLaunch({ url: "/pages/create-room/create-room" });
+    wx.reLaunch({ url: "/pages/home/home" });
   },
 
   onJoinRoomIdInput(e: WechatMiniprogram.Input) {

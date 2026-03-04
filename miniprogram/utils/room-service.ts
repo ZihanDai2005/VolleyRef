@@ -89,7 +89,7 @@ const ROOM_EXTRA_TTL_MS = 3 * 60 * 60 * 1000;
 const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 20 * 1000;
 const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
-const CLOUD_PULL_INTERVAL_MS = 500;
+const CLOUD_PULL_INTERVAL_MS = 5000;
 const ROOM_API_FUNCTION = "roomApi";
 const POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
 const DEFAULT_TEAM_A_COLOR = "#6C63BE";
@@ -113,6 +113,14 @@ const cloudPullingMap: Record<string, boolean> = {};
 const cloudPullAtMap: Record<string, number> = {};
 const roomMemoryStore: RoomStore = {};
 const roomLockMemoryStore: Record<string, { owner: string; ts: number }> = {};
+const roomWatchMap: Record<
+  string,
+  {
+    listeners: Set<(room: RoomState | null) => void>;
+    watcher: { close?: () => void } | null;
+    restarting: boolean;
+  }
+> = {};
 
 function canUseCloud(): boolean {
   return !!(wx as any).cloud && typeof (wx as any).cloud.callFunction === "function";
@@ -509,6 +517,88 @@ function saveCloudRoomRaw(raw: any): RoomState {
   return room;
 }
 
+function hasRoomWatch(roomId: string): boolean {
+  const bucket = roomWatchMap[roomId];
+  return !!bucket && bucket.listeners.size > 0;
+}
+
+function emitRoomWatch(roomId: string, room: RoomState | null): void {
+  const bucket = roomWatchMap[roomId];
+  if (!bucket || bucket.listeners.size <= 0) {
+    return;
+  }
+  bucket.listeners.forEach((listener) => {
+    try {
+      listener(room ? cloneRoom(room) : null);
+    } catch (e) {}
+  });
+}
+
+function stopRoomWatchInternal(roomId: string): void {
+  const bucket = roomWatchMap[roomId];
+  if (!bucket) {
+    return;
+  }
+  try {
+    bucket.watcher && bucket.watcher.close && bucket.watcher.close();
+  } catch (e) {}
+  bucket.watcher = null;
+  bucket.restarting = false;
+}
+
+function startRoomWatchInternal(roomId: string): void {
+  const bucket = roomWatchMap[roomId];
+  if (!bucket || bucket.watcher || !canUseCloud() || !roomId) {
+    return;
+  }
+  const cloudObj = (wx as any).cloud;
+  if (!cloudObj || typeof cloudObj.database !== "function") {
+    return;
+  }
+  try {
+    const db = cloudObj.database();
+    bucket.watcher = db
+      .collection("rooms")
+      .doc(roomId)
+      .watch({
+        onChange: (snapshot: any) => {
+          const docs = snapshot && Array.isArray(snapshot.docs) ? snapshot.docs : [];
+          if (!docs.length) {
+            const store = getStore();
+            if (store[roomId]) {
+              delete store[roomId];
+              saveStore(store);
+            }
+            emitRoomWatch(roomId, null);
+            return;
+          }
+          const next = saveCloudRoomRaw(docs[0]);
+          emitRoomWatch(roomId, next);
+        },
+        onError: () => {
+          stopRoomWatchInternal(roomId);
+          const latest = roomWatchMap[roomId];
+          if (!latest || latest.restarting || latest.listeners.size <= 0) {
+            return;
+          }
+          latest.restarting = true;
+          setTimeout(() => {
+            const retry = roomWatchMap[roomId];
+            if (!retry) {
+              return;
+            }
+            retry.restarting = false;
+            if (retry.listeners.size > 0) {
+              startRoomWatchInternal(roomId);
+            }
+          }, 1200);
+        },
+      });
+  } catch (e) {
+    stopRoomWatchInternal(roomId);
+  }
+}
+
 function cloudPullRoom(roomId: string): void {
   if (!canUseCloud() || !roomId) {
     return;
@@ -618,7 +708,7 @@ export function createRoom(input: {
 
 export function getRoom(roomId: string): RoomState | null {
   const room = getStore()[roomId];
-  if (roomId) {
+  if (roomId && !hasRoomWatch(roomId)) {
     cloudPullRoom(roomId);
   }
   return room ? cloneRoom(room) : null;
@@ -655,7 +745,6 @@ export function reserveRoomId(roomId: string, ownerId: string): boolean {
     ts: now(),
   };
   saveRoomLocks(locks);
-  callRoomApi("reserveRoomId", { roomId: id, ownerId: owner }).catch(() => {});
   return true;
 }
 
@@ -675,7 +764,6 @@ export function releaseRoomId(roomId: string, ownerId?: string): void {
   }
   delete locks[id];
   saveRoomLocks(locks);
-  callRoomApi("releaseRoomId", { roomId: id, ownerId: owner }).catch(() => {});
 }
 
 export function getParticipantCount(roomId: string): number {
@@ -711,13 +799,6 @@ export function heartbeatRoom(roomId: string, clientId: string): number {
   cleanupRoomParticipants(room);
   store[roomId] = room;
   saveStore(store);
-  callRoomApi<{ room?: any }>("heartbeatRoom", { roomId: roomId, clientId: clientId })
-    .then((res) => {
-      if (res && res.room) {
-        saveCloudRoomRaw(res.room);
-      }
-    })
-    .catch(() => {});
   return Object.keys(room.participants).length;
 }
 
@@ -733,13 +814,6 @@ export function leaveRoom(roomId: string, clientId: string): void {
     store[roomId] = room;
     saveStore(store);
   }
-  callRoomApi<{ room?: any }>("leaveRoom", { roomId: roomId, clientId: clientId })
-    .then((res) => {
-      if (res && res.room) {
-        saveCloudRoomRaw(res.room);
-      }
-    })
-    .catch(() => {});
 }
 
 export function updateRoom(
@@ -847,13 +921,6 @@ export async function createRoomAsync(input: {
 export async function getRoomAsync(roomId: string): Promise<RoomState | null> {
   const local = getRoom(roomId);
   if (local) {
-    void callRoomApi<{ room?: any }>("getRoom", { roomId: roomId })
-      .then((res) => {
-        if (res && res.room) {
-          saveCloudRoomRaw(res.room);
-        }
-      })
-      .catch(() => {});
     return local;
   }
   try {
@@ -966,4 +1033,43 @@ export async function forcePullRoomAsync(roomId: string): Promise<RoomState | nu
     }
   } catch (e) {}
   return getRoom(roomId);
+}
+
+export function subscribeRoomWatch(roomId: string, listener: (room: RoomState | null) => void): () => void {
+  const id = String(roomId || "");
+  if (!id || typeof listener !== "function") {
+    return () => {};
+  }
+  let bucket = roomWatchMap[id];
+  if (!bucket) {
+    bucket = {
+      listeners: new Set(),
+      watcher: null,
+      restarting: false,
+    };
+    roomWatchMap[id] = bucket;
+  }
+  bucket.listeners.add(listener);
+  startRoomWatchInternal(id);
+
+  const local = getStore()[id];
+  if (local) {
+    setTimeout(() => {
+      try {
+        listener(cloneRoom(local));
+      } catch (e) {}
+    }, 0);
+  }
+
+  return () => {
+    const current = roomWatchMap[id];
+    if (!current) {
+      return;
+    }
+    current.listeners.delete(listener);
+    if (current.listeners.size <= 0) {
+      stopRoomWatchInternal(id);
+      delete roomWatchMap[id];
+    }
+  };
 }

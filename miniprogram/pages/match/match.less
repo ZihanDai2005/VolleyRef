@@ -167,6 +167,14 @@ page {
   gap: 6px;
 }
 
+.icon-circle-btn {
+  width: 32px;
+  min-width: 32px;
+  padding: 0;
+  border-radius: 999px;
+  justify-content: center;
+}
+
 .top-btn {
   width: auto;
   height: 32px;
@@ -252,7 +260,6 @@ page {
   font-feature-settings: "tnum" 1;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
 }
-
 
 .plain-btn {
   background: var(--surface);
@@ -701,12 +708,12 @@ page {
 .set-end-actions {
   margin-top: 14px;
   display: flex;
-  flex-direction: column;
-  gap: 0;
+  flex-direction: row;
+  gap: 8px;
 }
 
 .set-end-btn-home {
-  width: 100%;
+  flex: 1;
   height: 46px;
   border-radius: 9999px;
   border: 0;
@@ -717,6 +724,12 @@ page {
   font-weight: 600;
   color: #fff;
   background: #111315;
+}
+
+.set-end-btn-home.outline {
+  border: 1px solid #111315;
+  background: transparent;
+  color: #111315;
 }
 
 .set-end-btn-content {
@@ -753,6 +766,13 @@ page {
     center / contain no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M11.602 13.7599L13.014 15.1719L21.4795 6.7063L22.8938 8.12051L13.014 18.0003L6.65 11.6363L8.06421 10.2221L10.189 12.3469L11.6025 13.7594L11.602 13.7599ZM11.6037 10.9322L16.5563 5.97949L17.9666 7.38977L13.014 12.3424L11.6037 10.9322ZM8.77698 16.5873L7.36396 18.0003L1 11.6363L2.41421 10.2221L3.82723 11.6352L3.82604 11.6363L8.77698 16.5873Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
+}
+
+.set-end-btn-icon.undo {
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M5.82843 6.99955L8.36396 9.53509L6.94975 10.9493L2 5.99955L6.94975 1.0498L8.36396 2.46402L5.82843 4.99955H13C17.4183 4.99955 21 8.58127 21 12.9996C21 17.4178 17.4183 20.9996 13 20.9996H4V18.9996H13C16.3137 18.9996 19 16.3133 19 12.9996C19 9.68584 16.3137 6.99955 13 6.99955H5.82843Z'/%3E%3C/svg%3E")
+    center / 90% 90% no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M5.82843 6.99955L8.36396 9.53509L6.94975 10.9493L2 5.99955L6.94975 1.0498L8.36396 2.46402L5.82843 4.99955H13C17.4183 4.99955 21 8.58127 21 12.9996C21 17.4178 17.4183 20.9996 13 20.9996H4V18.9996H13C16.3137 18.9996 19 16.3133 19 12.9996C19 9.68584 16.3137 6.99955 13 6.99955H5.82843Z'/%3E%3C/svg%3E")
+    center / 90% 90% no-repeat;
 }
 
 .back-exit-mask {
@@ -828,6 +848,12 @@ page {
   .set-end-btn-home {
     background: #f5f6f8;
     color: #111315;
+  }
+
+  .set-end-btn-home.outline {
+    border-color: #f5f6f8;
+    color: #f5f6f8;
+    background: transparent;
   }
 
   .back-exit-btn.primary {

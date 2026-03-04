@@ -5,6 +5,7 @@ import {
   heartbeatRoomAsync,
   leaveRoomAsync,
   releaseRoomIdAsync,
+  subscribeRoomWatch,
   TEAM_COLOR_OPTIONS,
 } from "../../utils/room-service";
 import { showBlockHint, showToastHint } from "../../utils/hint";
@@ -236,8 +237,10 @@ Page({
 
   pollTimer: 0 as number,
   heartbeatTimer: 0 as number,
+  roomWatchOff: null as null | (() => void),
   themeOff: null as null | (() => void),
   captainPickerResolver: null as null | ((value: string | null) => void),
+  pageScrollTop: 0 as number,
 
   onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
@@ -294,11 +297,13 @@ Page({
     if (this.data.createMode) {
       return;
     }
+    this.startRoomWatch();
     this.startHeartbeat();
     this.startPolling();
   },
 
   onHide() {
+    this.stopRoomWatch();
     this.stopPolling();
     this.stopHeartbeat();
   },
@@ -308,6 +313,7 @@ Page({
       this.themeOff();
       this.themeOff = null;
     }
+    this.stopRoomWatch();
     this.stopPolling();
     this.stopHeartbeat();
     if (this.data.createMode) {
@@ -328,6 +334,24 @@ Page({
       this.captainPickerResolver(null);
       this.captainPickerResolver = null;
     }
+  },
+
+  onPageScroll(e: WechatMiniprogram.Page.IPageScrollOption) {
+    this.pageScrollTop = Number((e && e.scrollTop) || 0);
+  },
+
+  keepScrollOnInputFocus() {
+    const top = Math.max(0, Number(this.pageScrollTop || 0));
+    setTimeout(() => {
+      wx.pageScrollTo({ scrollTop: top, duration: 0 });
+    }, 0);
+    setTimeout(() => {
+      wx.pageScrollTo({ scrollTop: top, duration: 0 });
+    }, 60);
+  },
+
+  onTeamBInputFocus() {
+    this.keepScrollOnInputFocus();
   },
 
   applyNavigationTheme() {
@@ -364,7 +388,7 @@ Page({
       wx.navigateBack({ delta: 1 });
       return;
     }
-    wx.reLaunch({ url: "/pages/create-room/create-room" });
+    wx.reLaunch({ url: "/pages/home/home" });
   },
 
   onRoomIdInfoTap() {
@@ -384,7 +408,7 @@ Page({
       showCancel: false,
       confirmText: "返回首页",
       success: () => {
-        wx.reLaunch({ url: "/pages/create-room/create-room" });
+        wx.reLaunch({ url: "/pages/home/home" });
       },
     });
   },
@@ -397,7 +421,7 @@ Page({
         return;
       }
       this.loadRoom(roomId, false);
-    }, 800) as unknown as number;
+    }, 3000) as unknown as number;
   },
 
   stopPolling() {
@@ -406,6 +430,27 @@ Page({
     }
     clearInterval(this.pollTimer);
     this.pollTimer = 0;
+  },
+
+  startRoomWatch() {
+    if (this.roomWatchOff) {
+      return;
+    }
+    const roomId = String(this.data.roomId || "");
+    if (!roomId) {
+      return;
+    }
+    this.roomWatchOff = subscribeRoomWatch(roomId, () => {
+      this.loadRoom(roomId, false);
+    });
+  },
+
+  stopRoomWatch() {
+    if (!this.roomWatchOff) {
+      return;
+    }
+    this.roomWatchOff();
+    this.roomWatchOff = null;
   },
 
   startHeartbeat() {
@@ -560,6 +605,7 @@ Page({
       return;
     }
     if (field === "teamBName") {
+      this.keepScrollOnInputFocus();
       this.setData({ teamBNameFocused: true });
     }
   },
@@ -622,14 +668,12 @@ Page({
         return;
       }
       this.setData({ teamAColor: color });
-      this.setData({ teamARGB: hexToRgbString(color) });
     } else {
       if (color === this.data.teamAColor) {
         showToastHint("甲/乙队颜色不能相同");
         return;
       }
       this.setData({ teamBColor: color });
-      this.setData({ teamBRGB: hexToRgbString(color) });
     }
     this.persistDraft();
   },
@@ -853,10 +897,6 @@ Page({
       }
       teamBCaptainNo = enteredB;
     }
-    this.setData({
-      teamACaptainNo: teamACaptainNo,
-      teamBCaptainNo: teamBCaptainNo,
-    });
     return {
       teamACaptainNo: teamACaptainNo,
       teamBCaptainNo: teamBCaptainNo,
@@ -902,8 +942,10 @@ Page({
     const teamBName = this.data.teamBName.trim() || "乙";
     const roomPassword = this.data.roomPassword.trim();
     const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
-    let teamACaptainNo = normalizeNumberInput(this.data.teamACaptainNo);
-    let teamBCaptainNo = normalizeNumberInput(this.data.teamBCaptainNo);
+    const permanentTeamACaptainNo = normalizeNumberInput(this.data.teamACaptainNo);
+    const permanentTeamBCaptainNo = normalizeNumberInput(this.data.teamBCaptainNo);
+    let onCourtTeamACaptainNo = permanentTeamACaptainNo;
+    let onCourtTeamBCaptainNo = permanentTeamBCaptainNo;
 
     if (roomPassword.length !== 6) {
       showBlockHint("房间密码需6位数字");
@@ -914,11 +956,11 @@ Page({
       showBlockHint(teamNameErr);
       return;
     }
-    if (!teamACaptainNo) {
+    if (!permanentTeamACaptainNo) {
       showBlockHint("请填写甲队队长号码");
       return;
     }
-    if (!teamBCaptainNo) {
+    if (!permanentTeamBCaptainNo) {
       showBlockHint("请填写乙队队长号码");
       return;
     }
@@ -948,8 +990,8 @@ Page({
       if (!captainResolved) {
         return;
       }
-      teamACaptainNo = captainResolved.teamACaptainNo;
-      teamBCaptainNo = captainResolved.teamBCaptainNo;
+      onCourtTeamACaptainNo = captainResolved.teamACaptainNo;
+      onCourtTeamBCaptainNo = captainResolved.teamBCaptainNo;
     }
 
     if (createMode) {
@@ -967,11 +1009,11 @@ Page({
           tiebreakScore: mode.tiebreakScore,
         },
         teamAName: teamAName,
-        teamACaptainNo: teamACaptainNo,
+        teamACaptainNo: permanentTeamACaptainNo,
         teamAColor: this.data.teamAColor,
         teamAPlayers: this.data.teamAPlayers.slice(),
         teamBName: teamBName,
-        teamBCaptainNo: teamBCaptainNo,
+        teamBCaptainNo: permanentTeamBCaptainNo,
         teamBColor: this.data.teamBColor,
         teamBPlayers: this.data.teamBPlayers.slice(),
       });
@@ -981,6 +1023,8 @@ Page({
       }
       const nextCreated = await updateRoomAsync(created.roomId, (room) => {
         room.status = "match";
+        (room.match as any).teamACurrentCaptainNo = onCourtTeamACaptainNo;
+        (room.match as any).teamBCurrentCaptainNo = onCourtTeamBCaptainNo;
         room.match.servingTeam = this.data.servingTeam;
         room.match.isSwapped = this.data.teamASide === "B";
         return room;
@@ -1007,16 +1051,18 @@ Page({
       };
       room.teamA = {
         name: teamAName,
-        captainNo: teamACaptainNo,
+        captainNo: permanentTeamACaptainNo,
         color: this.data.teamAColor,
         players: this.data.teamAPlayers.slice(),
       };
       room.teamB = {
         name: teamBName,
-        captainNo: teamBCaptainNo,
+        captainNo: permanentTeamBCaptainNo,
         color: this.data.teamBColor,
         players: this.data.teamBPlayers.slice(),
       };
+      (room.match as any).teamACurrentCaptainNo = onCourtTeamACaptainNo;
+      (room.match as any).teamBCurrentCaptainNo = onCourtTeamBCaptainNo;
       room.match.servingTeam = this.data.servingTeam;
       room.match.isSwapped = this.data.teamASide === "B";
       return room;

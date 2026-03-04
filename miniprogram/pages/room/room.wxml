@@ -141,12 +141,13 @@
                   type="number"
                   maxlength="2"
                   value="{{item.number === '?' ? '' : item.number}}"
-                  placeholder="?"
+                  placeholder=""
                   data-team="A"
                   data-index="{{item.index}}"
                   bindinput="onPlayerNumberInput"
                   bindblur="onPlayerNumberBlur"
                 />
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
                 <text class="sub-text">{{item.pos}}</text>
               </view>
             </view>
@@ -159,12 +160,13 @@
                 type="number"
                 maxlength="2"
                 value="{{item.number === '?' ? '' : item.number}}"
-                placeholder="?"
+                placeholder=""
                 data-team="A"
                 data-index="{{item.index}}"
                 bindinput="onPlayerNumberInput"
                 bindblur="onPlayerNumberBlur"
               />
+              <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
               <text class="sub-text">{{item.pos}}</text>
             </view>
           </view>
@@ -260,12 +262,14 @@
                   type="number"
                   maxlength="2"
                   value="{{item.number === '?' ? '' : item.number}}"
-                  placeholder="?"
+                  placeholder=""
                   data-team="B"
                   data-index="{{item.index}}"
+                  bindfocus="onTeamBInputFocus"
                   bindinput="onPlayerNumberInput"
                   bindblur="onPlayerNumberBlur"
                 />
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
                 <text class="sub-text">{{item.pos}}</text>
               </view>
             </view>
@@ -278,12 +282,14 @@
                 type="number"
                 maxlength="2"
                 value="{{item.number === '?' ? '' : item.number}}"
-                placeholder="?"
+                placeholder=""
                 data-team="B"
                 data-index="{{item.index}}"
+                bindfocus="onTeamBInputFocus"
                 bindinput="onPlayerNumberInput"
                 bindblur="onPlayerNumberBlur"
               />
+              <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
               <text class="sub-text">{{item.pos}}</text>
             </view>
           </view>
@@ -299,6 +305,7 @@
             maxlength="2"
             value="{{teamBCaptainNo}}"
             data-field="teamBCaptainNo"
+            bindfocus="onTeamBInputFocus"
             bindinput="onInputChange"
             bindblur="onCaptainNoBlur"
           />
@@ -382,14 +389,14 @@
       <view class="main-col">
         <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
           <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
-            <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+            <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindfocus="onTeamBInputFocus" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
             <text class="sub-text">{{item.pos}}</text>
           </view>
         </view>
       </view>
       <view class="libero-col">
         <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
-          <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+          <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindfocus="onTeamBInputFocus" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
           <text class="sub-text">{{item.pos}}</text>
         </view>
       </view>
@@ -403,6 +410,7 @@
         maxlength="2"
         value="{{teamBCaptainNo}}"
         data-field="teamBCaptainNo"
+        bindfocus="onTeamBInputFocus"
         bindinput="onInputChange"
         bindblur="onCaptainNoBlur"
       />

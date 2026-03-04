@@ -1,8 +1,8 @@
 {
   "pages": [
-    "pages/create-room/create-room",
+    "pages/home/home",
     "pages/join-match/join-match",
-    "pages/room/room",
+    "pages/create-room/create-room",
     "pages/match/match",
     "pages/lineup-adjust/lineup-adjust",
     "pages/result/result"

@@ -3,6 +3,7 @@ import {
   getRoomAsync,
   heartbeatRoomAsync,
   leaveRoomAsync,
+  subscribeRoomWatch,
   TEAM_COLOR_OPTIONS,
 } from "../../utils/room-service";
 import { showBlockHint, showToastHint } from "../../utils/hint";
@@ -247,6 +248,8 @@ function pushUndoSnapshot(room: any): void {
     lastScoringTeam: room.match.lastScoringTeam || "",
     teamACurrentCaptainNo: String((room.match as any).teamACurrentCaptainNo || room.teamA.captainNo || ""),
     teamBCurrentCaptainNo: String((room.match as any).teamBCurrentCaptainNo || room.teamB.captainNo || ""),
+    setTimerStartAt: Math.max(0, Number((room.match as any).setTimerStartAt) || 0),
+    setTimerElapsedMs: Math.max(0, Number((room.match as any).setTimerElapsedMs) || 0),
     servingTeam: room.match.servingTeam,
     teamAPlayers: room.teamA.players.slice(),
     teamBPlayers: room.teamB.players.slice(),
@@ -335,6 +338,18 @@ function formatDurationMMSS(ms: number): string {
   return mmText + ":" + ssText;
 }
 
+function buildMatchModeText(settings: any): string {
+  const sets = Math.max(1, Number(settings && settings.sets) || 1);
+  const wins = Math.max(1, Number(settings && settings.wins) || 1);
+  if (sets === 5 && wins === 3) {
+    return "5局3胜";
+  }
+  if (sets === 3 && wins === 2) {
+    return "3局2胜";
+  }
+  return "1局1胜";
+}
+
 function setKeepScreenOnSafe(keepScreenOn: boolean): void {
   wx.setKeepScreenOn({
     keepScreenOn,
@@ -364,6 +379,7 @@ Page({
     aSetWins: 0,
     bSetWins: 0,
     setNoText: "第1局",
+    matchModeText: "5局3胜",
     setWinsText: "0 : 0",
     isMatchFinished: false,
     isSwapped: false,
@@ -419,6 +435,7 @@ Page({
   roomLoadPendingForce: false as boolean,
   lastSeenLogId: "" as string,
   allLogs: [] as MatchLogItem[],
+  roomWatchOff: null as null | (() => void),
 
   buildLogSetOptions(sets: number): number[] {
     const count = Math.max(1, Number(sets || 1));
@@ -488,11 +505,13 @@ Page({
     this.applyNavigationTheme();
     this.startHeartbeat();
     this.startTimerTick();
+    this.startRoomWatch();
     this.startPolling();
   },
 
   onHide() {
     setKeepScreenOnSafe(false);
+    this.stopRoomWatch();
     this.stopPolling();
     this.stopHeartbeat();
     this.stopTimerTick();
@@ -504,6 +523,7 @@ Page({
       this.themeOff();
       this.themeOff = null;
     }
+    this.stopRoomWatch();
     this.stopPolling();
     this.stopHeartbeat();
     this.stopTimerTick();
@@ -535,7 +555,7 @@ Page({
 
   onBackExitDirect() {
     this.setData({ showBackExitModal: false, backConfirming: true });
-    wx.reLaunch({ url: "/pages/create-room/create-room" });
+    wx.reLaunch({ url: "/pages/home/home" });
     setTimeout(() => {
       this.setData({ backConfirming: false });
     }, 200);
@@ -550,7 +570,7 @@ Page({
       this.data.roomPassword +
       "，打开小程序粘贴即可加入房间，请确认邀请人已完成比赛设置并进入比赛页面后再加入";
     if (!/^\d{6}$/.test(this.data.roomId) || !/^\d{6}$/.test(this.data.roomPassword)) {
-      wx.reLaunch({ url: "/pages/create-room/create-room" });
+      wx.reLaunch({ url: "/pages/home/home" });
       setTimeout(() => {
         this.setData({ backConfirming: false });
       }, 200);
@@ -559,7 +579,7 @@ Page({
     wx.setClipboardData({
       data: inviteText,
       complete: () => {
-        wx.reLaunch({ url: "/pages/create-room/create-room" });
+        wx.reLaunch({ url: "/pages/home/home" });
         setTimeout(() => {
           this.setData({ backConfirming: false });
         }, 200);
@@ -637,7 +657,7 @@ Page({
       showCancel: false,
       confirmText: "返回首页",
       success: () => {
-        wx.reLaunch({ url: "/pages/create-room/create-room" });
+        wx.reLaunch({ url: "/pages/home/home" });
       },
     });
   },
@@ -681,7 +701,7 @@ Page({
         return;
       }
       this.loadRoom(roomId, false);
-    }, 800) as unknown as number;
+    }, 3000) as unknown as number;
   },
 
   stopPolling() {
@@ -690,6 +710,27 @@ Page({
     }
     clearInterval(this.pollTimer);
     this.pollTimer = 0;
+  },
+
+  startRoomWatch() {
+    if (this.roomWatchOff) {
+      return;
+    }
+    const roomId = String(this.data.roomId || "");
+    if (!roomId) {
+      return;
+    }
+    this.roomWatchOff = subscribeRoomWatch(roomId, () => {
+      this.loadRoom(roomId, false);
+    });
+  },
+
+  stopRoomWatch() {
+    if (!this.roomWatchOff) {
+      return;
+    }
+    this.roomWatchOff();
+    this.roomWatchOff = null;
   },
 
   startHeartbeat() {
@@ -1017,7 +1058,7 @@ Page({
         return;
       }
       if (room.status === "setup") {
-        wx.redirectTo({ url: "/pages/room/room?roomId=" + roomId });
+        wx.redirectTo({ url: "/pages/create-room/create-room?roomId=" + roomId });
         return;
       }
       if (room.status === "result") {
@@ -1075,6 +1116,12 @@ Page({
       const prevBMainGrid = buildMainGridByOrder(prevBPlayers, getMainOrderForTeam("B", teamASide));
       const teamAColor = room.teamA.color || TEAM_COLOR_OPTIONS[0].value;
       const teamBColor = room.teamB.color || TEAM_COLOR_OPTIONS[1].value;
+      const currentTeamACaptain = normalizeNumberInput(
+        String((room.match as any).teamACurrentCaptainNo || (room.teamA as any).captainNo || "")
+      );
+      const currentTeamBCaptain = normalizeNumberInput(
+        String((room.match as any).teamBCurrentCaptainNo || (room.teamB as any).captainNo || "")
+      );
       const leftTeam: TeamCode = nextSwapped ? "B" : "A";
       const rightTeam: TeamCode = leftTeam === "A" ? "B" : "A";
       const leftScore = leftTeam === "A" ? room.match.aScore : room.match.bScore;
@@ -1088,6 +1135,7 @@ Page({
             ? "B"
             : "";
       const setNoText = room.match.isFinished ? "已结束" : "第" + String(room.match.setNo || 1) + "局";
+      const matchModeText = buildMatchModeText(room.settings || {});
       const setWinsText = String(leftSetWins || 0) + " : " + String(rightSetWins || 0);
       const timerStartAt = Number((room.match as any).setTimerStartAt) || 0;
       const timerElapsedMs = Number((room.match as any).setTimerElapsedMs) || 0;
@@ -1117,12 +1165,8 @@ Page({
         teamAColor: teamAColor,
         teamBColor: teamBColor,
         roomPassword: String(room.password || ""),
-        teamACaptainNo: normalizeNumberInput(
-          String((room.match as any).teamACurrentCaptainNo || (room.teamA as any).captainNo || "")
-        ),
-        teamBCaptainNo: normalizeNumberInput(
-          String((room.match as any).teamBCurrentCaptainNo || (room.teamB as any).captainNo || "")
-        ),
+        teamACaptainNo: currentTeamACaptain,
+        teamBCaptainNo: currentTeamBCaptain,
         teamARGB: hexToRgbTriplet(teamAColor),
         teamBRGB: hexToRgbTriplet(teamBColor),
         aScore: leftScore,
@@ -1134,6 +1178,7 @@ Page({
         aSetWins: room.match.aSetWins || 0,
         bSetWins: room.match.bSetWins || 0,
         setNoText: setNoText,
+        matchModeText: matchModeText,
         setWinsText: setWinsText,
         isMatchFinished: !!room.match.isFinished,
         showStartMatchModal: shouldShowStartMatchModal,
@@ -1526,7 +1571,7 @@ Page({
     }
   },
 
-  async onUndoLastScore() {
+  async performUndoLastScore(allowCrossSet = false) {
     const roomId = this.data.roomId;
     let undone = false;
     let beforeAScore = 0;
@@ -1569,7 +1614,7 @@ Page({
       }
       const currentSetNo = Math.max(1, Number(room.match.setNo || 1));
       const lastSetNo = Math.max(1, Number(last.setNo || currentSetNo));
-      if (lastSetNo !== currentSetNo) {
+      if (!allowCrossSet && lastSetNo !== currentSetNo) {
         stack.push(last);
         return room;
       }
@@ -1579,6 +1624,8 @@ Page({
       room.match.lastScoringTeam = last.lastScoringTeam === "B" ? "B" : last.lastScoringTeam === "A" ? "A" : "";
       (room.match as any).teamACurrentCaptainNo = String(last.teamACurrentCaptainNo || room.teamA.captainNo || "");
       (room.match as any).teamBCurrentCaptainNo = String(last.teamBCurrentCaptainNo || room.teamB.captainNo || "");
+      (room.match as any).setTimerStartAt = Math.max(0, Number(last.setTimerStartAt) || 0);
+      (room.match as any).setTimerElapsedMs = Math.max(0, Number(last.setTimerElapsedMs) || 0);
       room.match.servingTeam = last.servingTeam;
       room.match.isSwapped = !!last.isSwapped;
       room.match.decidingSetEightHandled = !!last.decidingSetEightHandled;
@@ -1619,6 +1666,15 @@ Page({
     if (undoRotateB) {
       await this.playTeamRotateMotion("B", beforeBRects, beforeBNoMap, beforeBCaptain);
     }
+  },
+
+  async onUndoLastScore() {
+    await this.performUndoLastScore(false);
+  },
+
+  async onSetEndUndo() {
+    this.setData({ showSetEndModal: false });
+    await this.performUndoLastScore(true);
   },
 
   onOpenLogPanel() {

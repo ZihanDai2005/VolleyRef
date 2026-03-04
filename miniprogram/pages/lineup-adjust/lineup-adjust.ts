@@ -294,7 +294,7 @@ Page({
   onLoad(options: Record<string, string>) {
     const roomId = String((options && options.roomId) || "");
     if (!roomId) {
-      wx.reLaunch({ url: "/pages/create-room/create-room" });
+      wx.reLaunch({ url: "/pages/home/home" });
       return;
     }
     this.setData({ roomId: roomId });
@@ -484,7 +484,7 @@ Page({
         showCancel: false,
         confirmText: "返回首页",
         success: () => {
-          wx.reLaunch({ url: "/pages/create-room/create-room" });
+          wx.reLaunch({ url: "/pages/home/home" });
         },
       });
       return;
@@ -506,12 +506,9 @@ Page({
     const initTeamBPlayers = canUseDraft ? clonePlayers(draft!.teamBPlayers || []) : preset.teamBPlayers;
     const initIsSwapped = canUseDraft ? !!draft!.isSwapped : preset.isSwapped;
     const initServingTeam: TeamCode = canUseDraft ? (draft!.servingTeam === "B" ? "B" : "A") : preset.servingTeam;
-    const initTeamAInitialCaptainNo = canUseDraft
-      ? normalizeNumberInput(draft!.teamAInitialCaptainNo || roomTeamACaptain)
-      : roomTeamACaptain;
-    const initTeamBInitialCaptainNo = canUseDraft
-      ? normalizeNumberInput(draft!.teamBInitialCaptainNo || roomTeamBCaptain)
-      : roomTeamBCaptain;
+    // 永久队长只取创建房间时写入的 teamX.captainNo，不受中场临时草稿影响。
+    const initTeamAInitialCaptainNo = roomTeamACaptain;
+    const initTeamBInitialCaptainNo = roomTeamBCaptain;
     const initTeamACaptainNo = canUseDraft
       ? normalizeNumberInput(draft!.teamACaptainNo || roomTeamACaptain)
       : roomTeamACaptain;
@@ -761,7 +758,7 @@ Page({
         wx.navigateBack({ delta: 1 });
         return;
       }
-      wx.reLaunch({ url: "/pages/create-room/create-room" });
+      wx.reLaunch({ url: "/pages/home/home" });
     }, 150);
   },
 
@@ -771,7 +768,7 @@ Page({
       wx.navigateBack({ delta: 1 });
       return;
     }
-    wx.reLaunch({ url: "/pages/create-room/create-room" });
+    wx.reLaunch({ url: "/pages/home/home" });
   },
 
   onBackPress() {

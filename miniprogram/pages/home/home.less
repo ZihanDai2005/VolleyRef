@@ -1,0 +1,149 @@
+page {
+  height: 100vh;
+  overflow: hidden;
+}
+
+.landing-container {
+  height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 64rpx;
+  box-sizing: border-box;
+}
+
+.landing-shell {
+  width: 100%;
+  max-width: none;
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+  align-items: stretch;
+  box-sizing: border-box;
+  padding-top: 26vh;
+  padding-bottom: 7vh;
+}
+
+.welcome-title {
+  display: block;
+  font-size: 72rpx;
+  font-weight: 600;
+  color: var(--text-primary);
+  text-align: left;
+}
+
+.welcome-desc {
+  width: 100%;
+  display: block;
+  margin-top: 12rpx;
+  font-size: 35rpx;
+  line-height: 1.5;
+  color: var(--text-secondary);
+  text-align: left;
+}
+
+.welcome-title + .welcome-desc {
+  margin-top: 46rpx;
+}
+
+.welcome-desc.spacer {
+  margin-top: 8rpx;
+  height: 18rpx;
+  line-height: 18rpx;
+}
+
+.entry-actions {
+  width: 100%;
+  margin-left: 0;
+  margin-right: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 28rpx;
+  margin-top: auto;
+  padding-top: 40rpx;
+  padding-bottom: 0;
+}
+
+.entry-actions .entry-btn {
+  width: 100%;
+  max-width: none;
+  min-width: 0;
+  margin: 0;
+  display: block;
+  height: 94rpx;
+  line-height: 94rpx;
+  padding: 0;
+  background: #111315;
+  color: #ffffff;
+  border-radius: 999rpx;
+  font-size: 32rpx;
+  font-weight: 600;
+  position: relative;
+  overflow: hidden;
+  transition: transform 150ms ease, filter 150ms ease, box-shadow 150ms ease;
+  box-shadow: none;
+}
+
+.entry-btn::after {
+  border: 0;
+}
+
+.entry-btn-hover {
+  transform: scale(0.975);
+  filter: brightness(1.08);
+}
+
+.entry-btn-fx {
+  animation: btnFancyTap 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+
+.entry-btn-content {
+  width: 100%;
+  height: 100%;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0 34rpx;
+  box-sizing: border-box;
+}
+
+.entry-btn-text {
+  font-size: 34rpx;
+  color: inherit;
+}
+
+.entry-btn-icon {
+  position: absolute;
+  right: 30rpx;
+  width: 42rpx;
+  height: 42rpx;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+@media (prefers-color-scheme: dark) {
+  .entry-actions .entry-btn {
+    background: #f5f6f8;
+    color: #111315;
+    box-shadow: none;
+  }
+}
+
+@keyframes btnFancyTap {
+  0% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+  45% {
+    transform: scale(0.965);
+    filter: brightness(1.12);
+  }
+  100% {
+    transform: scale(1);
+    filter: brightness(1);
+  }
+}

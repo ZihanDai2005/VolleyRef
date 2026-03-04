@@ -1,27 +1,478 @@
-<view class="landing-container">
-  <view class="landing-shell">
-    <text class="welcome-title">欢迎</text>
-    <text class="welcome-desc">为排球比赛而设计的裁判协同工具。</text>
-    <text class="welcome-desc spacer"></text>
-    <text class="welcome-desc">支持多位裁判实时协作，</text>
-    <text class="welcome-desc">同步比分、轮转与站位信息。</text>
-    <text class="welcome-desc spacer"></text>
-    <text class="welcome-desc">让记录更清晰，</text>
-    <text class="welcome-desc">让执裁更从容。</text>
+<view
+  class="room-container {{createMode ? 'create-mode' : ''}}"
+  style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --custom-nav-offset: {{customNavOffset}};"
+>
+  <view class="custom-nav-bg" style="height: {{customNavOffset}};"></view>
+  <view
+    class="custom-nav"
+    style="top: {{customNavTop}}; left: {{createMode ? '64rpx' : '30rpx'}}; right: {{createMode ? '64rpx' : '30rpx'}};"
+  >
+    <view class="custom-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
+      <view class="custom-nav-back-icon"></view>
+    </view>
+    <view class="custom-nav-space"></view>
+  </view>
 
-    <view class="entry-actions">
-      <button class="entry-btn {{createBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateEntryTap">
-        <view class="entry-btn-content">
-          <text class="entry-btn-text">创建比赛</text>
-          <view class="entry-btn-icon"></view>
+  <view class="create-head-block" wx:if="{{createMode}}">
+    <text class="create-head-title">开始一个新的</text>
+    <text class="create-head-title create-head-title-second">裁判协作</text>
+
+    <view class="create-head-inputs">
+      <view class="create-head-hint-row">
+        <text class="create-head-hint">裁判团队编号</text>
+        <view class="room-id-info-btn pressable" hover-class="tap-active" bindtap="onRoomIdInfoTap">
+          <view class="room-id-info-icon"></view>
         </view>
-      </button>
-      <button class="entry-btn {{joinBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onJoinEntryTap">
-        <view class="entry-btn-content">
-          <text class="entry-btn-text">加入比赛</text>
-          <view class="entry-btn-icon"></view>
+      </view>
+      <view class="create-head-input-wrap create-head-input-wrap-readonly">
+        <view class="create-head-input create-head-input-display create-head-input-readonly">
+          <text class="create-head-input-display-text">{{roomIdSpaced}}</text>
         </view>
-      </button>
+      </view>
+
+      <text class="create-head-hint">设置6位密码</text>
+      <view class="create-head-input-wrap" bindtap="onCreatePasswordWrapTap">
+        <input adjust-position="false"
+          class="create-head-input-native"
+          type="number"
+          maxlength="6"
+          value="{{roomPassword}}"
+          focus="{{focusCreatePasswordInput}}"
+          cursor="{{roomPassword.length}}"
+          data-field="roomPassword"
+          bindfocus="onPasswordFocus"
+          bindblur="onPasswordBlur"
+          bindinput="onInputChange"
+        />
+        <view class="create-head-input create-head-input-display">
+          <text class="create-head-input-display-text">{{roomPasswordSpaced}}</text>
+        </view>
+      </view>
+
+      <text class="create-head-hint">赛制模式</text>
+      <picker
+        mode="selector"
+        range="{{matchModes}}"
+        range-key="label"
+        value="{{matchModeIndex}}"
+        disabled="{{!createMode}}"
+        bindchange="onMatchModeChange"
+      >
+        <view class="create-head-input-wrap create-head-mode-wrap">
+          <text class="create-head-input create-head-input-mode">{{matchModes[matchModeIndex].label}}</text>
+          <view class="create-head-mode-arrow"></view>
+        </view>
+      </picker>
+      <view class="create-head-hint-alert-row">
+        <text class="create-head-hint create-head-hint-alert">请妥善保存团队编号和密码，否则退出后无法重新进入。</text>
+      </view>
+
+      <view class="create-head-divider-wrap">
+        <view class="create-head-divider"></view>
+      </view>
+
+      <text class="create-head-section-title">甲队设置</text>
+      <view class="create-head-color-draw-wrap">
+        <view class="create-head-color-col">
+          <text class="create-head-hint">颜色</text>
+          <view class="color-options create-head-color-options">
+            <view
+              class="color-option {{teamAColor === item.value ? 'active' : ''}} {{teamBColor === item.value ? 'disabled' : ''}}"
+              wx:for="{{colorOptions}}"
+              wx:key="value"
+              style="color: {{item.value}};"
+              data-team="A"
+              data-color="{{item.value}}"
+              hover-class="{{createMode ? 'color-option-hover' : ''}}"
+              bindtap="onTeamColorSelect"
+            >
+              <view class="color-dot" style="background-color: {{item.value}};"></view>
+            </view>
+          </view>
+        </view>
+        <view class="create-head-draw-col">
+          <text class="create-head-hint">抽签结果</text>
+          <view class="team-switches create-head-draw-switches">
+            <view
+              class="toggle-item switch-btn pressable {{servingTeam === 'A' ? 'on' : ''}} {{servePulseTeam === 'A' ? 'switch-pulse' : ''}}"
+              data-team="A"
+              hover-class="tap-active"
+              bindtap="onTeamServeButton"
+            >
+              <view class="draw-toggle-content">
+                <view class="serve-toggle-icon draw-toggle-icon"></view>
+                <text class="toggle-text draw-toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
+              </view>
+            </view>
+            <view class="side-toggle-btn switch-btn pressable {{teamASide === 'A' ? 'on' : ''}} {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
+              <view class="draw-toggle-content">
+                <view class="side-toggle-icon draw-toggle-icon"></view>
+                <text class="toggle-text draw-toggle-text">{{teamASide === 'A' ? 'A场区' : 'B场区'}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <text class="create-head-hint">名称</text>
+      <view class="create-head-input-wrap create-team-input-wrap">
+        <input adjust-position="false"
+          class="create-head-name-input create-team-input"
+          value="{{teamAName}}"
+          placeholder="{{teamANameFocused ? '' : '甲'}}"
+          disabled="{{!createMode}}"
+          data-field="teamAName"
+          bindfocus="onTeamNameFocus"
+          bindblur="onTeamNameBlur"
+          bindinput="onInputChange"
+        />
+      </view>
+      <view class="create-head-lineup-row">
+        <text class="create-head-hint create-head-lineup-hint">首发队员</text>
+      </view>
+
+      <view class="create-head-lineup-card">
+        <view class="lineup-grid create-head-lineup-grid team-a {{teamASide === 'A' ? 'side-a' : 'side-b'}} {{sidePulse ? 'side-switching' : ''}}">
+          <view class="main-col">
+            <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
+              <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+                <input adjust-position="false"
+                  class="player-input"
+                  placeholder-class="player-placeholder"
+                  type="number"
+                  maxlength="2"
+                  value="{{item.number === '?' ? '' : item.number}}"
+                  placeholder=""
+                  data-team="A"
+                  data-index="{{item.index}}"
+                  bindinput="onPlayerNumberInput"
+                  bindblur="onPlayerNumberBlur"
+                />
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                <text class="sub-text">{{item.pos}}</text>
+              </view>
+            </view>
+          </view>
+          <view class="libero-col">
+            <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
+              <input adjust-position="false"
+                class="player-input"
+                placeholder-class="player-placeholder"
+                type="number"
+                maxlength="2"
+                value="{{item.number === '?' ? '' : item.number}}"
+                placeholder=""
+                data-team="A"
+                data-index="{{item.index}}"
+                bindinput="onPlayerNumberInput"
+                bindblur="onPlayerNumberBlur"
+              />
+              <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+              <text class="sub-text">{{item.pos}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="create-head-captain-row">
+        <text class="create-head-hint">队长号码</text>
+        <view class="create-head-input-wrap create-team-input-wrap">
+          <input adjust-position="false"
+            class="create-head-name-input create-team-input"
+            type="number"
+            maxlength="2"
+            value="{{teamACaptainNo}}"
+            data-field="teamACaptainNo"
+            bindinput="onInputChange"
+            bindblur="onCaptainNoBlur"
+          />
+        </view>
+      </view>
+
+      <view class="create-head-divider-wrap">
+        <view class="create-head-divider"></view>
+      </view>
+
+      <text class="create-head-section-title create-head-team-gap">乙队设置</text>
+      <view class="create-head-color-draw-wrap">
+        <view class="create-head-color-col">
+          <text class="create-head-hint">颜色</text>
+          <view class="color-options create-head-color-options">
+            <view
+              class="color-option {{teamBColor === item.value ? 'active' : ''}} {{teamAColor === item.value ? 'disabled' : ''}}"
+              wx:for="{{colorOptions}}"
+              wx:key="value"
+              style="color: {{item.value}};"
+              data-team="B"
+              data-color="{{item.value}}"
+              hover-class="{{createMode ? 'color-option-hover' : ''}}"
+              bindtap="onTeamColorSelect"
+            >
+              <view class="color-dot" style="background-color: {{item.value}};"></view>
+            </view>
+          </view>
+        </view>
+        <view class="create-head-draw-col">
+          <text class="create-head-hint">抽签结果</text>
+          <view class="team-switches create-head-draw-switches">
+            <view
+              class="toggle-item switch-btn pressable {{servingTeam === 'B' ? 'on' : ''}} {{servePulseTeam === 'B' ? 'switch-pulse' : ''}}"
+              data-team="B"
+              hover-class="tap-active"
+              bindtap="onTeamServeButton"
+            >
+              <view class="draw-toggle-content">
+                <view class="serve-toggle-icon draw-toggle-icon"></view>
+                <text class="toggle-text draw-toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
+              </view>
+            </view>
+            <view class="side-toggle-btn switch-btn pressable {{teamASide === 'B' ? 'on' : ''}} {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
+              <view class="draw-toggle-content">
+                <view class="side-toggle-icon draw-toggle-icon"></view>
+                <text class="toggle-text draw-toggle-text">{{teamASide === 'B' ? 'A场区' : 'B场区'}}</text>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <text class="create-head-hint">名称</text>
+      <view class="create-head-input-wrap create-team-input-wrap">
+        <input adjust-position="false"
+          class="create-head-name-input create-team-input"
+          value="{{teamBName}}"
+          placeholder="{{teamBNameFocused ? '' : '乙'}}"
+          disabled="{{!createMode}}"
+          data-field="teamBName"
+          bindfocus="onTeamNameFocus"
+          bindblur="onTeamNameBlur"
+          bindinput="onInputChange"
+        />
+      </view>
+      <view class="create-head-lineup-row">
+        <text class="create-head-hint create-head-lineup-hint">首发队员</text>
+      </view>
+
+      <view class="create-head-lineup-card">
+        <view class="lineup-grid create-head-lineup-grid team-b {{teamASide === 'B' ? 'side-a' : 'side-b'}} {{sidePulse ? 'side-switching' : ''}}">
+          <view class="main-col">
+            <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
+              <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+                <input adjust-position="false"
+                  class="player-input"
+                  placeholder-class="player-placeholder"
+                  type="number"
+                  maxlength="2"
+                  value="{{item.number === '?' ? '' : item.number}}"
+                  placeholder=""
+                  data-team="B"
+                  data-index="{{item.index}}"
+                  bindfocus="onTeamBInputFocus"
+                  bindinput="onPlayerNumberInput"
+                  bindblur="onPlayerNumberBlur"
+                />
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                <text class="sub-text">{{item.pos}}</text>
+              </view>
+            </view>
+          </view>
+          <view class="libero-col">
+            <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
+              <input adjust-position="false"
+                class="player-input"
+                placeholder-class="player-placeholder"
+                type="number"
+                maxlength="2"
+                value="{{item.number === '?' ? '' : item.number}}"
+                placeholder=""
+                data-team="B"
+                data-index="{{item.index}}"
+                bindfocus="onTeamBInputFocus"
+                bindinput="onPlayerNumberInput"
+                bindblur="onPlayerNumberBlur"
+              />
+              <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+              <text class="sub-text">{{item.pos}}</text>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="create-head-captain-row">
+        <text class="create-head-hint">队长号码</text>
+        <view class="create-head-input-wrap create-team-input-wrap">
+          <input adjust-position="false"
+            class="create-head-name-input create-team-input"
+            type="number"
+            maxlength="2"
+            value="{{teamBCaptainNo}}"
+            data-field="teamBCaptainNo"
+            bindfocus="onTeamBInputFocus"
+            bindinput="onInputChange"
+            bindblur="onCaptainNoBlur"
+          />
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="card team team-a" wx:if="{{!createMode}}">
+    <view class="team-head-row">
+      <text class="team-title">{{teamAName || '甲'}}队 首发队员</text>
+      <view class="team-switches">
+        <view
+          class="toggle-item switch-btn pressable {{servingTeam === 'A' ? 'on' : ''}} {{servePulseTeam === 'A' ? 'switch-pulse' : ''}}"
+          data-team="A"
+          hover-class="tap-active"
+          bindtap="onTeamServeButton"
+        >
+          <text class="toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
+          <view class="serve-toggle-icon"></view>
+        </view>
+        <view class="side-toggle-btn switch-btn pressable {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
+          <text>{{teamASide === 'A' ? 'A场区' : 'B场区'}}</text>
+          <view class="side-toggle-icon"></view>
+        </view>
+      </view>
+    </view>
+
+    <view class="lineup-grid">
+      <view class="main-col">
+        <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
+          <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+            <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+            <text class="sub-text">{{item.pos}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="libero-col">
+        <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
+          <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+          <text class="sub-text">{{item.pos}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="setting-row captain-row">
+      <text class="label">队长号码</text>
+      <input adjust-position="false"
+        class="input team-name input-left"
+        type="number"
+        maxlength="2"
+        value="{{teamACaptainNo}}"
+        data-field="teamACaptainNo"
+        bindinput="onInputChange"
+        bindblur="onCaptainNoBlur"
+      />
+    </view>
+  </view>
+
+  <view class="card team team-b" wx:if="{{!createMode}}">
+    <view class="team-head-row">
+      <text class="team-title">{{teamBName || '乙'}}队 首发队员</text>
+      <view class="team-switches">
+        <view
+          class="toggle-item switch-btn pressable {{servingTeam === 'B' ? 'on' : ''}} {{servePulseTeam === 'B' ? 'switch-pulse' : ''}}"
+          data-team="B"
+          hover-class="tap-active"
+          bindtap="onTeamServeButton"
+        >
+          <text class="toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
+          <view class="serve-toggle-icon"></view>
+        </view>
+        <view class="side-toggle-btn switch-btn pressable {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
+          <text>{{teamASide === 'B' ? 'A场区' : 'B场区'}}</text>
+          <view class="side-toggle-icon"></view>
+        </view>
+      </view>
+    </view>
+
+    <view class="lineup-grid">
+      <view class="main-col">
+        <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
+          <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+            <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindfocus="onTeamBInputFocus" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+            <text class="sub-text">{{item.pos}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="libero-col">
+        <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
+          <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindfocus="onTeamBInputFocus" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+          <text class="sub-text">{{item.pos}}</text>
+        </view>
+      </view>
+    </view>
+
+    <view class="setting-row captain-row">
+      <text class="label">队长号码</text>
+      <input adjust-position="false"
+        class="input team-name input-left"
+        type="number"
+        maxlength="2"
+        value="{{teamBCaptainNo}}"
+        data-field="teamBCaptainNo"
+        bindfocus="onTeamBInputFocus"
+        bindinput="onInputChange"
+        bindblur="onCaptainNoBlur"
+      />
+    </view>
+  </view>
+
+  <view class="create-actions" wx:if="{{createMode}}">
+    <button class="entry-btn create-invite-btn {{createInviteBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateInviteTap">
+      <view class="entry-btn-content">
+        <text class="entry-btn-text">复制邀请</text>
+        <view class="entry-btn-copy-icon"></view>
+      </view>
+    </button>
+    <button class="entry-btn {{createContinueBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateContinueTap">
+      <view class="entry-btn-content">
+        <text class="entry-btn-text">继续</text>
+        <view class="entry-btn-icon"></view>
+      </view>
+    </button>
+  </view>
+  <button class="save-btn" wx:if="{{!createMode}}" bindtap="onSaveAndStart">进入比赛</button>
+
+  <view class="captain-picker-mask" wx:if="{{showCaptainPicker}}" catchtouchmove="noop" bindtap="onCaptainPickerCancel">
+    <view class="captain-picker-panel" catchtap="noop">
+      <view class="captain-picker-title">{{captainPickerTitle}}</view>
+      <view class="captain-picker-tip">队长不在场上，请选择一位球员作为场上队长</view>
+      <view class="lineup-grid captain-picker-grid {{captainPickerTeam === 'A' ? 'team-a' : 'team-b'}}">
+        <view class="main-col">
+          <view class="player-row row-two" wx:for="{{captainPickerMainGrid}}" wx:key="index" wx:for-item="row">
+            <view
+              class="player-card captain-option-card {{captainPickerSelectedNo === item.number ? 'captain-option-selected' : ''}} {{item.number === '?' ? 'captain-option-disabled' : ''}}"
+              wx:for="{{row}}"
+              wx:key="pos"
+              wx:for-item="item"
+              data-number="{{item.number}}"
+              hover-class="tap-active"
+              bindtap="onCaptainPickerSelect"
+            >
+              <text class="num-text">{{item.number}}</text>
+              <text class="sub-text">{{item.pos}}</text>
+            </view>
+          </view>
+        </view>
+        <view class="libero-col">
+          <view
+            class="player-card libero captain-option-card {{captainPickerSelectedNo === item.number ? 'captain-option-selected' : ''}} {{item.number === '?' ? 'captain-option-disabled' : ''}}"
+            wx:for="{{captainPickerLibero}}"
+            wx:key="pos"
+            wx:for-item="item"
+            data-number="{{item.number}}"
+            hover-class="tap-active"
+            bindtap="onCaptainPickerSelect"
+          >
+            <text class="num-text">{{item.number}}</text>
+            <text class="sub-text">{{item.pos}}</text>
+          </view>
+        </view>
+      </view>
+      <view class="captain-picker-actions">
+        <button class="captain-picker-btn cancel" bindtap="onCaptainPickerCancel">取消</button>
+        <button class="captain-picker-btn confirm" bindtap="onCaptainPickerConfirm">确定</button>
+      </view>
     </view>
   </view>
 </view>

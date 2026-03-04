@@ -24,7 +24,7 @@ Page({
     }
     const roomId = String((query && query.roomId) || "");
     if (!roomId) {
-      wx.reLaunch({ url: "/pages/create-room/create-room" });
+      wx.reLaunch({ url: "/pages/home/home" });
       return;
     }
     this.setData({ roomId });
@@ -59,7 +59,7 @@ Page({
         showCancel: false,
         confirmText: "返回首页",
         success: () => {
-          wx.reLaunch({ url: "/pages/create-room/create-room" });
+          wx.reLaunch({ url: "/pages/home/home" });
         },
       });
       return;
@@ -100,7 +100,7 @@ Page({
   },
 
   onBackTap() {
-    wx.reLaunch({ url: "/pages/create-room/create-room" });
+    wx.reLaunch({ url: "/pages/home/home" });
   },
 
   startCountdown() {
