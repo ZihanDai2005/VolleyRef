@@ -82,7 +82,7 @@ function normalizeLiberoSlots(players: PlayerSlot[]): PlayerSlot[] {
 function validateTeamPlayers(players: PlayerSlot[], teamName: string): string | null {
   const main = players.slice(0, 6);
   const missingMain = main.find(function (p) {
-    return !normalizeNumberInput(p.number);
+    return !p.number || p.number === "?";
   });
   if (missingMain) {
     return teamName + "队 " + missingMain.pos + " 位置未填写号码";
@@ -90,10 +90,10 @@ function validateTeamPlayers(players: PlayerSlot[], teamName: string): string | 
 
   const numbers = players
     .map(function (p) {
-      return normalizeNumberInput(p.number);
+      return p.number.trim();
     })
     .filter(function (n) {
-      return !!n;
+      return n && n !== "?";
     });
   const uniq = new Set(numbers);
   if (uniq.size !== numbers.length) {
@@ -239,6 +239,8 @@ function setKeepScreenOnSafe(keepScreenOn: boolean): void {
 Page({
   currentSetNo: 1 as number,
   draftSaveTimer: 0 as number,
+  inputEditing: false as boolean,
+  inputEditingReleaseTimer: 0 as number,
   roomWatchOff: null as null | (() => void),
   data: {
     continueBtnFx: false,
@@ -325,6 +327,10 @@ Page({
   onUnload() {
     this.persistLineupDraftNow().catch(() => {});
     this.clearDraftSaveTimer();
+    if (this.inputEditingReleaseTimer) {
+      clearTimeout(this.inputEditingReleaseTimer);
+      this.inputEditingReleaseTimer = 0;
+    }
     setKeepScreenOnSafe(false);
     if ((wx as any).offWindowResize) {
       (wx as any).offWindowResize(this.onWindowResize);
@@ -334,6 +340,11 @@ Page({
 
   onHide() {
     this.persistLineupDraftNow().catch(() => {});
+    this.inputEditing = false;
+    if (this.inputEditingReleaseTimer) {
+      clearTimeout(this.inputEditingReleaseTimer);
+      this.inputEditingReleaseTimer = 0;
+    }
     setKeepScreenOnSafe(false);
     this.stopRoomWatch();
   },
@@ -347,6 +358,9 @@ Page({
       return;
     }
     this.roomWatchOff = subscribeRoomWatch(roomId, () => {
+      if (this.inputEditing) {
+        return;
+      }
       this.loadRoom();
     });
   },
@@ -525,6 +539,9 @@ Page({
     }
 
     const roomSetNo = Math.max(1, Number(room.match && room.match.setNo) || 1);
+    if (this.inputEditing) {
+      return;
+    }
     this.currentSetNo = roomSetNo;
     const preset = getPresetLineupFromPreviousSet(room);
     const roomTeamACaptain = normalizeNumberInput(room.teamA.captainNo || "");
@@ -576,7 +593,20 @@ Page({
     );
   },
 
+  onPlayerInputFocus() {
+    this.inputEditing = true;
+    if (this.inputEditingReleaseTimer) {
+      clearTimeout(this.inputEditingReleaseTimer);
+      this.inputEditingReleaseTimer = 0;
+    }
+  },
+
   onPlayerNumberInput(e: WechatMiniprogram.Input) {
+    this.inputEditing = true;
+    if (this.inputEditingReleaseTimer) {
+      clearTimeout(this.inputEditingReleaseTimer);
+      this.inputEditingReleaseTimer = 0;
+    }
     const dataset = e.currentTarget.dataset as { team: TeamCode; index: number };
     const team = dataset.team;
     const index = Number(dataset.index);
@@ -591,7 +621,6 @@ Page({
       }
       players[index] = { pos: current.pos, number: number };
       this.applyDisplay(players, this.data.teamBPlayers, this.data.isSwapped);
-      this.schedulePersistLineupDraft();
     } else {
       const players = this.data.teamBPlayers.slice();
       const current = players[index];
@@ -600,11 +629,10 @@ Page({
       }
       players[index] = { pos: current.pos, number: number };
       this.applyDisplay(this.data.teamAPlayers, players, this.data.isSwapped);
-      this.schedulePersistLineupDraft();
     }
   },
 
-  onPlayerNumberBlur(e: WechatMiniprogram.TouchEvent) {
+  onPlayerNumberBlur(e: WechatMiniprogram.InputBlur) {
     const dataset = e.currentTarget.dataset as { team: TeamCode; index: number };
     const team = dataset.team;
     const index = Number(dataset.index);
@@ -612,7 +640,9 @@ Page({
     if (!Number.isFinite(index) || index < 0 || index >= players.length) {
       return;
     }
-    const current = normalizeNumberInput(players[index].number);
+    const blurValue = String((e.detail && e.detail.value) || "");
+    const currentRaw = blurValue !== "" ? blurValue : String(players[index].number || "");
+    const current = normalizeNumberInput(currentRaw);
     const normalized = current || "?";
     if (players[index].number !== normalized) {
       const slot = players[index];
@@ -652,7 +682,16 @@ Page({
         this.syncCaptainPickState(this.data.teamAPlayers, players);
       }
     }
-    this.schedulePersistLineupDraft();
+    this.persistLineupDraftNow().catch(() => {});
+    if (this.inputEditingReleaseTimer) {
+      clearTimeout(this.inputEditingReleaseTimer);
+      this.inputEditingReleaseTimer = 0;
+    }
+    this.inputEditingReleaseTimer = setTimeout(() => {
+      this.inputEditing = false;
+      this.inputEditingReleaseTimer = 0;
+      this.loadRoom();
+    }, 120) as unknown as number;
   },
 
   openCaptainPicker(team: TeamCode) {

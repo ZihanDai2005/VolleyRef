@@ -420,8 +420,8 @@
   <view class="create-actions" wx:if="{{createMode}}">
     <button class="entry-btn create-invite-btn {{createInviteBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateInviteTap">
       <view class="entry-btn-content">
-        <text class="entry-btn-text">复制邀请</text>
         <view class="entry-btn-copy-icon"></view>
+        <text class="entry-btn-text">复制邀请</text>
       </view>
     </button>
     <button class="entry-btn {{createContinueBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateContinueTap">

@@ -35,6 +35,7 @@
                 placeholder="?"
                 data-team="A"
                 data-index="{{item.index}}"
+                bindfocus="onPlayerInputFocus"
                 bindinput="onPlayerNumberInput"
                 bindblur="onPlayerNumberBlur"
               />
@@ -54,6 +55,7 @@
                   placeholder="?"
                   data-team="A"
                   data-index="{{item.index}}"
+                  bindfocus="onPlayerInputFocus"
                   bindinput="onPlayerNumberInput"
                   bindblur="onPlayerNumberBlur"
                 />
@@ -110,6 +112,7 @@
                   placeholder="?"
                   data-team="B"
                   data-index="{{item.index}}"
+                  bindfocus="onPlayerInputFocus"
                   bindinput="onPlayerNumberInput"
                   bindblur="onPlayerNumberBlur"
                 />
@@ -130,6 +133,7 @@
                 placeholder="?"
                 data-team="B"
                 data-index="{{item.index}}"
+                bindfocus="onPlayerInputFocus"
                 bindinput="onPlayerNumberInput"
                 bindblur="onPlayerNumberBlur"
               />

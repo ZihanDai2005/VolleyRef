@@ -1,5 +1,8 @@
 .score-board {
-  --vs-gap: 70px;
+  --score-font-size: 60px;
+  --score-slot-width: calc(2ch + 0.56em);
+  --score-side-gap: 0.2em;
+  --vs-gap: 0.38em;
   width: 760px;
   max-width: 100%;
   position: relative;
@@ -9,10 +12,11 @@
   margin-bottom: 0;
 }
 .team-score {
+  font-size: var(--score-font-size);
   display: flex;
   flex-direction: row;
   align-items: center;
-  gap: 14px;
+  gap: var(--score-side-gap);
 }
 .team-score.a {
   justify-self: end;
@@ -25,9 +29,14 @@
   padding-left: var(--vs-gap);
 }
 .score {
-  font-size: 60px;
+  width: var(--score-slot-width);
+  min-width: var(--score-slot-width);
+  text-align: center;
+  font-size: 1em;
   font-weight: bold;
   line-height: 1;
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
   transition: transform 180ms ease, color 180ms ease;
 }
 

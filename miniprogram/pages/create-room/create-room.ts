@@ -340,18 +340,9 @@ Page({
     this.pageScrollTop = Number((e && e.scrollTop) || 0);
   },
 
-  keepScrollOnInputFocus() {
-    const top = Math.max(0, Number(this.pageScrollTop || 0));
-    setTimeout(() => {
-      wx.pageScrollTo({ scrollTop: top, duration: 0 });
-    }, 0);
-    setTimeout(() => {
-      wx.pageScrollTo({ scrollTop: top, duration: 0 });
-    }, 60);
-  },
-
   onTeamBInputFocus() {
-    this.keepScrollOnInputFocus();
+    // Keep Team B inputs from changing page scroll position on focus.
+    // Intentionally no-op and kept for WXML bindings.
   },
 
   applyNavigationTheme() {
@@ -605,7 +596,6 @@ Page({
       return;
     }
     if (field === "teamBName") {
-      this.keepScrollOnInputFocus();
       this.setData({ teamBNameFocused: true });
     }
   },

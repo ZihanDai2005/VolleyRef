@@ -29,7 +29,23 @@
     </view>
 
     <view class="score-zone">
-      <view class="x-room-count-pill center-set-pill stat-num-pill">{{setWinsText}}</view>
+      <view class="score-pill-row">
+        <view
+          wx:if="{{canStartMatch}}"
+          class="x-room-count-pill center-set-pill start-match-entry-pill pressable"
+          hover-class="tap-active"
+          bindtap="onOpenStartMatchModal"
+        >
+          <view class="start-match-entry-icon"></view>
+          <text class="start-match-entry-text">开始比赛</text>
+        </view>
+        <view wx:else class="x-room-count-pill center-set-pill stat-num-pill">{{setWinsText}}</view>
+        <view wx:if="{{timeoutActive}}" class="timeout-live-pill">
+          <view class="timeout-live-icon"></view>
+          <text class="timeout-live-text">{{timeoutLeftText}}</text>
+          <view class="timeout-live-end-btn pressable" hover-class="tap-active" bindtap="onEndTimeoutTap">结束</view>
+        </view>
+      </view>
       <score-board
         aScore="{{aScore}}"
         bScore="{{bScore}}"
@@ -134,7 +150,7 @@
       <view class="set-end-actions start-match-actions">
         <view class="set-end-btn-home primary pressable" hover-class="tap-active" bindtap="onStartMatchConfirm">
           <view class="set-end-btn-content">
-            <text class="set-end-btn-text">开始比赛</text>
+            <text class="set-end-btn-text">确认开始</text>
             <view class="set-end-btn-icon"></view>
           </view>
         </view>
@@ -185,15 +201,14 @@
       <view class="set-end-actions">
         <block wx:if="{{setEndWaiting}}">
           <view class="set-end-btn-home waiting waiting-main">
-            <view class="set-end-btn-content">
+            <view class="set-end-btn-content waiting-content">
               <text class="set-end-btn-text">等待其他裁判操作中...</text>
-              <view class="set-end-btn-icon wait"></view>
             </view>
           </view>
           <view class="set-end-btn-home takeover waiting-takeover pressable" hover-class="tap-active" bindtap="onSetEndTakeover">
-            <view class="set-end-btn-content">
-              <text class="set-end-btn-text">接管</text>
+            <view class="set-end-btn-content leading-content">
               <view class="set-end-btn-icon takeover"></view>
+              <text class="set-end-btn-text">接管</text>
             </view>
           </view>
         </block>

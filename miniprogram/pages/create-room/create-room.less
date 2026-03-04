@@ -362,11 +362,12 @@
   align-items: center;
   justify-content: flex-start;
   gap: var(--draw-content-gap);
+  color: var(--text-tertiary);
 }
 
 .create-head-draw-switches .draw-toggle-text {
   font-size: 32rpx;
-  color: var(--text-primary);
+  color: currentColor;
   text-align: left;
   flex: 0 0 var(--draw-side-text-w);
   white-space: nowrap;
@@ -575,7 +576,7 @@
 .serve-toggle-icon {
   width: 24rpx;
   height: 24rpx;
-  background-color: var(--text-tertiary);
+  background-color: currentColor;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.0503 12.0498L21 16.9996L16.0503 21.9493L14.636 20.5351L17.172 17.9988L4 17.9996V15.9996L17.172 15.9988L14.636 13.464L16.0503 12.0498ZM7.94975 2.0498L9.36396 3.46402L6.828 5.9988L20 5.99955V7.99955L6.828 7.9988L9.36396 10.5351L7.94975 11.9493L3 6.99955L7.94975 2.0498Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.0503 12.0498L21 16.9996L16.0503 21.9493L14.636 20.5351L17.172 17.9988L4 17.9996V15.9996L17.172 15.9988L14.636 13.464L16.0503 12.0498ZM7.94975 2.0498L9.36396 3.46402L6.828 5.9988L20 5.99955V7.99955L6.828 7.9988L9.36396 10.5351L7.94975 11.9493L3 6.99955L7.94975 2.0498Z'/%3E%3C/svg%3E")
@@ -595,7 +596,7 @@
 .side-toggle-icon {
   width: 24rpx;
   height: 24rpx;
-  background-color: var(--text-tertiary);
+  background-color: currentColor;
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.0503 12.0498L21 16.9996L16.0503 21.9493L14.636 20.5351L17.172 17.9988L4 17.9996V15.9996L17.172 15.9988L14.636 13.464L16.0503 12.0498ZM7.94975 2.0498L9.36396 3.46402L6.828 5.9988L20 5.99955V7.99955L6.828 7.9988L9.36396 10.5351L7.94975 11.9493L3 6.99955L7.94975 2.0498Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.0503 12.0498L21 16.9996L16.0503 21.9493L14.636 20.5351L17.172 17.9988L4 17.9996V15.9996L17.172 15.9988L14.636 13.464L16.0503 12.0498ZM7.94975 2.0498L9.36396 3.46402L6.828 5.9988L20 5.99955V7.99955L6.828 7.9988L9.36396 10.5351L7.94975 11.9493L3 6.99955L7.94975 2.0498Z'/%3E%3C/svg%3E")
@@ -975,6 +976,16 @@
   background: transparent;
   color: var(--entry-fill);
   border: 2rpx solid currentColor;
+}
+
+.create-actions .entry-btn.create-invite-btn .entry-btn-content {
+  justify-content: center;
+  gap: 8rpx;
+}
+
+.create-actions .entry-btn.create-invite-btn .entry-btn-copy-icon {
+  position: static;
+  right: auto;
 }
 
 @media (prefers-color-scheme: dark) {

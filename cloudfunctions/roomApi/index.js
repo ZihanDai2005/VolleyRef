@@ -96,6 +96,21 @@ async function putRoomDoc(room) {
   }
   const ts = now();
   const normalized = room && typeof room === "object" ? { ...room } : {};
+  let existing = null;
+  try {
+    const existingRes = await roomsCol.doc(roomId).get();
+    if (existingRes && existingRes.data) {
+      existing = existingRes.data;
+    }
+  } catch (e) {}
+
+  if (existing) {
+    const existingVersion = Math.max(1, Number(existing.syncVersion || 1));
+    const incomingVersion = Math.max(1, Number(normalized.syncVersion || 1));
+    if (incomingVersion <= existingVersion) {
+      return existing;
+    }
+  }
   if (!normalized.createdAt) {
     normalized.createdAt = ts;
   }
@@ -116,6 +131,19 @@ async function putRoomDoc(room) {
     normalized.resultLockedAt = 0;
     normalized.resultExpireAt = 0;
   }
+  const mergedParticipants = {};
+  const existingParticipants = cleanupParticipants(existing && existing.participants);
+  const incomingParticipants = cleanupParticipants(normalized.participants);
+  Object.keys(existingParticipants).forEach((clientId) => {
+    mergedParticipants[clientId] = Number(existingParticipants[clientId] || 0);
+  });
+  Object.keys(incomingParticipants).forEach((clientId) => {
+    const prev = Number(mergedParticipants[clientId] || 0);
+    const next = Number(incomingParticipants[clientId] || 0);
+    mergedParticipants[clientId] = Math.max(prev, next);
+  });
+  normalized.participants = mergedParticipants;
+
   const next = {
     ...normalized,
     roomId: roomId,

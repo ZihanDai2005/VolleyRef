@@ -284,9 +284,9 @@ page {
   width: 20px;
   height: 20px;
   background-color: currentColor;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 4C9.25144 4 6.82508 5.38626 5.38443 7.5H8V9.5H2V3.5H4V5.99936C5.82381 3.57166 8.72764 2 12 2C17.5228 2 22 6.47715 22 12H20C20 7.58172 16.4183 4 12 4ZM4 12C4 16.4183 7.58172 20 12 20C14.7486 20 17.1749 18.6137 18.6156 16.5H16V14.5H22V20.5H20V18.0006C18.1762 20.4283 15.2724 22 12 22C6.47715 22 2 17.5228 2 12H4Z'/%3E%3C/svg%3E")
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M8 20V21.9324C8 22.2086 7.77614 22.4324 7.5 22.4324C7.38303 22.4324 7.26977 22.3914 7.17991 22.3165L3.06093 18.8841C2.84879 18.7073 2.82013 18.392 2.99691 18.1799C3.09191 18.0659 3.23264 18 3.38103 18L18 18C19.1046 18 20 17.1045 20 16V7.99997H22V16C22 18.2091 20.2091 20 18 20H8ZM16 3.99997V2.0675C16 1.79136 16.2239 1.5675 16.5 1.5675C16.617 1.5675 16.7302 1.60851 16.8201 1.68339L20.9391 5.11587C21.1512 5.29266 21.1799 5.60794 21.0031 5.82008C20.9081 5.93407 20.7674 5.99998 20.619 5.99998L6 5.99997C4.89543 5.99997 4 6.8954 4 7.99997V16H2V7.99997C2 5.79083 3.79086 3.99997 6 3.99997H16Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 4C9.25144 4 6.82508 5.38626 5.38443 7.5H8V9.5H2V3.5H4V5.99936C5.82381 3.57166 8.72764 2 12 2C17.5228 2 22 6.47715 22 12H20C20 7.58172 16.4183 4 12 4ZM4 12C4 16.4183 7.58172 20 12 20C14.7486 20 17.1749 18.6137 18.6156 16.5H16V14.5H22V20.5H20V18.0006C18.1762 20.4283 15.2724 22 12 22C6.47715 22 2 17.5228 2 12H4Z'/%3E%3C/svg%3E")
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M8 20V21.9324C8 22.2086 7.77614 22.4324 7.5 22.4324C7.38303 22.4324 7.26977 22.3914 7.17991 22.3165L3.06093 18.8841C2.84879 18.7073 2.82013 18.392 2.99691 18.1799C3.09191 18.0659 3.23264 18 3.38103 18L18 18C19.1046 18 20 17.1045 20 16V7.99997H22V16C22 18.2091 20.2091 20 18 20H8ZM16 3.99997V2.0675C16 1.79136 16.2239 1.5675 16.5 1.5675C16.617 1.5675 16.7302 1.60851 16.8201 1.68339L20.9391 5.11587C21.1512 5.29266 21.1799 5.60794 21.0031 5.82008C20.9081 5.93407 20.7674 5.99998 20.619 5.99998L6 5.99997C4.89543 5.99997 4 6.8954 4 7.99997V16H2V7.99997C2 5.79083 3.79086 3.99997 6 3.99997H16Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
 
@@ -513,40 +513,47 @@ page {
 }
 
 .captain-picker-panel {
-  width: 92vw;
-  max-width: 560px;
-  max-height: 82vh;
+  width: min(92vw, 700px);
+  max-height: 92vh;
   background: var(--page-bg);
   border-radius: 14px;
   padding: 16px 14px 0;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
   overflow: hidden;
 }
 
 .captain-picker-title {
-  font-size: 24px;
+  font-size: 20px;
   font-weight: 600;
   text-align: center;
   margin: 0;
   color: var(--text-main);
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .captain-picker-tip {
-  font-size: 16px;
+  font-size: 14px;
   color: var(--text-secondary);
   text-align: center;
-  margin: 0 0 8px;
+  line-height: 1.35;
+  margin: 0 0 6px;
 }
 
 .captain-picker-grid {
   --gap: 8px;
-  margin-bottom: 10px;
+  margin-bottom: 6px;
   flex: 1 1 auto;
+  max-height: none;
   min-height: 0;
   overflow-y: auto;
+  padding-bottom: 4px;
+  box-sizing: border-box;
 }
 
 .captain-picker-grid .main-col,
@@ -555,15 +562,18 @@ page {
 }
 
 .captain-picker-grid .player-row {
-  height: 50px;
+  height: 52px;
+  min-height: 52px;
 }
 
 .captain-picker-grid .player-card {
-  height: 50px;
+  height: 52px;
+  min-height: 52px;
 }
 
 .captain-picker-grid .libero-col .player-card {
-  height: 50px;
+  height: 52px;
+  min-height: 52px;
 }
 
 .captain-option-card {
@@ -613,7 +623,7 @@ page {
   left: 6px;
   right: 6px;
   top: 50%;
-  height: 3px;
+  height: 1.5px;
   background: var(--page-bg);
   transform: translateY(-50%) rotate(-45deg);
   transform-origin: center;
@@ -631,14 +641,15 @@ page {
   gap: 0;
   margin: 6px -14px 0;
   border-top: 1px solid rgba(120, 126, 137, 0.25);
+  flex-shrink: 0;
 }
 
 .captain-picker-btn {
   flex: 1;
-  height: 56px;
+  height: 52px;
   border: 0;
   border-radius: 0;
-  font-size: 22px;
+  font-size: 20px;
   font-weight: 500;
   background: transparent;
   padding: 0;
@@ -659,6 +670,37 @@ page {
 .captain-picker-btn.confirm {
   color: #576b95;
   border-left: 1px solid rgba(120, 126, 137, 0.25);
+}
+
+@media (max-height: 460px) {
+  .captain-picker-panel {
+    padding-top: 12px;
+  }
+
+  .captain-picker-title {
+    font-size: 18px;
+  }
+
+  .captain-picker-tip {
+    font-size: 13px;
+    margin-bottom: 4px;
+  }
+
+  .captain-picker-grid {
+    --gap: 6px;
+  }
+
+  .captain-picker-grid .player-row,
+  .captain-picker-grid .player-card,
+  .captain-picker-grid .libero-col .player-card {
+    height: 46px;
+    min-height: 46px;
+  }
+
+  .captain-picker-btn {
+    height: 46px;
+    font-size: 18px;
+  }
 }
 
 .adjust-footer {

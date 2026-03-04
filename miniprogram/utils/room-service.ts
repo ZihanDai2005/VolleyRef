@@ -35,6 +35,9 @@ export interface MatchState {
   bSetWins: number;
   teamATimeoutCount: number;
   teamBTimeoutCount: number;
+  timeoutActive: boolean;
+  timeoutTeam: "A" | "B" | "";
+  timeoutEndAt: number;
   isFinished: boolean;
   undoStack: Array<{
     aScore: number;
@@ -54,6 +57,9 @@ export interface MatchState {
     bSetWins?: number;
     teamATimeoutCount?: number;
     teamBTimeoutCount?: number;
+    timeoutActive?: boolean;
+    timeoutTeam?: "A" | "B" | "";
+    timeoutEndAt?: number;
     isFinished?: boolean;
   }>;
   logs: Array<{
@@ -284,6 +290,9 @@ function createDefaultRoom(roomId: string): RoomState {
       bSetWins: 0,
       teamATimeoutCount: 0,
       teamBTimeoutCount: 0,
+      timeoutActive: false,
+      timeoutTeam: "",
+      timeoutEndAt: 0,
       isFinished: false,
       undoStack: [],
       logs: [],
@@ -386,6 +395,19 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   base.match.bSetWins = Math.max(0, Number(input.match && (input.match as any).bSetWins) || 0);
   base.match.teamATimeoutCount = Math.max(0, Math.min(2, Number(input.match && (input.match as any).teamATimeoutCount) || 0));
   base.match.teamBTimeoutCount = Math.max(0, Math.min(2, Number(input.match && (input.match as any).teamBTimeoutCount) || 0));
+  base.match.timeoutActive = !!(input.match && (input.match as any).timeoutActive);
+  base.match.timeoutTeam =
+    input.match && (input.match as any).timeoutTeam === "B"
+      ? "B"
+      : input.match && (input.match as any).timeoutTeam === "A"
+        ? "A"
+        : "";
+  base.match.timeoutEndAt = Math.max(0, Number(input.match && (input.match as any).timeoutEndAt) || 0);
+  if (base.match.timeoutEndAt <= now()) {
+    base.match.timeoutActive = false;
+    base.match.timeoutTeam = "";
+    base.match.timeoutEndAt = 0;
+  }
   base.match.isFinished = !!(input.match && (input.match as any).isFinished);
 
   const rawUndoStack = input.match && (input.match as any).undoStack;
@@ -409,6 +431,9 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
         bSetWins: Math.max(0, Number(item.bSetWins) || 0),
         teamATimeoutCount: Math.max(0, Math.min(2, Number(item.teamATimeoutCount) || 0)),
         teamBTimeoutCount: Math.max(0, Math.min(2, Number(item.teamBTimeoutCount) || 0)),
+        timeoutActive: !!item.timeoutActive,
+        timeoutTeam: item.timeoutTeam === "B" ? "B" : item.timeoutTeam === "A" ? "A" : "",
+        timeoutEndAt: Math.max(0, Number(item.timeoutEndAt) || 0),
         isFinished: !!item.isFinished,
       };
     });
@@ -1025,18 +1050,22 @@ export async function verifyRoomPasswordAsync(
 }
 
 export async function heartbeatRoomAsync(roomId: string, clientId: string): Promise<number> {
-  const local = heartbeatRoom(roomId, clientId);
-  void callRoomApi<{ room?: any; participantCount?: number }>("heartbeatRoom", {
-    roomId: roomId,
-    clientId: clientId,
-  })
-    .then((res) => {
+  if (canUseCloud()) {
+    try {
+      const res = await callRoomApi<{ room?: any; participantCount?: number }>("heartbeatRoom", {
+        roomId: roomId,
+        clientId: clientId,
+      });
       if (res && res.room) {
-        saveCloudRoomRaw(res.room);
+        const room = saveCloudRoomRaw(res.room);
+        return Math.max(0, Object.keys(room.participants || {}).length);
       }
-    })
-    .catch(() => {});
-  return local;
+      if (res && typeof res.participantCount === "number") {
+        return Math.max(0, Number(res.participantCount) || 0);
+      }
+    } catch (e) {}
+  }
+  return heartbeatRoom(roomId, clientId);
 }
 
 export async function leaveRoomAsync(roomId: string, clientId: string): Promise<void> {
@@ -1052,7 +1081,8 @@ export async function leaveRoomAsync(roomId: string, clientId: string): Promise<
 
 export async function updateRoomAsync(
   roomId: string,
-  updater: (room: RoomState) => RoomState
+  updater: (room: RoomState) => RoomState,
+  options?: { awaitCloud?: boolean }
 ): Promise<RoomState | null> {
   let baseRoom = getRoom(roomId);
   try {
@@ -1070,6 +1100,15 @@ export async function updateRoomAsync(
   next.syncVersion = Math.max(1, Number((baseRoom as any).syncVersion) || 1) + 1;
   next.updatedAt = now();
   saveRoomToStore(next);
+
+  if (options && options.awaitCloud && canUseCloud()) {
+    try {
+      const res = await callRoomApi<{ room?: any }>("upsertRoom", { room: next });
+      if (res && res.room) {
+        return cloneRoom(saveCloudRoomRaw(res.room));
+      }
+    } catch (e) {}
+  }
 
   void callRoomApi<{ room?: any }>("upsertRoom", { room: next })
     .then((res) => {
