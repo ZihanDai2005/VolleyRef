@@ -240,7 +240,6 @@ Page({
   roomWatchOff: null as null | (() => void),
   themeOff: null as null | (() => void),
   captainPickerResolver: null as null | ((value: string | null) => void),
-  pageScrollTop: 0 as number,
 
   onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
@@ -334,14 +333,6 @@ Page({
       this.captainPickerResolver(null);
       this.captainPickerResolver = null;
     }
-  },
-
-  onPageScroll(e: WechatMiniprogram.Page.IPageScrollOption) {
-    this.pageScrollTop = Number((e && e.scrollTop) || 0);
-  },
-
-  onTeamBInputFocus() {
-    // Intentionally no-op. Team B inputs rely on `adjust-position="false"` only.
   },
 
   applyNavigationTheme() {
