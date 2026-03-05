@@ -68,6 +68,7 @@ export interface MatchState {
     action: string;
     team: "A" | "B" | "";
     note: string;
+    setNo?: number;
   }>;
   setEndState?: {
     active: boolean;
@@ -451,6 +452,7 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
         action: String(item.action || "unknown"),
         team: team,
         note: String(item.note || ""),
+        setNo: Math.max(1, Number(item.setNo) || 1),
       };
     });
   } else {

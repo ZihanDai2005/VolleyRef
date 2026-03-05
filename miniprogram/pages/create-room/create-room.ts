@@ -341,8 +341,7 @@ Page({
   },
 
   onTeamBInputFocus() {
-    // Keep Team B inputs from changing page scroll position on focus.
-    // Intentionally no-op and kept for WXML bindings.
+    // Intentionally no-op. Team B inputs rely on `adjust-position="false"` only.
   },
 
   applyNavigationTheme() {

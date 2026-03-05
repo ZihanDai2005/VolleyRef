@@ -350,7 +350,11 @@ function buildMatchModeText(settings: any): string {
   if (sets === 3 && wins === 2) {
     return "3局2胜";
   }
-  return "1局1胜";
+  const maxScore = Math.max(
+    0,
+    Number(settings && settings.maxScore) || Number(settings && settings.tiebreakScore) || 15
+  );
+  return maxScore >= 25 ? "1局/25分" : "1局/15分";
 }
 
 function setKeepScreenOnSafe(keepScreenOn: boolean): void {
@@ -416,7 +420,6 @@ Page({
     updatedAt: 0,
     backConfirming: false,
     showBackExitModal: false,
-    showStartMatchModal: false,
     showSetEndModal: false,
     setEndTitleTop: "",
     setEndTitleBottom: "",
@@ -607,13 +610,22 @@ Page({
 
   onSetEndModalTap() {},
 
-  onStartMatchModalTap() {},
-
   onOpenStartMatchModal() {
     if (!this.data.canStartMatch || this.data.showSetEndModal) {
       return;
     }
-    this.setData({ showStartMatchModal: true });
+    wx.showModal({
+      title: "开始比赛确认",
+      content: "开始比赛后将启动本局计时",
+      confirmText: "确认",
+      cancelText: "取消",
+      success: (res) => {
+        if (!res.confirm) {
+          return;
+        }
+        this.onStartMatchConfirm();
+      },
+    });
   },
 
   async onStartMatchConfirm() {
@@ -626,7 +638,6 @@ Page({
         return room;
       }
       if (
-        Number(room.match.setNo || 1) === 1 &&
         Number(room.match.aScore || 0) === 0 &&
         Number(room.match.bScore || 0) === 0 &&
         Number((room.match as any).setTimerStartAt || 0) <= 0
@@ -636,14 +647,13 @@ Page({
         }
         (room.match as any).setTimerStartAt = Date.now();
         (room.match as any).setTimerElapsedMs = 0;
-        appendMatchLog(room, "timer_start", "开始比赛，第一局计时启动");
+        appendMatchLog(room, "timer_start", "开始比赛，本局计时启动");
       }
       return room;
     });
     if (!next) {
       return;
     }
-    this.setData({ showStartMatchModal: false });
     this.loadRoom(roomId, true);
   },
 
@@ -1315,7 +1325,6 @@ Page({
       }
       const shouldShowStartMatchModal =
         !room.match.isFinished &&
-        Number(room.match.setNo || 1) === 1 &&
         Number(room.match.aScore || 0) === 0 &&
         Number(room.match.bScore || 0) === 0 &&
         timerStartAt <= 0 &&
@@ -1396,7 +1405,6 @@ Page({
         setWinsText: setWinsText,
         canStartMatch: canStartMatch,
         isMatchFinished: !!room.match.isFinished,
-        showStartMatchModal: this.data.showStartMatchModal && canStartMatch,
         showSetEndModal: setEndActive,
         setEndTitleTop: "第" + String(Math.max(1, Number(setSummary.setNo) || Number(setEndState && setEndState.setNo) || 1)) + "局结束",
         setEndTitleBottom: setEndMatchFinished ? "比赛结束" : "",
@@ -1708,8 +1716,6 @@ Page({
             room.match.servingTeam = setWinner;
             room.match.isSwapped = false;
             room.match.decidingSetEightHandled = false;
-            (room.match as any).teamATimeoutCount = 0;
-            (room.match as any).teamBTimeoutCount = 0;
             (room.match as any).timeoutActive = false;
             (room.match as any).timeoutTeam = "";
             (room.match as any).timeoutEndAt = 0;
@@ -1806,6 +1812,10 @@ Page({
     if (this.data.showSetEndModal) {
       return;
     }
+    if (this.data.canStartMatch) {
+      showToastHint("请先开始比赛");
+      return;
+    }
     if (this.data.isMatchFinished) {
       showToastHint("比赛已结束，无法暂停");
       return;
@@ -1859,6 +1869,10 @@ Page({
           },
           { awaitCloud: true }
         );
+        if (!saved) {
+          showToastHint("系统繁忙，请重试");
+          return;
+        }
         const nextCount = Math.max(
           0,
           Math.min(2, Number(saved && saved.match && (saved.match as any)[team === "A" ? "teamATimeoutCount" : "teamBTimeoutCount"]) || 0)
@@ -1869,7 +1883,19 @@ Page({
           (saved.match as any).timeoutTeam === team &&
           nextCount > currentCount;
         if (!used) {
-          showToastHint(teamName + "队本局暂停次数已用完");
+          if (!!(saved.match as any).isFinished) {
+            showToastHint("比赛已结束，无法暂停");
+            return;
+          }
+          if (!!(saved.match as any).timeoutActive) {
+            showToastHint("暂停进行中");
+            return;
+          }
+          if (nextCount >= 2) {
+            showToastHint(teamName + "队本局暂停次数已用完");
+            return;
+          }
+          showToastHint("系统繁忙，请重试");
           return;
         }
         this.loadRoom(roomId, true);
@@ -1925,6 +1951,30 @@ Page({
     }
     const dataset = e.currentTarget.dataset as { team: TeamCode };
     const team = dataset.team;
+    if (team !== "A" && team !== "B") {
+      return;
+    }
+    const teamName =
+      team === "A"
+        ? String(this.data.teamAName || "甲")
+        : String(this.data.teamBName || "乙");
+    const confirmed = await new Promise<boolean>((resolve) => {
+      wx.showModal({
+        title: "轮转确认",
+        content: teamName + "队是否强制轮转？",
+        confirmText: "确定",
+        cancelText: "取消",
+        success: (res) => {
+          resolve(!!res.confirm);
+        },
+        fail: () => {
+          resolve(false);
+        },
+      });
+    });
+    if (!confirmed) {
+      return;
+    }
     const roomId = this.data.roomId;
     const beforeRotateRects = await this.measureTeamMainPosRectsStable(team, 1000);
     const beforeRotateNoMap = this.getTeamMainNumberMap(team);

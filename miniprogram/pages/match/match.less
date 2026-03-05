@@ -143,7 +143,30 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: 0;
+}
+
+.center-pill-switch {
+  display: grid;
+  align-items: center;
+  justify-items: center;
+}
+
+.score-switch-pill {
+  grid-area: 1 / 1;
+  transition: opacity 180ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.score-switch-pill.pill-visible {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  pointer-events: auto;
+}
+
+.score-switch-pill.pill-hidden {
+  opacity: 0;
+  transform: translateY(-5px) scale(0.96);
+  pointer-events: none;
 }
 
 .pressable {
@@ -296,14 +319,25 @@
   height: 32px;
   border-radius: 999px;
   box-sizing: border-box;
-  padding: 0 8px 0 10px;
+  padding: 0;
   display: inline-flex;
   align-items: center;
   justify-content: center;
   gap: 6px;
+  margin-left: 0;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-8px) scale(0.94);
+  overflow: hidden;
+  pointer-events: none;
+  transition:
+    max-width 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    padding 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    margin-left 220ms cubic-bezier(0.2, 0.8, 0.2, 1),
+    opacity 180ms ease,
+    transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
   background: rgba(217, 74, 74, 0.1);
   color: #d94a4a;
-  animation: timeout-pill-in 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .timeout-live-icon {
@@ -315,6 +349,24 @@
     center / contain no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM9 9V15H11V9H9ZM13 9V15H15V9H13Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
+}
+
+.timeout-live-pill.active {
+  padding: 0 8px 0 10px;
+  margin-left: 8px;
+  max-width: 220px;
+  opacity: 1;
+  transform: translateX(0) scale(1);
+  pointer-events: auto;
+}
+
+.timeout-live-pill.inactive {
+  padding: 0;
+  margin-left: 0;
+  max-width: 0;
+  opacity: 0;
+  transform: translateX(-8px) scale(0.94);
+  pointer-events: none;
 }
 
 .timeout-live-text {
@@ -339,18 +391,6 @@
   font-size: 13px;
   line-height: 1;
   font-weight: 700;
-}
-
-@keyframes timeout-pill-in {
-  0% {
-    opacity: 0;
-    transform: translateX(-6px) scale(0.94);
-  }
-
-  100% {
-    opacity: 1;
-    transform: translateX(0) scale(1);
-  }
 }
 
 .timer-pill-text {

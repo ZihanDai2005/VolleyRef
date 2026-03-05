@@ -808,15 +808,21 @@ Page({
         room.teamB.players = this.data.teamBPlayers.slice();
         (room.match as any).teamACurrentCaptainNo = this.data.teamACaptainNo;
         (room.match as any).teamBCurrentCaptainNo = this.data.teamBCaptainNo;
-        // 点击“继续比赛 启动计时”返回比赛页时，立刻启动下一局计时。
+        // 返回比赛页后保持“未开始比赛”状态：本局计时等待用户在比赛页点“开始比赛”再启动。
         if (
           room.match &&
           !room.match.isFinished &&
           Number(room.match.aScore || 0) === 0 &&
           Number(room.match.bScore || 0) === 0
         ) {
-          (room.match as any).setTimerStartAt = Date.now();
+          (room.match as any).setTimerStartAt = 0;
           (room.match as any).setTimerElapsedMs = 0;
+          // 新一局正式开始时再清零暂停次数，确保局末弹窗撤回不会丢失本局暂停计数。
+          (room.match as any).teamATimeoutCount = 0;
+          (room.match as any).teamBTimeoutCount = 0;
+          (room.match as any).timeoutActive = false;
+          (room.match as any).timeoutTeam = "";
+          (room.match as any).timeoutEndAt = 0;
         }
         room.match.isSwapped = this.data.isSwapped;
         room.match.servingTeam = this.data.servingTeam;

@@ -7,7 +7,63 @@
     <view class="result-nav-space"></view>
   </view>
   <view class="result-nav-spacer" style="height: {{customNavOffset}};"></view>
-  <view class="result-content">
+
+  <scroll-view class="result-content" scroll-y="true" style="height: calc(100vh - {{customNavOffset}});">
     <text class="result-countdown" wx:if="{{clearCountdownText}}">{{clearCountdownText}}</text>
-  </view>
+
+    <view class="result-score-panel">
+      <text class="result-section-label">大比分</text>
+      <view class="result-compare-line">
+        <text class="result-compare-left">{{teamAName}}</text>
+        <text class="result-compare-colon">:</text>
+        <text class="result-compare-right">{{teamBName}}</text>
+      </view>
+      <view class="result-score-line">
+        <text class="result-score">{{bigScoreA}}</text>
+        <text class="result-score-sep">:</text>
+        <text class="result-score">{{bigScoreB}}</text>
+      </view>
+    </view>
+
+    <view class="result-set-switch" wx:if="{{setOptions.length > 1}}">
+      <text class="result-set-label">局</text>
+      <view class="result-set-seg">
+        <view
+          class="result-set-item {{selectedSetNo === item ? 'active' : ''}}"
+          wx:for="{{setOptions}}"
+          wx:key="*this"
+          wx:for-item="item"
+          data-set-no="{{item}}"
+          bindtap="onSelectSet"
+        >{{item}}</view>
+      </view>
+    </view>
+
+    <view class="result-score-panel">
+      <text class="result-section-label">第{{selectedSetNo}}局小比分</text>
+      <view class="result-compare-line">
+        <text class="result-compare-left">{{teamAName}}</text>
+        <text class="result-compare-colon">:</text>
+        <text class="result-compare-right">{{teamBName}}</text>
+      </view>
+      <view class="result-score-line">
+        <text class="result-score">{{selectedSmallScoreA}}</text>
+        <text class="result-score-sep">:</text>
+        <text class="result-score">{{selectedSmallScoreB}}</text>
+      </view>
+      <text class="result-winner" wx:if="{{selectedSetWinnerText}}">{{selectedSetWinnerText}}</text>
+      <text class="result-duration" wx:if="{{selectedSetDurationText}}">{{selectedSetDurationText}}</text>
+    </view>
+
+    <view class="result-log-card">
+      <view class="result-log-head">第{{selectedSetNo}}局操作记录</view>
+      <view class="result-log-list">
+        <view class="result-log-item" wx:for="{{logs}}" wx:key="id" wx:for-item="item">
+          <text class="result-log-time">{{item.timeText}}</text>
+          <text class="result-log-note">{{item.note}}</text>
+        </view>
+        <view class="result-log-empty" wx:if="{{!logs.length}}">暂无记录</view>
+      </view>
+    </view>
+  </scroll-view>
 </view>
