@@ -2,30 +2,35 @@ import { getRoomAsync, heartbeatRoomAsync, verifyRoomPasswordAsync } from "../..
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
+const JOIN_ROOM_KEY = "room";
+const JOIN_PASSWORD_KEY = "password";
+
 Page({
   data: {
     joinRoomId: "",
     joinPassword: "",
     joinRoomIdSpaced: "",
     joinPasswordSpaced: "",
-    activeInput: "" as "" | "room" | "password",
+    activeInput: "",
     focusRoomInput: false,
     focusPasswordInput: false,
     joinBtnFx: false,
     customNavTop: "10px",
     customNavOffset: "54px",
   },
-  themeOff: null as null | (() => void),
+  themeOff() {},
+  themeBound: false,
 
   onLoad() {
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
     this.syncCustomNavTop();
-    if (!this.themeOff) {
+    if (!this.themeBound) {
       this.themeOff = bindThemeChange(() => {
         this.applyNavigationTheme();
         wx.setNavigationBarTitle({ title: "" });
       });
+      this.themeBound = true;
     }
   },
 
@@ -36,9 +41,10 @@ Page({
   },
 
   onUnload() {
-    if (this.themeOff) {
+    if (this.themeBound) {
       this.themeOff();
-      this.themeOff = null;
+      this.themeOff = () => {};
+      this.themeBound = false;
     }
   },
 
@@ -96,23 +102,77 @@ Page({
   },
 
   onRoomInputFocus() {
-    this.setData({ activeInput: "room", focusRoomInput: true, focusPasswordInput: false });
+    if (this.data.activeInput && this.data.activeInput !== JOIN_ROOM_KEY) {
+      return;
+    }
+    this.setJoinFocusTarget(JOIN_ROOM_KEY);
   },
 
   onPasswordInputFocus() {
-    this.setData({ activeInput: "password", focusPasswordInput: true, focusRoomInput: false });
+    if (this.data.activeInput && this.data.activeInput !== JOIN_PASSWORD_KEY) {
+      return;
+    }
+    this.setJoinFocusTarget(JOIN_PASSWORD_KEY);
   },
 
-  onAnyInputBlur() {
-    this.setData({ activeInput: "", focusRoomInput: false, focusPasswordInput: false });
+  onAnyInputBlur(e: WechatMiniprogram.InputBlur) {
+    const inputKey = String(((e.currentTarget || {}).dataset as { inputKey?: string }).inputKey || "");
+    this.deferClearJoinFocus(inputKey);
   },
 
   onRoomWrapTap() {
-    this.setData({ activeInput: "room", focusRoomInput: true, focusPasswordInput: false });
+    this.setJoinFocusTarget(JOIN_ROOM_KEY);
   },
 
   onPasswordWrapTap() {
-    this.setData({ activeInput: "password", focusPasswordInput: true, focusRoomInput: false });
+    this.setJoinFocusTarget(JOIN_PASSWORD_KEY);
+  },
+
+  setJoinFocusTarget(target: string) {
+    const nextRoomFocus = target === JOIN_ROOM_KEY;
+    const nextPasswordFocus = target === JOIN_PASSWORD_KEY;
+    if (
+      this.data.activeInput === target &&
+      this.data.focusRoomInput === nextRoomFocus &&
+      this.data.focusPasswordInput === nextPasswordFocus
+    ) {
+      return;
+    }
+    this.setData({
+      activeInput: target,
+      focusRoomInput: nextRoomFocus,
+      focusPasswordInput: nextPasswordFocus,
+    });
+  },
+
+  deferClearJoinFocus(inputKey: string) {
+    if (!inputKey) {
+      return;
+    }
+    setTimeout(() => {
+      if (this.data.activeInput !== inputKey) {
+        return;
+      }
+      this.setData({
+        activeInput: "",
+        focusRoomInput: false,
+        focusPasswordInput: false,
+      });
+    }, 0);
+  },
+
+  onJoinBlankTap() {
+    if (!this.data.activeInput && !this.data.focusRoomInput && !this.data.focusPasswordInput) {
+      return;
+    }
+    this.setData({
+      activeInput: "",
+      focusRoomInput: false,
+      focusPasswordInput: false,
+    });
+    wx.hideKeyboard({
+      fail: () => {},
+    });
   },
 
   parseInviteText(text: string): { roomId: string; password: string } | null {
@@ -172,8 +232,8 @@ Page({
 
   onPasteInviteAndJoin() {
     wx.getClipboardData({
-      success: (res) => {
-        const data = this.parseInviteText((res && (res as any).data) || "");
+      success: (res: any) => {
+        const data = this.parseInviteText((res && res.data) || "");
         if (!data) {
           showBlockHint("未识别到有效邀请信息，请先复制完整邀请文案");
           return;

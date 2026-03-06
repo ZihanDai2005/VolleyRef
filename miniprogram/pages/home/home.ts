@@ -1,4 +1,4 @@
-import { isRoomIdBlockedAsync, reserveRoomIdAsync } from "../../utils/room-service";
+import { cleanupExpiredRoomsAsync, isRoomIdBlockedAsync, reserveRoomIdAsync } from "../../utils/room-service";
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
@@ -78,6 +78,10 @@ Page({
     wx.showLoading({ title: "初始化中", mask: true });
     const clientId = getApp<IAppOption>().globalData.clientId;
     try {
+      await Promise.race<void>([
+        cleanupExpiredRoomsAsync(false),
+        new Promise<void>((resolve) => setTimeout(() => resolve(), 1500)),
+      ]);
       const roomId = await this.allocateRoomId(clientId);
       if (!roomId) {
         showBlockHint("系统繁忙，请重试");

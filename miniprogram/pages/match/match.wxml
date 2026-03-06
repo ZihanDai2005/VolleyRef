@@ -42,9 +42,10 @@
           </view>
         </view>
         <view class="timeout-live-pill {{timeoutActive ? 'active' : 'inactive'}}">
-          <view class="timeout-live-icon"></view>
           <text class="timeout-live-text">{{timeoutLeftText}}</text>
-          <view class="timeout-live-end-btn pressable" hover-class="tap-active" bindtap="onEndTimeoutTap">结束</view>
+          <view class="timeout-live-end-btn pressable" hover-class="tap-active" bindtap="onEndTimeoutTap">
+            <text class="timeout-live-end-label">结束</text>
+          </view>
         </view>
       </view>
       <score-board

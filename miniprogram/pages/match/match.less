@@ -147,26 +147,37 @@
 }
 
 .center-pill-switch {
-  display: grid;
+  position: relative;
+  display: inline-grid;
   align-items: center;
   justify-items: center;
 }
 
 .score-switch-pill {
   grid-area: 1 / 1;
-  transition: opacity 180ms ease, transform 220ms cubic-bezier(0.2, 0.8, 0.2, 1);
+  will-change: transform, opacity;
+  transition: opacity 260ms ease, transform 360ms cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
 .score-switch-pill.pill-visible {
+  position: relative;
   opacity: 1;
-  transform: translateY(0) scale(1);
+  transform: translate3d(0, 0, 0) scale(1);
   pointer-events: auto;
 }
 
 .score-switch-pill.pill-hidden {
+  position: absolute;
   opacity: 0;
-  transform: translateY(-5px) scale(0.96);
   pointer-events: none;
+}
+
+.center-set-pill.score-switch-pill.pill-hidden {
+  transform: translate3d(0, -12px, 0) scale(0.94);
+}
+
+.start-match-entry-pill.score-switch-pill.pill-hidden {
+  transform: translate3d(0, 12px, 0) scale(0.94);
 }
 
 .pressable {
@@ -322,8 +333,8 @@
   padding: 0;
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  gap: 6px;
+  justify-content: flex-start;
+  gap: 0;
   margin-left: 0;
   max-width: 0;
   opacity: 0;
@@ -340,21 +351,10 @@
   color: #d94a4a;
 }
 
-.timeout-live-icon {
-  width: 24px;
-  height: 24px;
-  background: currentColor;
-  flex-shrink: 0;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM9 9V15H11V9H9ZM13 9V15H15V9H13Z'/%3E%3C/svg%3E")
-    center / contain no-repeat;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM9 9V15H11V9H9ZM13 9V15H15V9H13Z'/%3E%3C/svg%3E")
-    center / contain no-repeat;
-}
-
 .timeout-live-pill.active {
-  padding: 0 8px 0 10px;
-  margin-left: 8px;
-  max-width: 220px;
+  padding: 0 4px 0 8px;
+  margin-left: 10px;
+  max-width: 100vw;
   opacity: 1;
   transform: translateX(0) scale(1);
   pointer-events: auto;
@@ -370,27 +370,42 @@
 }
 
 .timeout-live-text {
+  display: inline-flex;
+  align-items: center;
+  justify-content: flex-start;
+  white-space: nowrap;
+  padding-left: 6px;
+  padding-right: 7px;
+  box-sizing: border-box;
   font-size: 14px;
   line-height: 1;
   font-weight: 700;
   color: inherit;
-  min-width: 28px;
-  text-align: center;
   font-variant-numeric: tabular-nums;
+  font-feature-settings: "tnum" 1;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  flex-shrink: 0;
 }
 
 .timeout-live-end-btn {
   height: 24px;
-  padding: 0 10px;
-  border-radius: 999px;
+  min-width: 24px;
+  padding: 0 8px;
+  height: 24px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
+  color: #ffffff;
   background: #d94a4a;
-  color: #fff;
+  border-radius: 999px;
+  flex-shrink: 0;
+}
+
+.timeout-live-end-label {
   font-size: 13px;
   line-height: 1;
   font-weight: 700;
+  color: inherit;
 }
 
 .timer-pill-text {

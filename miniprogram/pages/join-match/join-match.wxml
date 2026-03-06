@@ -1,4 +1,4 @@
-<view class="entry-container" style="--custom-nav-offset: {{customNavOffset}};">
+<view class="entry-container" style="--custom-nav-offset: {{customNavOffset}};" bindtap="onJoinBlankTap">
   <view class="custom-nav-bg" style="height: {{customNavOffset}};"></view>
   <view class="entry-shell">
     <view class="custom-nav" style="top: {{customNavTop}};">
@@ -14,14 +14,15 @@
 
       <view class="input-area">
         <text class="field-hint">6位裁判团队编号</text>
-        <view class="input-wrap" bindtap="onRoomWrapTap">
-          <input adjust-position="false"
+        <view class="input-wrap" catchtap="onRoomWrapTap">
+          <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
             class="num-input-native"
             type="number"
             maxlength="6"
             value="{{joinRoomId}}"
             focus="{{focusRoomInput}}"
             cursor="{{joinRoomId.length}}"
+            data-input-key="room"
             bindfocus="onRoomInputFocus"
             bindblur="onAnyInputBlur"
             bindinput="onJoinRoomIdInput"
@@ -33,14 +34,15 @@
         </view>
 
         <text class="field-hint">6位密码</text>
-        <view class="input-wrap password-wrap" bindtap="onPasswordWrapTap">
-          <input adjust-position="false"
+        <view class="input-wrap password-wrap" catchtap="onPasswordWrapTap">
+          <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
             class="num-input-native"
             type="number"
             maxlength="6"
             value="{{joinPassword}}"
             focus="{{focusPasswordInput}}"
             cursor="{{joinPassword.length}}"
+            data-input-key="password"
             bindfocus="onPasswordInputFocus"
             bindblur="onAnyInputBlur"
             bindinput="onJoinPasswordInput"

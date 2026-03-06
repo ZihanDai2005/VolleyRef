@@ -951,6 +951,15 @@ export async function reserveRoomIdAsync(roomId: string, ownerId: string): Promi
   }
 }
 
+export async function cleanupExpiredRoomsAsync(force = false): Promise<void> {
+  if (!canUseCloud()) {
+    return;
+  }
+  try {
+    await callRoomApi("cleanupExpiredRooms", { force: !!force });
+  } catch (e) {}
+}
+
 export async function releaseRoomIdAsync(roomId: string, ownerId?: string): Promise<void> {
   releaseRoomId(roomId, ownerId);
   try {

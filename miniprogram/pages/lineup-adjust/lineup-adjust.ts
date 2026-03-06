@@ -5,7 +5,7 @@ import { computeLandscapeSafePad } from "../../utils/safe-pad";
 
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
-type DisplayPlayerSlot = PlayerSlot & { index: number };
+type DisplayPlayerSlot = PlayerSlot & { index: number; inputKey: string };
 type TeamRows = { libero: DisplayPlayerSlot[] };
 type TeamPosRect = { left: number; top: number; width: number; height: number };
 type TeamRectMap = Partial<Record<MainPosition, TeamPosRect>>;
@@ -102,6 +102,18 @@ function validateTeamPlayers(players: PlayerSlot[], teamName: string): string | 
   return null;
 }
 
+function getMissingMainPosition(players: PlayerSlot[]): MainPosition | "" {
+  for (let i = 0; i < MAIN_POSITIONS.length; i += 1) {
+    const pos = MAIN_POSITIONS[i];
+    const slot = (players || []).find((p) => p.pos === pos);
+    const no = normalizeNumberInput(String((slot && slot.number) || ""));
+    if (!no) {
+      return pos;
+    }
+  }
+  return "";
+}
+
 function rotateTeamByRule(players: PlayerSlot[]): PlayerSlot[] {
   const byPos: Record<string, PlayerSlot> = {};
   players.forEach(function (p) {
@@ -142,7 +154,7 @@ function clonePlayers(players: any[]): PlayerSlot[] {
   });
 }
 
-function buildMainGridByOrder(players: PlayerSlot[], order: MainPosition[]): DisplayPlayerSlot[][] {
+function buildMainGridByOrder(players: PlayerSlot[], order: MainPosition[], team: TeamCode): DisplayPlayerSlot[][] {
   const byPos: Record<string, PlayerSlot> = {};
   players.forEach(function (p) {
     byPos[p.pos] = p;
@@ -153,12 +165,13 @@ function buildMainGridByOrder(players: PlayerSlot[], order: MainPosition[]): Dis
       pos: slot.pos,
       number: slot.number,
       index: PLAYER_INDEX_BY_POS[pos],
+      inputKey: team + "-" + String(PLAYER_INDEX_BY_POS[pos]),
     };
   });
   return [ordered.slice(0, 2), ordered.slice(2, 4), ordered.slice(4, 6)];
 }
 
-function buildTeamRows(players: PlayerSlot[]): TeamRows {
+function buildTeamRows(players: PlayerSlot[], team: TeamCode): TeamRows {
   const byPos: Record<string, PlayerSlot> = {};
   players.forEach(function (p) {
     byPos[p.pos] = p;
@@ -170,6 +183,7 @@ function buildTeamRows(players: PlayerSlot[]): TeamRows {
         pos: slot.pos,
         number: slot.number,
         index: PLAYER_INDEX_BY_POS[pos],
+        inputKey: team + "-" + String(PLAYER_INDEX_BY_POS[pos]),
       };
     }),
   };
@@ -277,6 +291,7 @@ Page({
     teamBShowCaptainRepick: false,
     teamAPlayers: [] as PlayerSlot[],
     teamBPlayers: [] as PlayerSlot[],
+    activeAdjustInputKey: "",
     teamALibero: [] as DisplayPlayerSlot[],
     teamAMainGrid: [] as DisplayPlayerSlot[][],
     teamBLibero: [] as DisplayPlayerSlot[],
@@ -426,18 +441,30 @@ Page({
 
   applyDisplay(teamAPlayers: PlayerSlot[], teamBPlayers: PlayerSlot[], isSwapped: boolean) {
     const teamASide: TeamCode = isSwapped ? "B" : "A";
-    const aRows = buildTeamRows(teamAPlayers);
-    const bRows = buildTeamRows(teamBPlayers);
+    const aRows = buildTeamRows(teamAPlayers, "A");
+    const bRows = buildTeamRows(teamBPlayers, "B");
     this.setData({
       teamAPlayers: teamAPlayers,
       teamBPlayers: teamBPlayers,
       isSwapped: isSwapped,
       teamALibero: aRows.libero,
-      teamAMainGrid: buildMainGridByOrder(teamAPlayers, getMainOrderForTeam("A", teamASide)),
+      teamAMainGrid: buildMainGridByOrder(teamAPlayers, getMainOrderForTeam("A", teamASide), "A"),
       teamBLibero: bRows.libero,
-      teamBMainGrid: buildMainGridByOrder(teamBPlayers, getMainOrderForTeam("B", teamASide)),
+      teamBMainGrid: buildMainGridByOrder(teamBPlayers, getMainOrderForTeam("B", teamASide), "B"),
     });
     this.syncCaptainPickState(teamAPlayers, teamBPlayers);
+  },
+
+  deferClearAdjustFocus(inputKey: string) {
+    if (!inputKey) {
+      return;
+    }
+    setTimeout(() => {
+      if (this.data.activeAdjustInputKey !== inputKey) {
+        return;
+      }
+      this.setData({ activeAdjustInputKey: "" });
+    }, 0);
   },
 
   isCaptainInMain(players: PlayerSlot[], captainNo: string): boolean {
@@ -507,6 +534,29 @@ Page({
       teamBShowCaptainCheck: bResolved,
       teamAShowCaptainRepick: aManualMode,
       teamBShowCaptainRepick: bManualMode,
+    });
+  },
+
+  onAdjustFieldWrapTap(e: WechatMiniprogram.TouchEvent) {
+    const focusKey = String((e.currentTarget.dataset as { focusKey?: string }).focusKey || "");
+    if (!focusKey || this.data.activeAdjustInputKey === focusKey) {
+      return;
+    }
+    this.setData({ activeAdjustInputKey: focusKey });
+    this.inputEditing = true;
+    if (this.inputEditingReleaseTimer) {
+      clearTimeout(this.inputEditingReleaseTimer);
+      this.inputEditingReleaseTimer = 0;
+    }
+  },
+
+  onAdjustBlankTap() {
+    if (!this.data.activeAdjustInputKey) {
+      return;
+    }
+    this.setData({ activeAdjustInputKey: "" });
+    wx.hideKeyboard({
+      fail: () => {},
     });
   },
 
@@ -586,6 +636,7 @@ Page({
         teamACaptainSource: "",
         teamBCaptainSource: "",
         servingTeam: initServingTeam,
+        activeAdjustInputKey: "",
       },
       () => {
         this.applyDisplay(initTeamAPlayers, initTeamBPlayers, initIsSwapped);
@@ -593,7 +644,17 @@ Page({
     );
   },
 
-  onPlayerInputFocus() {
+  onPlayerInputFocus(e: WechatMiniprogram.InputFocus) {
+    const focusKey = String((e.currentTarget.dataset as { focusKey?: string }).focusKey || "");
+    if (!focusKey) {
+      return;
+    }
+    if (this.data.activeAdjustInputKey && this.data.activeAdjustInputKey !== focusKey) {
+      return;
+    }
+    if (!this.data.activeAdjustInputKey) {
+      this.setData({ activeAdjustInputKey: focusKey });
+    }
     this.inputEditing = true;
     if (this.inputEditingReleaseTimer) {
       clearTimeout(this.inputEditingReleaseTimer);
@@ -602,6 +663,15 @@ Page({
   },
 
   onPlayerNumberInput(e: WechatMiniprogram.Input) {
+    const focusKey = String((e.currentTarget.dataset as { focusKey?: string }).focusKey || "");
+    if (focusKey && this.data.activeAdjustInputKey && this.data.activeAdjustInputKey !== focusKey) {
+      return;
+    }
+    if (focusKey && !this.data.activeAdjustInputKey) {
+      this.setData({ activeAdjustInputKey: focusKey });
+    }
+    const raw = (e.detail.value || "").replace(/\D/g, "").slice(0, 2);
+    const number = raw || "?";
     this.inputEditing = true;
     if (this.inputEditingReleaseTimer) {
       clearTimeout(this.inputEditingReleaseTimer);
@@ -610,40 +680,33 @@ Page({
     const dataset = e.currentTarget.dataset as { team: TeamCode; index: number };
     const team = dataset.team;
     const index = Number(dataset.index);
-    const raw = (e.detail.value || "").replace(/\D/g, "").slice(0, 2);
-    const number = raw || "?";
-
+    const players = (team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers).slice();
+    const current = players[index];
+    if (!current) {
+      return;
+    }
+    players[index] = { pos: current.pos, number: number };
     if (team === "A") {
-      const players = this.data.teamAPlayers.slice();
-      const current = players[index];
-      if (!current) {
-        return;
-      }
-      players[index] = { pos: current.pos, number: number };
       this.applyDisplay(players, this.data.teamBPlayers, this.data.isSwapped);
     } else {
-      const players = this.data.teamBPlayers.slice();
-      const current = players[index];
-      if (!current) {
-        return;
-      }
-      players[index] = { pos: current.pos, number: number };
       this.applyDisplay(this.data.teamAPlayers, players, this.data.isSwapped);
     }
+    this.schedulePersistLineupDraft();
   },
 
   onPlayerNumberBlur(e: WechatMiniprogram.InputBlur) {
     const dataset = e.currentTarget.dataset as { team: TeamCode; index: number };
     const team = dataset.team;
     const index = Number(dataset.index);
+    const blurKey = String((dataset as { focusKey?: string }).focusKey || (String(team) + "-" + String(index)));
     let players = (team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers).slice();
     if (!Number.isFinite(index) || index < 0 || index >= players.length) {
       return;
     }
-    const blurValue = String((e.detail && e.detail.value) || "");
-    const currentRaw = blurValue !== "" ? blurValue : String(players[index].number || "");
-    const current = normalizeNumberInput(currentRaw);
+    const current = normalizeNumberInput(players[index].number);
     const normalized = current || "?";
+    let displayUpdated = false;
+
     if (players[index].number !== normalized) {
       const slot = players[index];
       players[index] = { pos: slot.pos, number: normalized };
@@ -652,6 +715,7 @@ Page({
       } else {
         this.applyDisplay(this.data.teamAPlayers, players, this.data.isSwapped);
       }
+      displayUpdated = true;
     }
 
     const shifted = normalizeLiberoSlots(players);
@@ -663,26 +727,25 @@ Page({
       } else {
         this.applyDisplay(this.data.teamAPlayers, players, this.data.isSwapped);
       }
+      displayUpdated = true;
     }
 
-    if (!current || current === "?") {
+    if (!displayUpdated) {
       if (team === "A") {
         this.syncCaptainPickState(players, this.data.teamBPlayers);
       } else {
         this.syncCaptainPickState(this.data.teamAPlayers, players);
       }
-    } else {
+    }
+
+    if (current && current !== "?") {
       const duplicateCount = players.filter((p) => normalizeNumberInput(p.number) === current).length;
       if (duplicateCount > 1) {
         showToastHint("球员号码重复");
       }
-      if (team === "A") {
-        this.syncCaptainPickState(players, this.data.teamBPlayers);
-      } else {
-        this.syncCaptainPickState(this.data.teamAPlayers, players);
-      }
     }
     this.persistLineupDraftNow().catch(() => {});
+    this.deferClearAdjustFocus(blurKey);
     if (this.inputEditingReleaseTimer) {
       clearTimeout(this.inputEditingReleaseTimer);
       this.inputEditingReleaseTimer = 0;
@@ -690,7 +753,6 @@ Page({
     this.inputEditingReleaseTimer = setTimeout(() => {
       this.inputEditing = false;
       this.inputEditingReleaseTimer = 0;
-      this.loadRoom();
     }, 120) as unknown as number;
   },
 
@@ -702,8 +764,8 @@ Page({
       showCaptainPicker: true,
       captainPickerTitle: teamName + "队场上队长",
       captainPickerTeam: team,
-      captainPickerMainGrid: buildMainGridByOrder(players, getMainOrderForTeam(team, teamASide)),
-      captainPickerLibero: buildTeamRows(players).libero,
+      captainPickerMainGrid: buildMainGridByOrder(players, getMainOrderForTeam(team, teamASide), team),
+      captainPickerLibero: buildTeamRows(players, team).libero,
       captainPickerSelectedNo: "",
     });
   },
@@ -717,6 +779,13 @@ Page({
     if (disabled) {
       return;
     }
+    const players = team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers;
+    const missingPos = getMissingMainPosition(players);
+    if (missingPos) {
+      const teamName = (team === "A" ? this.data.teamAName : this.data.teamBName).trim() || (team === "A" ? "甲" : "乙");
+      showBlockHint(teamName + "队请先填满6个普通球员号码后再选择场上队长");
+      return;
+    }
     this.openCaptainPicker(team);
   },
 
@@ -727,6 +796,13 @@ Page({
     }
     const canRepick = team === "A" ? this.data.teamAShowCaptainRepick : this.data.teamBShowCaptainRepick;
     if (!canRepick) {
+      return;
+    }
+    const players = team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers;
+    const missingPos = getMissingMainPosition(players);
+    if (missingPos) {
+      const teamName = (team === "A" ? this.data.teamAName : this.data.teamBName).trim() || (team === "A" ? "甲" : "乙");
+      showBlockHint(teamName + "队请先填满6个普通球员号码后再选择场上队长");
       return;
     }
     this.openCaptainPicker(team);

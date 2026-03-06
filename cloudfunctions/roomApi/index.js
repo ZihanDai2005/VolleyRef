@@ -5,12 +5,18 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 const db = cloud.database();
 const roomsCol = db.collection("rooms");
 const locksCol = db.collection("room_locks");
+const _ = db.command;
 
 const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 20 * 1000;
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const ROOM_EXTRA_TTL_MS = 3 * 60 * 60 * 1000;
 const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
+const GLOBAL_CLEANUP_COOLDOWN_MS = 60 * 1000;
+const GLOBAL_CLEANUP_LOCK_MS = 15 * 1000;
+const GLOBAL_CLEANUP_META_ID = "__cleanup_meta__";
+const GLOBAL_CLEANUP_BATCH = 100;
+const GLOBAL_CLEANUP_MAX_PASSES = 50;
 
 function now() {
   return Date.now();
@@ -87,6 +93,90 @@ async function getRoomDoc(roomId) {
   } catch (e) {
     return null;
   }
+}
+
+async function runGlobalExpiredRoomCleanup() {
+  let deleted = 0;
+  for (let pass = 0; pass < GLOBAL_CLEANUP_MAX_PASSES; pass += 1) {
+    let ids = [];
+    try {
+      const res = await roomsCol
+        .where({
+          expiresAt: _.lte(now()),
+        })
+        .field({
+          _id: true,
+        })
+        .limit(GLOBAL_CLEANUP_BATCH)
+        .get();
+      ids = (res && Array.isArray(res.data) ? res.data : [])
+        .map((item) => String((item && item._id) || ""))
+        .filter(Boolean);
+    } catch (e) {
+      ids = [];
+    }
+    if (!ids.length) {
+      break;
+    }
+    for (let i = 0; i < ids.length; i += 1) {
+      const id = ids[i];
+      const room = await getRoomDoc(id);
+      if (!room) {
+        deleted += 1;
+      }
+    }
+  }
+  return deleted;
+}
+
+async function maybeRunGlobalCleanup(force) {
+  const ts = now();
+  const shouldForce = !!force;
+  let shouldRun = shouldForce;
+  if (!shouldRun) {
+    try {
+      const metaRes = await locksCol.doc(GLOBAL_CLEANUP_META_ID).get();
+      const meta = metaRes && metaRes.data ? metaRes.data : null;
+      const lastRunAt = Number((meta && meta.lastRunAt) || 0);
+      const runningUntil = Number((meta && meta.runningUntil) || 0);
+      if (runningUntil > ts) {
+        return { ran: false, deleted: 0 };
+      }
+      shouldRun = ts - lastRunAt >= GLOBAL_CLEANUP_COOLDOWN_MS;
+    } catch (e) {
+      shouldRun = true;
+    }
+  }
+  if (!shouldRun) {
+    return { ran: false, deleted: 0 };
+  }
+
+  try {
+    await locksCol.doc(GLOBAL_CLEANUP_META_ID).set({
+      data: {
+        lastRunAt: ts,
+        runningUntil: ts + GLOBAL_CLEANUP_LOCK_MS,
+        updatedAt: ts,
+      },
+    });
+  } catch (e) {}
+
+  let deleted = 0;
+  try {
+    deleted = await runGlobalExpiredRoomCleanup();
+  } finally {
+    try {
+      await locksCol.doc(GLOBAL_CLEANUP_META_ID).set({
+        data: {
+          lastRunAt: ts,
+          runningUntil: 0,
+          lastDeleted: deleted,
+          updatedAt: now(),
+        },
+      });
+    } catch (e) {}
+  }
+  return { ran: true, deleted: deleted };
 }
 
 async function putRoomDoc(room) {
@@ -262,6 +352,7 @@ exports.main = async (event) => {
     }
 
     if (action === "createRoom") {
+      await maybeRunGlobalCleanup(false);
       const room = event.room || null;
       if (!room || !room.roomId) {
         return err("missing room");
@@ -272,6 +363,12 @@ exports.main = async (event) => {
       }
       const saved = await putRoomDoc(room);
       return { ok: true, room: saved };
+    }
+
+    if (action === "cleanupExpiredRooms") {
+      const force = !!(event && event.force);
+      const info = await maybeRunGlobalCleanup(force);
+      return { ok: true, ran: !!info.ran, deleted: Number(info.deleted || 0) };
     }
 
     if (action === "isRoomIdBlocked") {

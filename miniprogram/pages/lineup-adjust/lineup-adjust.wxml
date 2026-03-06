@@ -1,6 +1,7 @@
 <view
   class="adjust-page"
   style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}}; --safe-pad-top: {{safePadTop}}; --safe-pad-right: {{safePadRight}}; --safe-pad-bottom: {{safePadBottom}}; --safe-pad-left: {{safePadLeft}};"
+  bindtap="onAdjustBlankTap"
 >
   <view class="match-nav">
     <view class="match-nav-space"></view>
@@ -24,41 +25,63 @@
         </view>
         <view class="lineup-grid {{isSwapped ? 'swap-layout' : ''}}">
           <view class="libero-col">
-            <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
-              <input
-                adjust-position="false"
-                class="player-input pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-input' : ''}}"
-                placeholder-class="player-placeholder"
-                type="number"
-                maxlength="2"
-                value="{{item.number === '?' ? '' : item.number}}"
-                placeholder="?"
-                data-team="A"
-                data-index="{{item.index}}"
+            <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos" catchtap="onAdjustFieldWrapTap" data-focus-key="{{item.inputKey}}">
+                <input
+                  adjust-position="false"
+                  always-embed="true"
+                  hold-keyboard="true"
+                  cursor-spacing="0"
+                  class="player-input pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-input' : ''}}"
+                  placeholder-class="player-placeholder"
+                  type="number"
+                  maxlength="2"
+                  value="{{item.number === '?' ? '' : item.number}}"
+                  focus="{{activeAdjustInputKey === item.inputKey}}"
+                  placeholder="?"
+                  data-team="A"
+                  data-index="{{item.index}}"
+                  data-focus-key="{{item.inputKey}}"
                 bindfocus="onPlayerInputFocus"
                 bindinput="onPlayerNumberInput"
                 bindblur="onPlayerNumberBlur"
               />
+              <view class="player-edit-content">
+                <text class="adjust-fake-caret before {{activeAdjustInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
+                <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamACaptainNo ? 'captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                <text class="adjust-fake-caret {{activeAdjustInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
+              </view>
               <text class="sub-text">{{item.pos}}</text>
             </view>
           </view>
           <view class="main-col">
             <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
-              <view class="player-card {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+              <view class="player-card {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos" catchtap="onAdjustFieldWrapTap" data-focus-key="{{item.inputKey}}">
                 <input
                   adjust-position="false"
+                  always-embed="true"
+                  hold-keyboard="true"
+                  cursor-spacing="0"
                   class="player-input pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-input' : ''}} {{hideTeamAMainNumbers ? 'player-input-hidden' : ''}}"
                   placeholder-class="player-placeholder"
                   type="number"
                   maxlength="2"
                   value="{{item.number === '?' ? '' : item.number}}"
+                  focus="{{activeAdjustInputKey === item.inputKey}}"
                   placeholder="?"
                   data-team="A"
                   data-index="{{item.index}}"
+                  data-focus-key="{{item.inputKey}}"
                   bindfocus="onPlayerInputFocus"
                   bindinput="onPlayerNumberInput"
                   bindblur="onPlayerNumberBlur"
                 />
+                <view class="player-edit-content {{hideTeamAMainNumbers ? 'player-input-hidden' : ''}}">
+                  <text class="adjust-fake-caret before {{activeAdjustInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
+                  <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamACaptainNo ? 'captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                  <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                  <text class="adjust-fake-caret {{activeAdjustInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
+                </view>
                 <text class="sub-text">{{item.pos}}</text>
                 <text class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}">发</text>
               </view>
@@ -101,42 +124,64 @@
         <view class="lineup-grid reverse {{isSwapped ? 'swap-layout' : ''}}">
           <view class="main-col">
             <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
-              <view class="player-card {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+              <view class="player-card {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos" catchtap="onAdjustFieldWrapTap" data-focus-key="{{item.inputKey}}">
                 <input
                   adjust-position="false"
+                  always-embed="true"
+                  hold-keyboard="true"
+                  cursor-spacing="0"
                   class="player-input pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-input' : ''}} {{hideTeamBMainNumbers ? 'player-input-hidden' : ''}}"
                   placeholder-class="player-placeholder"
                   type="number"
                   maxlength="2"
                   value="{{item.number === '?' ? '' : item.number}}"
+                  focus="{{activeAdjustInputKey === item.inputKey}}"
                   placeholder="?"
                   data-team="B"
                   data-index="{{item.index}}"
+                  data-focus-key="{{item.inputKey}}"
                   bindfocus="onPlayerInputFocus"
                   bindinput="onPlayerNumberInput"
                   bindblur="onPlayerNumberBlur"
                 />
+                <view class="player-edit-content {{hideTeamBMainNumbers ? 'player-input-hidden' : ''}}">
+                  <text class="adjust-fake-caret before {{activeAdjustInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
+                  <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamBCaptainNo ? 'captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                  <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                  <text class="adjust-fake-caret {{activeAdjustInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
+                </view>
                 <text class="sub-text">{{item.pos}}</text>
                 <text class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}">发</text>
               </view>
             </view>
           </view>
           <view class="libero-col">
-            <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
+            <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos" catchtap="onAdjustFieldWrapTap" data-focus-key="{{item.inputKey}}">
               <input
                 adjust-position="false"
+                always-embed="true"
+                hold-keyboard="true"
+                cursor-spacing="0"
                 class="player-input pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-input' : ''}}"
                 placeholder-class="player-placeholder"
                 type="number"
                 maxlength="2"
                 value="{{item.number === '?' ? '' : item.number}}"
+                focus="{{activeAdjustInputKey === item.inputKey}}"
                 placeholder="?"
                 data-team="B"
                 data-index="{{item.index}}"
+                data-focus-key="{{item.inputKey}}"
                 bindfocus="onPlayerInputFocus"
                 bindinput="onPlayerNumberInput"
                 bindblur="onPlayerNumberBlur"
               />
+              <view class="player-edit-content">
+                <text class="adjust-fake-caret before {{activeAdjustInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
+                <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamBCaptainNo ? 'captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                <text class="adjust-fake-caret {{activeAdjustInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
+              </view>
               <text class="sub-text">{{item.pos}}</text>
             </view>
           </view>

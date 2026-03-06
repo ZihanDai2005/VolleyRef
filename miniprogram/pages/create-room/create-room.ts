@@ -14,7 +14,7 @@ import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../uti
 
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
-type DisplayPlayerSlot = PlayerSlot & { index: number };
+type DisplayPlayerSlot = PlayerSlot & { index: number; inputKey: string };
 type MatchModeOption = {
   label: string;
   sets: number;
@@ -40,6 +40,7 @@ const PLAYER_INDEX_BY_POS: Record<Position, number> = {
   L1: 6,
   L2: 7,
 };
+const PASSWORD_FOCUS_KEY = "__password__";
 
 function createInitialPlayers(): PlayerSlot[] {
   return [
@@ -70,7 +71,7 @@ function normalizeLiberoSlots(players: PlayerSlot[]): PlayerSlot[] {
   return next;
 }
 
-function buildMainGrid(players: PlayerSlot[], order: MainPosition[]): DisplayPlayerSlot[][] {
+function buildMainGrid(players: PlayerSlot[], order: MainPosition[], team: TeamCode): DisplayPlayerSlot[][] {
   const byPos: Record<string, PlayerSlot> = {};
   players.forEach(function (p) {
     byPos[p.pos] = p;
@@ -81,12 +82,13 @@ function buildMainGrid(players: PlayerSlot[], order: MainPosition[]): DisplayPla
       pos: slot.pos,
       number: slot.number,
       index: PLAYER_INDEX_BY_POS[pos],
+      inputKey: team + "-" + String(PLAYER_INDEX_BY_POS[pos]),
     };
   });
   return [ordered.slice(0, 2), ordered.slice(2, 4), ordered.slice(4, 6)];
 }
 
-function buildLibero(players: PlayerSlot[]): DisplayPlayerSlot[] {
+function buildLibero(players: PlayerSlot[], team: TeamCode): DisplayPlayerSlot[] {
   const byPos: Record<string, PlayerSlot> = {};
   players.forEach(function (p) {
     byPos[p.pos] = p;
@@ -97,6 +99,7 @@ function buildLibero(players: PlayerSlot[]): DisplayPlayerSlot[] {
       pos: slot.pos,
       number: slot.number,
       index: PLAYER_INDEX_BY_POS[pos],
+      inputKey: team + "-" + String(PLAYER_INDEX_BY_POS[pos]),
     };
   });
 }
@@ -203,6 +206,7 @@ Page({
     passwordFocused: false,
     teamANameFocused: false,
     teamBNameFocused: false,
+    activeCreateInputKey: "",
     teamAName: "",
     teamBName: "",
     teamACaptainNo: "",
@@ -240,6 +244,7 @@ Page({
   roomWatchOff: null as null | (() => void),
   themeOff: null as null | (() => void),
   captainPickerResolver: null as null | ((value: string | null) => void),
+  saveInFlight: false as boolean,
 
   onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
@@ -280,10 +285,10 @@ Page({
         teamBRGB: hexToRgbString(TEAM_COLOR_OPTIONS[1].value),
         teamAPlayers: initialA,
         teamBPlayers: initialB,
-        teamAMainGrid: buildMainGrid(initialA, getMainOrderForTeam("A", "A")),
-        teamALibero: buildLibero(initialA),
-        teamBMainGrid: buildMainGrid(initialB, getMainOrderForTeam("B", "A")),
-        teamBLibero: buildLibero(initialB),
+        teamAMainGrid: buildMainGrid(initialA, getMainOrderForTeam("A", "A"), "A"),
+        teamALibero: buildLibero(initialA, "A"),
+        teamBMainGrid: buildMainGrid(initialB, getMainOrderForTeam("B", "A"), "B"),
+        teamBLibero: buildLibero(initialB, "B"),
       });
       return;
     }
@@ -519,10 +524,10 @@ Page({
       teamBRGB: hexToRgbString(room.teamB.color || TEAM_COLOR_OPTIONS[1].value),
       teamAPlayers: teamAPlayers,
       teamBPlayers: teamBPlayers,
-      teamAMainGrid: buildMainGrid(teamAPlayers, getMainOrderForTeam("A", room.match.isSwapped ? "B" : "A")),
-      teamALibero: buildLibero(teamAPlayers),
-      teamBMainGrid: buildMainGrid(teamBPlayers, getMainOrderForTeam("B", room.match.isSwapped ? "B" : "A")),
-      teamBLibero: buildLibero(teamBPlayers),
+      teamAMainGrid: buildMainGrid(teamAPlayers, getMainOrderForTeam("A", room.match.isSwapped ? "B" : "A"), "A"),
+      teamALibero: buildLibero(teamAPlayers, "A"),
+      teamBMainGrid: buildMainGrid(teamBPlayers, getMainOrderForTeam("B", room.match.isSwapped ? "B" : "A"), "B"),
+      teamBLibero: buildLibero(teamBPlayers, "B"),
       updatedAt: room.updatedAt,
     });
   },
@@ -568,7 +573,12 @@ Page({
   },
 
   onPasswordFocus() {
-    this.setData({ passwordFocused: true, focusCreatePasswordInput: true });
+    if (!this.data.focusCreatePasswordInput || !!this.data.activeCreateInputKey) {
+      return;
+    }
+    if (!this.data.passwordFocused) {
+      this.setData({ passwordFocused: true });
+    }
   },
 
   onPasswordBlur() {
@@ -576,17 +586,82 @@ Page({
   },
 
   onCreatePasswordWrapTap() {
-    this.setData({ focusCreatePasswordInput: true });
+    this.setCreateFocusTarget(PASSWORD_FOCUS_KEY);
+  },
+
+  onCreateFieldWrapTap(e: WechatMiniprogram.TouchEvent) {
+    const focusKey = String((e.currentTarget.dataset as { focusKey?: string }).focusKey || "");
+    if (!focusKey) {
+      return;
+    }
+    this.setCreateFocusTarget(focusKey);
+  },
+
+  setCreateFocusTarget(targetKey: string) {
+    const nextActiveKey = targetKey === PASSWORD_FOCUS_KEY ? "" : targetKey;
+    const nextPasswordFocus = targetKey === PASSWORD_FOCUS_KEY;
+    const nextTeamANameFocus = targetKey === "teamAName";
+    const nextTeamBNameFocus = targetKey === "teamBName";
+    if (
+      this.data.activeCreateInputKey === nextActiveKey &&
+      this.data.focusCreatePasswordInput === nextPasswordFocus &&
+      this.data.passwordFocused === nextPasswordFocus &&
+      this.data.teamANameFocused === nextTeamANameFocus &&
+      this.data.teamBNameFocused === nextTeamBNameFocus
+    ) {
+      return;
+    }
+    this.setData({
+      activeCreateInputKey: nextActiveKey,
+      focusCreatePasswordInput: nextPasswordFocus,
+      passwordFocused: nextPasswordFocus,
+      teamANameFocused: nextTeamANameFocus,
+      teamBNameFocused: nextTeamBNameFocus,
+    });
+  },
+
+  onCreateBlankTap() {
+    if (!this.data.createMode) {
+      return;
+    }
+    const shouldClear =
+      !!this.data.activeCreateInputKey ||
+      !!this.data.focusCreatePasswordInput ||
+      !!this.data.passwordFocused ||
+      !!this.data.teamANameFocused ||
+      !!this.data.teamBNameFocused;
+    if (!shouldClear) {
+      return;
+    }
+    this.setData({
+      activeCreateInputKey: "",
+      focusCreatePasswordInput: false,
+      passwordFocused: false,
+      teamANameFocused: false,
+      teamBNameFocused: false,
+    });
+    wx.hideKeyboard({
+      fail: () => {},
+    });
   },
 
   onTeamNameFocus(e: WechatMiniprogram.InputFocus) {
-    const field = ((e.currentTarget || {}).dataset as { field?: string }).field;
+    const dataset = (e.currentTarget || {}).dataset as { field?: string; focusKey?: string };
+    const field = dataset.field;
+    const focusKey = String(dataset.focusKey || "");
+    if (!focusKey || focusKey !== this.data.activeCreateInputKey) {
+      return;
+    }
     if (field === "teamAName") {
-      this.setData({ teamANameFocused: true });
+      if (!this.data.teamANameFocused) {
+        this.setData({ teamANameFocused: true });
+      }
       return;
     }
     if (field === "teamBName") {
-      this.setData({ teamBNameFocused: true });
+      if (!this.data.teamBNameFocused) {
+        this.setData({ teamBNameFocused: true });
+      }
     }
   },
 
@@ -598,10 +673,18 @@ Page({
     const wasTooLongB = rawB.length > 8;
     if (field === "teamAName") {
       const next = rawA.slice(0, 8);
-      this.setData({ teamANameFocused: false, teamAName: next });
+      this.setData({
+        teamANameFocused: false,
+        teamAName: next,
+      });
+      this.deferClearActiveCreateInputKey("teamAName");
     } else if (field === "teamBName") {
       const next = rawB.slice(0, 8);
-      this.setData({ teamBNameFocused: false, teamBName: next });
+      this.setData({
+        teamBNameFocused: false,
+        teamBName: next,
+      });
+      this.deferClearActiveCreateInputKey("teamBName");
     }
     if (wasTooLongA) {
       showToastHint("团队名称最多8个字");
@@ -629,7 +712,16 @@ Page({
     } else if (normalized !== this.data.teamBCaptainNo) {
       this.setData({ teamBCaptainNo: normalized });
     }
+    const blurKey = field;
+    this.deferClearActiveCreateInputKey(blurKey);
     this.persistDraft();
+  },
+
+  onPlayerNumberFocus(e: WechatMiniprogram.InputFocus) {
+    const focusKey = String((e.currentTarget.dataset as { focusKey?: string }).focusKey || "");
+    if (!focusKey || focusKey !== this.data.activeCreateInputKey) {
+      return;
+    }
   },
 
   onTeamColorSelect(e: WechatMiniprogram.TouchEvent) {
@@ -674,8 +766,8 @@ Page({
       players[index] = { pos: current.pos, number: number };
       this.setData({
         teamAPlayers: players,
-        teamAMainGrid: buildMainGrid(players, getMainOrderForTeam("A", this.data.teamASide)),
-        teamALibero: buildLibero(players),
+        teamAMainGrid: buildMainGrid(players, getMainOrderForTeam("A", this.data.teamASide), "A"),
+        teamALibero: buildLibero(players, "A"),
       });
       this.persistDraft(players, this.data.teamBPlayers);
     } else {
@@ -687,8 +779,8 @@ Page({
       players[index] = { pos: current.pos, number: number };
       this.setData({
         teamBPlayers: players,
-        teamBMainGrid: buildMainGrid(players, getMainOrderForTeam("B", this.data.teamASide)),
-        teamBLibero: buildLibero(players),
+        teamBMainGrid: buildMainGrid(players, getMainOrderForTeam("B", this.data.teamASide), "B"),
+        teamBLibero: buildLibero(players, "B"),
       });
       this.persistDraft(this.data.teamAPlayers, players);
     }
@@ -698,6 +790,7 @@ Page({
     const dataset = e.currentTarget.dataset as { team: TeamCode; index: number };
     const team = dataset.team;
     const index = Number(dataset.index);
+    const blurKey = String(team) + "-" + String(index);
     let players = (team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers).slice();
     if (!Number.isFinite(index) || index < 0 || index >= players.length) {
       return;
@@ -710,15 +803,15 @@ Page({
       if (team === "A") {
         this.setData({
           teamAPlayers: players,
-          teamAMainGrid: buildMainGrid(players, getMainOrderForTeam("A", this.data.teamASide)),
-          teamALibero: buildLibero(players),
+          teamAMainGrid: buildMainGrid(players, getMainOrderForTeam("A", this.data.teamASide), "A"),
+          teamALibero: buildLibero(players, "A"),
         });
         this.persistDraft(players, this.data.teamBPlayers);
       } else {
         this.setData({
           teamBPlayers: players,
-          teamBMainGrid: buildMainGrid(players, getMainOrderForTeam("B", this.data.teamASide)),
-          teamBLibero: buildLibero(players),
+          teamBMainGrid: buildMainGrid(players, getMainOrderForTeam("B", this.data.teamASide), "B"),
+          teamBLibero: buildLibero(players, "B"),
         });
         this.persistDraft(this.data.teamAPlayers, players);
       }
@@ -732,19 +825,20 @@ Page({
       if (team === "A") {
         this.setData({
           teamAPlayers: players,
-          teamAMainGrid: buildMainGrid(players, getMainOrderForTeam("A", this.data.teamASide)),
-          teamALibero: buildLibero(players),
+          teamAMainGrid: buildMainGrid(players, getMainOrderForTeam("A", this.data.teamASide), "A"),
+          teamALibero: buildLibero(players, "A"),
         });
         this.persistDraft(players, this.data.teamBPlayers);
       } else {
         this.setData({
           teamBPlayers: players,
-          teamBMainGrid: buildMainGrid(players, getMainOrderForTeam("B", this.data.teamASide)),
-          teamBLibero: buildLibero(players),
+          teamBMainGrid: buildMainGrid(players, getMainOrderForTeam("B", this.data.teamASide), "B"),
+          teamBLibero: buildLibero(players, "B"),
         });
         this.persistDraft(this.data.teamAPlayers, players);
       }
     }
+    this.deferClearActiveCreateInputKey(blurKey);
     if (!current || current === "?") {
       return;
     }
@@ -752,6 +846,14 @@ Page({
     if (duplicateCount > 1) {
       showToastHint("球员号码重复");
     }
+  },
+
+  deferClearActiveCreateInputKey(blurKey: string) {
+    setTimeout(() => {
+      if (this.data.activeCreateInputKey === blurKey) {
+        this.setData({ activeCreateInputKey: "" });
+      }
+    }, 0);
   },
 
   onTeamServeButton(e: WechatMiniprogram.TouchEvent) {
@@ -773,8 +875,8 @@ Page({
     this.setData({
       teamASide: nextSide,
       sidePulse: true,
-      teamAMainGrid: buildMainGrid(this.data.teamAPlayers, getMainOrderForTeam("A", nextSide)),
-      teamBMainGrid: buildMainGrid(this.data.teamBPlayers, getMainOrderForTeam("B", nextSide)),
+      teamAMainGrid: buildMainGrid(this.data.teamAPlayers, getMainOrderForTeam("A", nextSide), "A"),
+      teamBMainGrid: buildMainGrid(this.data.teamBPlayers, getMainOrderForTeam("B", nextSide), "B"),
     });
     setTimeout(() => {
       if (this.data.sidePulse) {
@@ -802,8 +904,8 @@ Page({
         showCaptainPicker: true,
         captainPickerTitle: teamLabel + "队场上队长",
         captainPickerTeam: team,
-        captainPickerMainGrid: buildMainGrid(players, order),
-        captainPickerLibero: buildLibero(players),
+        captainPickerMainGrid: buildMainGrid(players, order, team),
+        captainPickerLibero: buildLibero(players, team),
         captainPickerSelectedNo: "",
       });
     });
@@ -918,6 +1020,18 @@ Page({
   },
 
   async onSaveAndStart() {
+    if (this.saveInFlight) {
+      return;
+    }
+    this.saveInFlight = true;
+    const showCreatingLoading = !!this.data.createMode && !this.data.editMode;
+    if (showCreatingLoading) {
+      wx.showLoading({
+        title: "房间创建中",
+        mask: true,
+      });
+    }
+    try {
     const teamAName = this.data.teamAName.trim() || "甲";
     const teamBName = this.data.teamBName.trim() || "乙";
     const roomPassword = this.data.roomPassword.trim();
@@ -1058,6 +1172,12 @@ Page({
       return;
     }
     wx.navigateTo({ url: "/pages/match/match?roomId=" + roomId });
+    } finally {
+      if (showCreatingLoading) {
+        wx.hideLoading();
+      }
+      this.saveInFlight = false;
+    }
   },
 
   onCreateInviteTap() {
@@ -1067,6 +1187,9 @@ Page({
   },
 
   onCreateContinueTap() {
+    if (this.saveInFlight) {
+      return;
+    }
     this.setData({ createContinueBtnFx: true });
     setTimeout(() => this.setData({ createContinueBtnFx: false }), 260);
     this.onSaveAndStart();

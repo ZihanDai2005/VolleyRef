@@ -338,7 +338,23 @@ function formatDurationMMSS(ms: number): string {
 
 function formatTimeoutSeconds(ms: number): string {
   const sec = Math.max(0, Math.ceil(Math.max(0, ms) / 1000));
-  return String(sec) + "s";
+  return "暂停 " + String(sec) + "s";
+}
+
+function vibrateLongForMs(totalMs: number): void {
+  const duration = Math.max(0, Number(totalMs) || 0);
+  if (duration <= 0) {
+    return;
+  }
+  const stepMs = 500;
+  const count = Math.max(1, Math.ceil(duration / stepMs));
+  for (let i = 0; i < count; i += 1) {
+    setTimeout(() => {
+      wx.vibrateLong({
+        fail: () => {},
+      });
+    }, i * stepMs);
+  }
 }
 
 function buildMatchModeText(settings: any): string {
@@ -389,7 +405,7 @@ Page({
     teamBTimeoutCount: 0,
     timeoutActive: false,
     timeoutTeam: "" as TeamCode | "",
-    timeoutLeftText: "30s",
+    timeoutLeftText: "暂停 30s",
     setNoText: "第1局",
     matchModeText: "5局3胜",
     setWinsText: "0 : 0",
@@ -443,7 +459,9 @@ Page({
   timerElapsedBaseMs: 0 as number,
   lastRenderedTimerText: "00:00",
   timeoutEndAtMs: 0 as number,
-  lastRenderedTimeoutText: "30s",
+  lastRenderedTimeoutText: "暂停 30s",
+  timeoutWarnVibratedForEndAt: 0 as number,
+  timeoutEndVibratedForEndAt: 0 as number,
   timeoutAutoClearing: false as boolean,
   themeOff: null as null | (() => void),
   roomLoadInFlight: false as boolean,
@@ -882,6 +900,11 @@ Page({
     if (timeoutEndAt > 0) {
       const remainMs = timeoutEndAt - Date.now();
       if (remainMs > 0) {
+        const remainSec = Math.max(0, Math.ceil(remainMs / 1000));
+        if (remainSec === 5 && this.timeoutWarnVibratedForEndAt !== timeoutEndAt) {
+          this.timeoutWarnVibratedForEndAt = timeoutEndAt;
+          vibrateLongForMs(1000);
+        }
         const timeoutText = formatTimeoutSeconds(remainMs);
         if (timeoutText !== this.lastRenderedTimeoutText) {
           this.lastRenderedTimeoutText = timeoutText;
@@ -891,11 +914,15 @@ Page({
           patch.timeoutActive = true;
         }
       } else {
+        if (this.timeoutEndVibratedForEndAt !== timeoutEndAt) {
+          this.timeoutEndVibratedForEndAt = timeoutEndAt;
+          vibrateLongForMs(3000);
+        }
         this.timeoutEndAtMs = 0;
-        this.lastRenderedTimeoutText = "0s";
+        this.lastRenderedTimeoutText = "暂停 0s";
         if (this.data.timeoutActive) {
           patch.timeoutActive = false;
-          patch.timeoutLeftText = "0s";
+          patch.timeoutLeftText = "暂停 0s";
         }
         if (!this.timeoutAutoClearing) {
           this.timeoutAutoClearing = true;
@@ -1295,7 +1322,7 @@ Page({
             ? "A"
             : "";
       const timeoutActive = !!(room.match as any).timeoutActive && timeoutEndAt > Date.now() && !room.match.isFinished;
-      const timeoutLeftText = timeoutActive ? formatTimeoutSeconds(timeoutEndAt - Date.now()) : "30s";
+      const timeoutLeftText = timeoutActive ? formatTimeoutSeconds(timeoutEndAt - Date.now()) : "暂停 30s";
       if (!!(room.match as any).timeoutActive && timeoutEndAt > 0 && timeoutEndAt <= Date.now() && !this.timeoutAutoClearing) {
         this.timeoutAutoClearing = true;
         updateRoomAsync(roomId, (roomState) => {
@@ -1361,6 +1388,14 @@ Page({
       this.timerStartAtMs = timerStartAt;
       this.timerElapsedBaseMs = timerElapsedMs;
       this.timeoutEndAtMs = timeoutActive ? timeoutEndAt : 0;
+      if (!timeoutActive) {
+        this.timeoutWarnVibratedForEndAt = 0;
+        this.timeoutEndVibratedForEndAt = 0;
+      } else if (this.timeoutWarnVibratedForEndAt !== timeoutEndAt && this.timeoutEndVibratedForEndAt !== timeoutEndAt) {
+        // 新的暂停会话到来时，重置本地震动标记。
+        this.timeoutWarnVibratedForEndAt = 0;
+        this.timeoutEndVibratedForEndAt = 0;
+      }
       this.lastRenderedTimeoutText = timeoutLeftText;
       const liveTimerMs = timerStartAt > 0 ? timerElapsedMs + (Date.now() - timerStartAt) : timerElapsedMs;
       const timerText = formatDurationMMSS(liveTimerMs);
@@ -1936,7 +1971,9 @@ Page({
     const ended = !!saved && !(saved.match as any).timeoutActive;
     if (ended) {
       this.timeoutEndAtMs = 0;
-      this.lastRenderedTimeoutText = "30s";
+      this.lastRenderedTimeoutText = "暂停 30s";
+      this.timeoutWarnVibratedForEndAt = 0;
+      this.timeoutEndVibratedForEndAt = 0;
       this.loadRoom(roomId, true);
     }
   },

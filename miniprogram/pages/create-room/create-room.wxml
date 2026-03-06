@@ -1,6 +1,7 @@
 <view
   class="room-container {{createMode ? 'create-mode' : ''}}"
   style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --custom-nav-offset: {{customNavOffset}};"
+  bindtap="onCreateBlankTap"
 >
   <view class="custom-nav-bg" style="height: {{customNavOffset}};"></view>
   <view
@@ -31,8 +32,8 @@
       </view>
 
       <text class="create-head-hint">设置6位密码</text>
-      <view class="create-head-input-wrap" bindtap="onCreatePasswordWrapTap">
-        <input adjust-position="false"
+      <view class="create-head-input-wrap" catchtap="onCreatePasswordWrapTap">
+        <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
           class="create-head-input-native"
           type="number"
           maxlength="6"
@@ -46,6 +47,7 @@
         />
         <view class="create-head-input create-head-input-display">
           <text class="create-head-input-display-text">{{roomPasswordSpaced}}</text>
+          <text class="fake-caret create-password-caret {{focusCreatePasswordInput && passwordFocused && roomPassword.length < 6 ? 'active' : ''}}"></text>
         </view>
       </view>
 
@@ -114,17 +116,22 @@
         </view>
       </view>
       <text class="create-head-hint">名称</text>
-      <view class="create-head-input-wrap create-team-input-wrap">
-        <input adjust-position="false"
-          class="create-head-name-input create-team-input"
+      <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamAName">
+        <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
+          class="create-head-input-native"
           value="{{teamAName}}"
-          placeholder="{{teamANameFocused ? '' : '甲'}}"
+          focus="{{activeCreateInputKey === 'teamAName'}}"
           disabled="{{!createMode}}"
           data-field="teamAName"
+          data-focus-key="teamAName"
           bindfocus="onTeamNameFocus"
           bindblur="onTeamNameBlur"
           bindinput="onInputChange"
         />
+        <view class="create-head-input create-team-input-display">
+          <text class="create-team-input-display-text">{{teamAName || (teamANameFocused ? '' : '甲')}}</text>
+          <text class="fake-caret create-password-caret {{activeCreateInputKey === 'teamAName' ? 'active' : ''}}"></text>
+        </view>
       </view>
       <view class="create-head-lineup-row">
         <text class="create-head-hint create-head-lineup-hint">首发队员</text>
@@ -134,39 +141,51 @@
         <view class="lineup-grid create-head-lineup-grid team-a {{teamASide === 'A' ? 'side-a' : 'side-b'}} {{sidePulse ? 'side-switching' : ''}}">
           <view class="main-col">
             <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
-              <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
-                <input adjust-position="false"
-                  class="player-input"
-                  placeholder-class="player-placeholder"
+              <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos" catchtap="onCreateFieldWrapTap" data-focus-key="{{item.inputKey}}">
+                <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
+                  class="create-head-input-native"
                   type="number"
                   maxlength="2"
                   value="{{item.number === '?' ? '' : item.number}}"
-                  placeholder=""
+                  focus="{{activeCreateInputKey === item.inputKey}}"
                   data-team="A"
                   data-index="{{item.index}}"
+                  data-focus-key="{{item.inputKey}}"
+                  bindfocus="onPlayerNumberFocus"
                   bindinput="onPlayerNumberInput"
                   bindblur="onPlayerNumberBlur"
                 />
-                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                <view class="player-edit-content">
+                  <text class="fake-caret player-fake-caret before {{activeCreateInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
+                  <text class="num-text" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                  <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                  <text class="fake-caret player-fake-caret {{activeCreateInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
+                </view>
                 <text class="sub-text">{{item.pos}}</text>
               </view>
             </view>
           </view>
           <view class="libero-col">
-            <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
-              <input adjust-position="false"
-                class="player-input"
-                placeholder-class="player-placeholder"
+            <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos" catchtap="onCreateFieldWrapTap" data-focus-key="{{item.inputKey}}">
+              <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
+                class="create-head-input-native"
                 type="number"
                 maxlength="2"
                 value="{{item.number === '?' ? '' : item.number}}"
-                placeholder=""
+                focus="{{activeCreateInputKey === item.inputKey}}"
                 data-team="A"
                 data-index="{{item.index}}"
+                data-focus-key="{{item.inputKey}}"
+                bindfocus="onPlayerNumberFocus"
                 bindinput="onPlayerNumberInput"
                 bindblur="onPlayerNumberBlur"
               />
-              <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+              <view class="player-edit-content">
+                <text class="fake-caret player-fake-caret before {{activeCreateInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
+                <text class="num-text" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                <text class="fake-caret player-fake-caret {{activeCreateInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
+              </view>
               <text class="sub-text">{{item.pos}}</text>
             </view>
           </view>
@@ -175,16 +194,23 @@
 
       <view class="create-head-captain-row">
         <text class="create-head-hint">队长号码</text>
-        <view class="create-head-input-wrap create-team-input-wrap">
-          <input adjust-position="false"
-            class="create-head-name-input create-team-input"
+        <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamACaptainNo">
+          <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
+            class="create-head-input-native"
             type="number"
             maxlength="2"
             value="{{teamACaptainNo}}"
             data-field="teamACaptainNo"
+            data-focus-key="teamACaptainNo"
+            focus="{{activeCreateInputKey === 'teamACaptainNo'}}"
+            bindfocus="onPlayerNumberFocus"
             bindinput="onInputChange"
             bindblur="onCaptainNoBlur"
           />
+          <view class="create-head-input create-team-input-display">
+            <text class="create-team-input-display-text">{{teamACaptainNo}}</text>
+            <text class="fake-caret create-password-caret {{activeCreateInputKey === 'teamACaptainNo' ? 'active' : ''}}"></text>
+          </view>
         </view>
       </view>
 
@@ -235,17 +261,22 @@
         </view>
       </view>
       <text class="create-head-hint">名称</text>
-      <view class="create-head-input-wrap create-team-input-wrap">
-        <input adjust-position="false"
-          class="create-head-name-input create-team-input"
+      <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamBName">
+        <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
+          class="create-head-input-native"
           value="{{teamBName}}"
-          placeholder="{{teamBNameFocused ? '' : '乙'}}"
+          focus="{{activeCreateInputKey === 'teamBName'}}"
           disabled="{{!createMode}}"
           data-field="teamBName"
+          data-focus-key="teamBName"
           bindfocus="onTeamNameFocus"
           bindblur="onTeamNameBlur"
           bindinput="onInputChange"
         />
+        <view class="create-head-input create-team-input-display">
+          <text class="create-team-input-display-text">{{teamBName || (teamBNameFocused ? '' : '乙')}}</text>
+          <text class="fake-caret create-password-caret {{activeCreateInputKey === 'teamBName' ? 'active' : ''}}"></text>
+        </view>
       </view>
       <view class="create-head-lineup-row">
         <text class="create-head-hint create-head-lineup-hint">首发队员</text>
@@ -255,39 +286,51 @@
         <view class="lineup-grid create-head-lineup-grid team-b {{teamASide === 'B' ? 'side-a' : 'side-b'}} {{sidePulse ? 'side-switching' : ''}}">
           <view class="main-col">
             <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
-              <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
-                <input adjust-position="false"
-                  class="player-input"
-                  placeholder-class="player-placeholder"
+              <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos" catchtap="onCreateFieldWrapTap" data-focus-key="{{item.inputKey}}">
+                <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
+                  class="create-head-input-native"
                   type="number"
                   maxlength="2"
                   value="{{item.number === '?' ? '' : item.number}}"
-                  placeholder=""
+                  focus="{{activeCreateInputKey === item.inputKey}}"
                   data-team="B"
                   data-index="{{item.index}}"
+                  data-focus-key="{{item.inputKey}}"
+                  bindfocus="onPlayerNumberFocus"
                   bindinput="onPlayerNumberInput"
                   bindblur="onPlayerNumberBlur"
                 />
-                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                <view class="player-edit-content">
+                  <text class="fake-caret player-fake-caret before {{activeCreateInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
+                  <text class="num-text" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                  <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                  <text class="fake-caret player-fake-caret {{activeCreateInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
+                </view>
                 <text class="sub-text">{{item.pos}}</text>
               </view>
             </view>
           </view>
           <view class="libero-col">
-            <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
-              <input adjust-position="false"
-                class="player-input"
-                placeholder-class="player-placeholder"
+            <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos" catchtap="onCreateFieldWrapTap" data-focus-key="{{item.inputKey}}">
+              <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
+                class="create-head-input-native"
                 type="number"
                 maxlength="2"
                 value="{{item.number === '?' ? '' : item.number}}"
-                placeholder=""
+                focus="{{activeCreateInputKey === item.inputKey}}"
                 data-team="B"
                 data-index="{{item.index}}"
+                data-focus-key="{{item.inputKey}}"
+                bindfocus="onPlayerNumberFocus"
                 bindinput="onPlayerNumberInput"
                 bindblur="onPlayerNumberBlur"
               />
-              <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+              <view class="player-edit-content">
+                <text class="fake-caret player-fake-caret before {{activeCreateInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
+                <text class="num-text" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+                <text class="fake-caret player-fake-caret {{activeCreateInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
+              </view>
               <text class="sub-text">{{item.pos}}</text>
             </view>
           </view>
@@ -296,16 +339,23 @@
 
       <view class="create-head-captain-row">
         <text class="create-head-hint">队长号码</text>
-        <view class="create-head-input-wrap create-team-input-wrap">
-          <input adjust-position="false"
-            class="create-head-name-input create-team-input"
+        <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamBCaptainNo">
+          <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
+            class="create-head-input-native"
             type="number"
             maxlength="2"
             value="{{teamBCaptainNo}}"
             data-field="teamBCaptainNo"
+            data-focus-key="teamBCaptainNo"
+            focus="{{activeCreateInputKey === 'teamBCaptainNo'}}"
+            bindfocus="onPlayerNumberFocus"
             bindinput="onInputChange"
             bindblur="onCaptainNoBlur"
           />
+          <view class="create-head-input create-team-input-display">
+            <text class="create-team-input-display-text">{{teamBCaptainNo}}</text>
+            <text class="fake-caret create-password-caret {{activeCreateInputKey === 'teamBCaptainNo' ? 'active' : ''}}"></text>
+          </view>
         </view>
       </view>
     </view>
@@ -335,14 +385,14 @@
       <view class="main-col">
         <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
           <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
-            <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+            <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
             <text class="sub-text">{{item.pos}}</text>
           </view>
         </view>
       </view>
       <view class="libero-col">
         <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
-          <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+          <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="A" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
           <text class="sub-text">{{item.pos}}</text>
         </view>
       </view>
@@ -350,7 +400,7 @@
 
     <view class="setting-row captain-row">
       <text class="label">队长号码</text>
-      <input adjust-position="false"
+      <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
         class="input team-name input-left"
         type="number"
         maxlength="2"
@@ -386,14 +436,14 @@
       <view class="main-col">
         <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
           <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
-            <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+            <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
             <text class="sub-text">{{item.pos}}</text>
           </view>
         </view>
       </view>
       <view class="libero-col">
         <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
-          <input adjust-position="false" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
+          <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0" class="player-input" placeholder-class="player-placeholder" type="number" maxlength="2" value="{{item.number === '?' ? '' : item.number}}" placeholder="?" data-team="B" data-index="{{item.index}}" bindinput="onPlayerNumberInput" bindblur="onPlayerNumberBlur" />
           <text class="sub-text">{{item.pos}}</text>
         </view>
       </view>
@@ -401,7 +451,7 @@
 
     <view class="setting-row captain-row">
       <text class="label">队长号码</text>
-      <input adjust-position="false"
+      <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
         class="input team-name input-left"
         type="number"
         maxlength="2"
