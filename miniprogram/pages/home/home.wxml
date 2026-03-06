@@ -1,27 +1,31 @@
 <view class="landing-container">
-  <view class="landing-shell">
-    <text class="welcome-title">欢迎</text>
-    <text class="welcome-desc">为排球比赛而设计的裁判协同工具。</text>
-    <text class="welcome-desc spacer"></text>
-    <text class="welcome-desc">支持多位裁判实时协作，</text>
-    <text class="welcome-desc">同步比分、轮转与站位信息。</text>
-    <text class="welcome-desc spacer"></text>
-    <text class="welcome-desc">让记录更清晰，</text>
-    <text class="welcome-desc">让执裁更从容。</text>
-
-    <view class="entry-actions">
-      <button class="entry-btn {{createBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateEntryTap">
-        <view class="entry-btn-content">
-          <text class="entry-btn-text">创建比赛</text>
-          <view class="entry-btn-icon"></view>
-        </view>
-      </button>
-      <button class="entry-btn {{joinBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onJoinEntryTap">
-        <view class="entry-btn-content">
-          <text class="entry-btn-text">加入比赛</text>
-          <view class="entry-btn-icon"></view>
-        </view>
-      </button>
+  <view class="screen-container">
+    <view class="court-motif">
+      <view class="court-line line-center"></view>
+      <view class="court-line line-attack-top"></view>
+      <view class="court-line line-attack-bottom"></view>
     </view>
+
+    <view class="content-layer">
+      <view class="logo-group">
+        <text class="brand-title">VOLLEY</text>
+        <view class="brand-line-two">
+          <text class="brand-title">REF</text>
+          <text class="brand-dot">.</text>
+        </view>
+        <text class="brand-subtitle">排球裁判协作系统</text>
+      </view>
+
+      <view class="button-group">
+        <button class="pill-button pill-primary {{createBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateEntryTap">
+          创建新比赛
+        </button>
+        <button class="pill-button pill-secondary {{joinBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onJoinEntryTap">
+          加入既有比赛
+        </button>
+      </view>
+    </view>
+
+    <text class="version-tag">1.2.0</text>
   </view>
 </view>
