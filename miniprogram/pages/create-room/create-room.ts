@@ -301,9 +301,10 @@ Page({
     if (this.data.createMode) {
       return;
     }
-    this.startRoomWatch();
-    this.startHeartbeat();
-    this.startPolling();
+    const roomId = String(this.data.roomId || "");
+    if (roomId) {
+      this.loadRoom(roomId, false);
+    }
   },
 
   onHide() {

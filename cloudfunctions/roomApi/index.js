@@ -8,7 +8,7 @@ const locksCol = db.collection("room_locks");
 const _ = db.command;
 
 const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
-const PARTICIPANT_TTL_MS = 20 * 1000;
+const PARTICIPANT_TTL_MS = 40 * 1000;
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const ROOM_EXTRA_TTL_MS = 3 * 60 * 60 * 1000;
 const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
@@ -333,6 +333,13 @@ function cleanupParticipants(participants) {
 exports.main = async (event) => {
   const action = String(event && event.action ? event.action : "");
   try {
+    const isTimerTrigger =
+      !!(event && (event.type === "timer" || event.TriggerName || event.triggerName || event.$trigger));
+    if (isTimerTrigger) {
+      const info = await maybeRunGlobalCleanup(true);
+      return { ok: true, timer: true, ran: !!info.ran, deleted: Number(info.deleted || 0) };
+    }
+
     if (action === "getRoom") {
       const roomId = String(event.roomId || "");
       if (!roomId) {
@@ -352,7 +359,6 @@ exports.main = async (event) => {
     }
 
     if (action === "createRoom") {
-      await maybeRunGlobalCleanup(false);
       const room = event.room || null;
       if (!room || !room.roomId) {
         return err("missing room");

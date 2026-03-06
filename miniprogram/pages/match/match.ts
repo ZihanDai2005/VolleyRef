@@ -786,7 +786,7 @@ Page({
         return;
       }
       this.loadRoom(roomId, false);
-    }, 3000) as unknown as number;
+    }, 10000) as unknown as number;
   },
 
   stopPolling() {
@@ -823,7 +823,7 @@ Page({
     this.sendHeartbeat();
     this.heartbeatTimer = setInterval(() => {
       this.sendHeartbeat();
-    }, 5000) as unknown as number;
+    }, 10000) as unknown as number;
   },
 
   stopHeartbeat() {

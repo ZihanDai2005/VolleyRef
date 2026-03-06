@@ -118,10 +118,11 @@ interface RoomStore {
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const ROOM_EXTRA_TTL_MS = 3 * 60 * 60 * 1000;
 const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
-const PARTICIPANT_TTL_MS = 20 * 1000;
+const PARTICIPANT_TTL_MS = 40 * 1000;
 const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
-const CLOUD_PULL_INTERVAL_MS = 5000;
+const CLOUD_PULL_INTERVAL_MS = 15000;
 const ROOM_API_FUNCTION = "roomApi";
+const ROOM_API_TIMEOUT_MS = 10000;
 const POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
 const DEFAULT_TEAM_A_COLOR = "#6C63BE";
 const DEFAULT_TEAM_B_COLOR = "#66B97A";
@@ -157,11 +158,35 @@ function canUseCloud(): boolean {
   return !!(wx as any).cloud && typeof (wx as any).cloud.callFunction === "function";
 }
 
-function callRoomApi<T = any>(action: string, payload: Record<string, any>): Promise<T> {
+function callRoomApi<T = any>(
+  action: string,
+  payload: Record<string, any>,
+  timeoutMs = ROOM_API_TIMEOUT_MS
+): Promise<T> {
   if (!canUseCloud()) {
     return Promise.reject(new Error("cloud-not-ready"));
   }
   return new Promise<T>((resolve, reject) => {
+    let settled = false;
+    const safeResolve = (value: T) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      resolve(value);
+    };
+    const safeReject = (error: any) => {
+      if (settled) {
+        return;
+      }
+      settled = true;
+      reject(error);
+    };
+
+    const timeout = setTimeout(() => {
+      safeReject(new Error("cloud-timeout"));
+    }, Math.max(1000, Number(timeoutMs) || ROOM_API_TIMEOUT_MS));
+
     (wx as any).cloud
       .callFunction({
         name: ROOM_API_FUNCTION,
@@ -171,14 +196,18 @@ function callRoomApi<T = any>(action: string, payload: Record<string, any>): Pro
         },
       })
       .then((res: any) => {
+        clearTimeout(timeout);
         const result = (res && res.result) || {};
         if (result && result.ok === false) {
-          reject(new Error(String(result.message || "cloud-api-failed")));
+          safeReject(new Error(String(result.message || "cloud-api-failed")));
           return;
         }
-        resolve(result as T);
+        safeResolve(result as T);
       })
-      .catch(reject);
+      .catch((e: any) => {
+        clearTimeout(timeout);
+        safeReject(e);
+      });
   });
 }
 
@@ -1108,6 +1137,15 @@ export async function updateRoomAsync(
     return null;
   }
   const next = normalizeRoom(roomId, updater(cloneRoom(baseRoom)));
+  const baseComparable = cloneRoom(baseRoom);
+  const nextComparable = cloneRoom(next);
+  (baseComparable as any).updatedAt = 0;
+  (baseComparable as any).syncVersion = 0;
+  (nextComparable as any).updatedAt = 0;
+  (nextComparable as any).syncVersion = 0;
+  if (JSON.stringify(baseComparable) === JSON.stringify(nextComparable)) {
+    return cloneRoom(baseRoom);
+  }
   next.syncVersion = Math.max(1, Number((baseRoom as any).syncVersion) || 1) + 1;
   next.updatedAt = now();
   saveRoomToStore(next);

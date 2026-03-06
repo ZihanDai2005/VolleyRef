@@ -1,0 +1,12 @@
+{
+  "permissions": {
+    "openapi": []
+  },
+  "triggers": [
+    {
+      "name": "cleanupHourly",
+      "type": "timer",
+      "config": "0 0 */12 * * * *"
+    }
+  ]
+}
