@@ -14,11 +14,11 @@ page {
 
 @media (prefers-color-scheme: dark) {
   page {
-    --page-bg: #191a1d;
+    --page-bg: #050202;
     --surface-soft: rgba(255, 255, 255, 0.07);
-    --text-main: #f1f3f5;
+    --text-main: var(--white-ink);
     --text-secondary: #c1c6ce;
-    --entry-fill: #f5f6f8;
+    --entry-fill: var(--white-ink);
   }
 }
 
@@ -409,14 +409,26 @@ page {
 
 .team-a .player-card.libero {
   background-color: var(--team-a-color, #8a87d0);
-  color: #fff;
+  color: var(--white-ink);
   border: none;
 }
 
 .team-b .player-card.libero {
   background-color: var(--team-b-color, #81c79e);
-  color: #fff;
+  color: var(--white-ink);
   border: none;
+}
+
+.team-a .player-card.libero .num,
+.team-a .player-card.libero .player-qmark {
+  color: var(--team-a-color, #8a87d0);
+  -webkit-text-stroke: 1.2px var(--page-bg);
+}
+
+.team-b .player-card.libero .num,
+.team-b .player-card.libero .player-qmark {
+  color: var(--team-b-color, #81c79e);
+  -webkit-text-stroke: 1.2px var(--page-bg);
 }
 
 .player-input {
@@ -515,6 +527,10 @@ page {
   text-decoration: underline;
   text-decoration-thickness: 2rpx;
   text-underline-offset: 4rpx;
+}
+
+.player-card.libero .captain-num {
+  text-decoration-color: var(--page-bg);
 }
 
 .sub-text {
@@ -639,6 +655,16 @@ page {
   min-height: 52px;
 }
 
+.captain-picker-grid.team-a .libero-col .player-card.libero .num-text {
+  color: var(--team-a-color, #8a87d0);
+  -webkit-text-stroke: 1.2px var(--page-bg);
+}
+
+.captain-picker-grid.team-b .libero-col .player-card.libero .num-text {
+  color: var(--team-b-color, #81c79e);
+  -webkit-text-stroke: 1.2px var(--page-bg);
+}
+
 .captain-option-card {
   transition: transform 180ms ease;
   overflow: hidden;
@@ -673,6 +699,10 @@ page {
   transform: translateY(1px) scale(1.24);
   transform-origin: center;
   transition: transform 180ms ease;
+}
+
+.captain-picker-grid .libero-col .captain-option-selected .num-text {
+  border-bottom-color: var(--page-bg);
 }
 
 .captain-option-disabled {
@@ -786,7 +816,7 @@ page {
   border-radius: 9999px;
   background: var(--entry-fill);
   border: 0;
-  color: #fff;
+  color: var(--white-ink);
   padding: 0;
   box-sizing: border-box;
 }

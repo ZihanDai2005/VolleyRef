@@ -1025,13 +1025,7 @@ Page({
       return;
     }
     this.saveInFlight = true;
-    const showCreatingLoading = !!this.data.createMode && !this.data.editMode;
-    if (showCreatingLoading) {
-      wx.showLoading({
-        title: "房间创建中",
-        mask: true,
-      });
-    }
+    let showCreatingLoading = false;
     try {
     const teamAName = this.data.teamAName.trim() || "甲";
     const teamBName = this.data.teamBName.trim() || "乙";
@@ -1087,6 +1081,14 @@ Page({
       }
       onCourtTeamACaptainNo = captainResolved.teamACaptainNo;
       onCourtTeamBCaptainNo = captainResolved.teamBCaptainNo;
+    }
+
+    showCreatingLoading = !!createMode && !editMode;
+    if (showCreatingLoading) {
+      wx.showLoading({
+        title: "房间创建中",
+        mask: true,
+      });
     }
 
     if (createMode) {

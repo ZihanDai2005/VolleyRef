@@ -673,6 +673,7 @@ Page({
       return room;
     });
     if (!next) {
+      showToastHint("系统繁忙，请重试");
       return;
     }
     this.loadRoom(roomId, true);
@@ -1069,6 +1070,63 @@ Page({
   getTeamMainNumberMap(team: TeamCode): TeamMainNoMap {
     const players = team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers;
     return buildMainMap(players || []);
+  },
+
+  applyLocalLineupFromRoom(room: any) {
+    if (!room || !room.teamA || !room.teamB || !room.match) {
+      return;
+    }
+    const nextSwapped = !!room.match.isSwapped;
+    const teamASide: TeamCode = nextSwapped ? "B" : "A";
+    const teamAPlayers = (room.teamA.players || []).slice();
+    const teamBPlayers = (room.teamB.players || []).slice();
+    const aRows = buildTeamRows(teamAPlayers);
+    const bRows = buildTeamRows(teamBPlayers);
+    const currentTeamACaptain = normalizeNumberInput(
+      String((room.match as any).teamACurrentCaptainNo || (room.teamA as any).captainNo || "")
+    );
+    const currentTeamBCaptain = normalizeNumberInput(
+      String((room.match as any).teamBCurrentCaptainNo || (room.teamB as any).captainNo || "")
+    );
+    this.setData({
+      isSwapped: nextSwapped,
+      servingTeam: room.match.servingTeam === "B" ? "B" : "A",
+      teamACaptainNo: currentTeamACaptain,
+      teamBCaptainNo: currentTeamBCaptain,
+      teamAPlayers: teamAPlayers,
+      teamBPlayers: teamBPlayers,
+      teamALibero: aRows.libero,
+      teamAMainGrid: buildMainGridByOrder(teamAPlayers, getMainOrderForTeam("A", teamASide)),
+      teamBLibero: bRows.libero,
+      teamBMainGrid: buildMainGridByOrder(teamBPlayers, getMainOrderForTeam("B", teamASide)),
+    });
+  },
+
+  applyLocalScoreFromRoom(room: any) {
+    if (!room || !room.match) {
+      return;
+    }
+    const nextSwapped = !!room.match.isSwapped;
+    const leftTeam: TeamCode = nextSwapped ? "B" : "A";
+    const rightTeam: TeamCode = leftTeam === "A" ? "B" : "A";
+    const leftScore = leftTeam === "A" ? Number(room.match.aScore || 0) : Number(room.match.bScore || 0);
+    const rightScore = rightTeam === "A" ? Number(room.match.aScore || 0) : Number(room.match.bScore || 0);
+    const displayLastScoringTeam: TeamCode | "" =
+      room.match.lastScoringTeam === leftTeam
+        ? "A"
+        : room.match.lastScoringTeam === rightTeam
+          ? "B"
+          : "";
+    const leftSetWins = nextSwapped ? Number(room.match.bSetWins || 0) : Number(room.match.aSetWins || 0);
+    const rightSetWins = nextSwapped ? Number(room.match.aSetWins || 0) : Number(room.match.bSetWins || 0);
+    this.setData({
+      isSwapped: nextSwapped,
+      aScore: leftScore,
+      bScore: rightScore,
+      lastScoringTeam: displayLastScoringTeam,
+      setWinsText: String(leftSetWins) + " : " + String(rightSetWins),
+      setNoText: room.match.isFinished ? "已结束" : "第" + String(Math.max(1, Number(room.match.setNo || 1))) + "局",
+    });
   },
 
   async playTeamRotateMotion(team: TeamCode, beforeRects: TeamRectMap, beforeNoMap: TeamMainNoMap, captainNo: string) {
@@ -1852,12 +1910,16 @@ Page({
     };
 
     if (!rotatedTeam) {
+      this.applyLocalScoreFromRoom(next);
       this.loadRoom(roomId, true);
       showDecidingSetSwitchChoice();
       return;
     }
 
     if (beforeRotateRects && beforeRotateNoMap) {
+      this.applyLocalScoreFromRoom(next);
+      this.applyLocalLineupFromRoom(next);
+      await this.nextTickAsync();
       await this.playTeamRotateMotion(rotatedTeam, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
     }
     this.loadRoom(roomId, true);
@@ -2082,6 +2144,8 @@ Page({
     if (!next) {
       return;
     }
+    this.applyLocalLineupFromRoom(next);
+    await this.nextTickAsync();
     await this.playTeamRotateMotion(team, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
     this.loadRoom(roomId, true);
   },
@@ -2200,11 +2264,16 @@ Page({
     });
 
     if (!next) {
+      showToastHint("系统繁忙，请重试");
       return;
     }
     if (!undone) {
+      showToastHint("本局无可撤回操作");
       return;
     }
+    this.applyLocalScoreFromRoom(next);
+    this.applyLocalLineupFromRoom(next);
+    await this.nextTickAsync();
     if (undoRotateA) {
       await this.playTeamRotateMotion("A", beforeARects, beforeANoMap, beforeACaptain);
     }

@@ -113,7 +113,7 @@
   font-family: "Anton", -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
   font-weight: 400;
   line-height: 1;
-  color: inherit;
+  color: var(--theme-accent);
   transform: translateY(-1rpx);
 }
 
@@ -557,7 +557,7 @@
 
 .create-head-lineup-grid.team-a .player-card.libero {
   background-color: var(--team-a-color, #8a87d0);
-  color: #fff;
+  color: var(--white-ink);
   border: none;
 }
 
@@ -569,8 +569,20 @@
 
 .create-head-lineup-grid.team-b .player-card.libero {
   background-color: var(--team-b-color, #8dc8a5);
-  color: #fff;
+  color: var(--white-ink);
   border: none;
+}
+
+.create-head-lineup-grid.team-a .player-card.libero .num-text,
+.create-head-lineup-grid.team-a .player-card.libero .player-qmark {
+  color: var(--team-a-color, #8a87d0);
+  -webkit-text-stroke: 1.2px var(--page-bg);
+}
+
+.create-head-lineup-grid.team-b .player-card.libero .num-text,
+.create-head-lineup-grid.team-b .player-card.libero .player-qmark {
+  color: var(--team-b-color, #8dc8a5);
+  -webkit-text-stroke: 1.2px var(--page-bg);
 }
 
 @keyframes createSideSwitch {
@@ -925,14 +937,26 @@
 
 .team-a .player-card.libero {
   background-color: var(--team-a-color, #8a87d0);
-  color: #fff;
+  color: var(--white-ink);
   border: none;
 }
 
 .team-b .player-card.libero {
   background-color: var(--team-b-color, #81c79e);
-  color: #fff;
+  color: var(--white-ink);
   border: none;
+}
+
+.team-a .player-card.libero .num-text,
+.team-a .player-card.libero .player-qmark {
+  color: var(--team-a-color, #8a87d0);
+  -webkit-text-stroke: 1.2px var(--page-bg);
+}
+
+.team-b .player-card.libero .num-text,
+.team-b .player-card.libero .player-qmark {
+  color: var(--team-b-color, #81c79e);
+  -webkit-text-stroke: 1.2px var(--page-bg);
 }
 
 .player-input {
@@ -992,7 +1016,7 @@
   line-height: 82rpx;
   padding: 0;
   background: #6c63be;
-  color: #fff;
+  color: var(--white-ink);
   border-radius: 999rpx;
   font-size: 32rpx;
 }
@@ -1024,7 +1048,7 @@
   line-height: 100rpx;
   padding: 0;
   background: var(--entry-fill);
-  color: #ffffff;
+  color: var(--white-ink);
   border-radius: 999rpx;
   font-size: 34rpx;
   font-weight: 700;
@@ -1109,7 +1133,7 @@
 
 @media (prefers-color-scheme: dark) {
   .create-actions {
-    --entry-fill: #f5f6f8;
+    --entry-fill: var(--white-ink);
   }
 
   .create-actions .entry-btn {
@@ -1239,6 +1263,10 @@
   transform: translateY(1px) scale(1.24);
   transform-origin: center;
   transition: transform 180ms ease;
+}
+
+.captain-picker-grid .libero-col .captain-option-selected .num-text {
+  border-bottom-color: var(--page-bg);
 }
 
 .captain-option-disabled {

@@ -70,14 +70,38 @@
   <view class="court-row {{isSwapped ? 'swapped' : ''}} {{switchingOut ? 'switch-out' : ''}} {{switchingIn ? 'switch-in' : ''}}">
     <view class="team-panel team-a">
       <view class="team-head">
-        <view class="rotate-btn {{isSwapped ? 'right' : 'left'}} pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
-          <view class="rotate-icon"></view>
-        </view>
-        <view class="timeout-btn {{isSwapped ? 'left' : 'right'}} pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
-          <view class="timeout-icon"></view>
-          <text class="timeout-count">{{teamATimeoutCount}}</text>
-        </view>
-        <text class="team-title">{{teamAName}}</text>
+        <block wx:if="{{!isSwapped}}">
+          <view class="team-actions left">
+            <view class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
+              <view class="rotate-icon"></view>
+            </view>
+            <view class="timeout-btn timeout-btn-extra">
+              <view class="timeout-icon timeout-icon-human"></view>
+              <text class="timeout-count">0</text>
+            </view>
+            <view class="timeout-btn pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
+              <view class="timeout-icon"></view>
+              <text class="timeout-count">{{teamATimeoutCount}}</text>
+            </view>
+          </view>
+          <text class="team-title align-right">{{teamAName}}</text>
+        </block>
+        <block wx:else>
+          <text class="team-title align-left">{{teamAName}}</text>
+          <view class="team-actions right">
+            <view class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
+              <view class="rotate-icon"></view>
+            </view>
+            <view class="timeout-btn timeout-btn-extra">
+              <view class="timeout-icon timeout-icon-human"></view>
+              <text class="timeout-count">0</text>
+            </view>
+            <view class="timeout-btn pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
+              <view class="timeout-icon"></view>
+              <text class="timeout-count">{{teamATimeoutCount}}</text>
+            </view>
+          </view>
+        </block>
       </view>
       <view class="lineup-grid {{isSwapped ? 'swap-layout' : ''}}">
         <view class="libero-col">
@@ -102,14 +126,38 @@
 
     <view class="team-panel team-b">
       <view class="team-head">
-        <view class="timeout-btn {{isSwapped ? 'right' : 'left'}} pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
-          <view class="timeout-icon"></view>
-          <text class="timeout-count">{{teamBTimeoutCount}}</text>
-        </view>
-        <text class="team-title">{{teamBName}}</text>
-        <view class="rotate-btn {{isSwapped ? 'left' : 'right'}} pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
-          <view class="rotate-icon"></view>
-        </view>
+        <block wx:if="{{!isSwapped}}">
+          <text class="team-title align-left">{{teamBName}}</text>
+          <view class="team-actions right">
+            <view class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
+              <view class="rotate-icon"></view>
+            </view>
+            <view class="timeout-btn timeout-btn-extra">
+              <view class="timeout-icon timeout-icon-human"></view>
+              <text class="timeout-count">0</text>
+            </view>
+            <view class="timeout-btn pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
+              <view class="timeout-icon"></view>
+              <text class="timeout-count">{{teamBTimeoutCount}}</text>
+            </view>
+          </view>
+        </block>
+        <block wx:else>
+          <view class="team-actions left">
+            <view class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
+              <view class="rotate-icon"></view>
+            </view>
+            <view class="timeout-btn timeout-btn-extra">
+              <view class="timeout-icon timeout-icon-human"></view>
+              <text class="timeout-count">0</text>
+            </view>
+            <view class="timeout-btn pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
+              <view class="timeout-icon"></view>
+              <text class="timeout-count">{{teamBTimeoutCount}}</text>
+            </view>
+          </view>
+          <text class="team-title align-right">{{teamBName}}</text>
+        </block>
       </view>
       <view class="lineup-grid reverse {{isSwapped ? 'swap-layout' : ''}}">
         <view class="main-col">
