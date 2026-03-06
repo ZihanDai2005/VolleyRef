@@ -472,8 +472,11 @@ Page({
   roomWatchOff: null as null | (() => void),
   clientId: "" as string,
   openingLineup: false as boolean,
+  rotateMotionInFlight: false as boolean,
   pendingLowerParticipantCount: 0 as number,
   pendingLowerParticipantHit: 0 as number,
+  lastTeamARects: {} as TeamRectMap,
+  lastTeamBRects: {} as TeamRectMap,
 
   buildLogSetOptions(sets: number): number[] {
     const count = Math.max(1, Number(sets || 1));
@@ -986,13 +989,41 @@ Page({
     return count;
   },
 
+  mergeRectMapWithFallback(primary: TeamRectMap, fallback: TeamRectMap): TeamRectMap {
+    const out: TeamRectMap = {};
+    MAIN_POSITIONS.forEach((pos) => {
+      if (primary && primary[pos]) {
+        out[pos] = primary[pos];
+        return;
+      }
+      if (fallback && fallback[pos]) {
+        out[pos] = fallback[pos];
+      }
+    });
+    return out;
+  },
+
+  getCachedTeamRectMap(team: TeamCode): TeamRectMap {
+    return team === "A"
+      ? (this.lastTeamARects as TeamRectMap)
+      : (this.lastTeamBRects as TeamRectMap);
+  },
+
+  setCachedTeamRectMap(team: TeamCode, rects: TeamRectMap): void {
+    if (team === "A") {
+      this.lastTeamARects = rects;
+      return;
+    }
+    this.lastTeamBRects = rects;
+  },
+
   measureTeamMainPosRects(team: TeamCode) {
     return new Promise<TeamRectMap>((resolve) => {
       const rects: TeamRectMap = {};
       const base = team === "A" ? ".team-a" : ".team-b";
       const query = wx.createSelectorQuery().in(this);
       MAIN_POSITIONS.forEach((pos) => {
-        query.select(base + " .num.pos-" + pos).boundingClientRect();
+        query.select(base + " .player-card.pos-card-" + pos).boundingClientRect();
       });
       query.exec((res) => {
         const list = Array.isArray(res) ? res : [];
@@ -1041,120 +1072,34 @@ Page({
   },
 
   async playTeamRotateMotion(team: TeamCode, beforeRects: TeamRectMap, beforeNoMap: TeamMainNoMap, captainNo: string) {
-    if (!beforeRects || MAIN_POSITIONS.every((pos) => !beforeRects[pos])) {
+    const cachedRects = this.getCachedTeamRectMap(team);
+    let mergedBeforeRects = this.mergeRectMapWithFallback(beforeRects || {}, cachedRects || {});
+    if (!mergedBeforeRects || MAIN_POSITIONS.every((pos) => !mergedBeforeRects[pos])) {
       return;
     }
-    await this.nextTickAsync();
-    await this.delayAsync(10);
-    let afterRects = await this.measureTeamMainPosRectsStable(team, 1000);
-    const afterNoMap = this.getTeamMainNumberMap(team);
-    const startItems: RotateFlyItem[] = [];
-    const endItems: RotateFlyItem[] = [];
-    MAIN_POSITIONS.forEach((sourcePos) => {
-      const number = beforeNoMap[sourcePos] || "?";
-      const targetPos = MAIN_POSITIONS.find((pos) => (afterNoMap[pos] || "?") === number);
-      if (!targetPos) {
-        return;
-      }
-      const fromRect = beforeRects[sourcePos];
-      const toRect = afterRects[targetPos];
-      if (!fromRect || !toRect) {
-        return;
-      }
-      const dx = toRect.left - fromRect.left;
-      const dy = toRect.top - fromRect.top;
-      const id = team + "-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
-      const baseStyle =
-        "left:" +
-        String(fromRect.left) +
-        "px;top:" +
-        String(fromRect.top) +
-        "px;width:" +
-        String(fromRect.width) +
-        "px;height:" +
-        String(fromRect.height) +
-        "px;";
-      startItems.push({
-        id,
-        team,
-        number,
-        isCaptain: normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo),
-        style: baseStyle + "transform:translate(0,0);transition:none;",
-      });
-      endItems.push({
-        id,
-        team,
-        number,
-        isCaptain: normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo),
-        style:
-          baseStyle +
-          "transform:translate(" +
-          String(dx) +
-          "px," +
-          String(dy) +
-          "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
-      });
-    });
-    if (!startItems.length) {
-      MAIN_POSITIONS.forEach((targetPos) => {
-        const sourcePos = NUMBER_SOURCE_MAP[targetPos] as MainPosition;
-        const number = beforeNoMap[sourcePos] || "?";
-        const fromRect = beforeRects[sourcePos];
-        const toRect = afterRects[targetPos];
-        if (!fromRect || !toRect) {
-          return;
-        }
-        const dx = toRect.left - fromRect.left;
-        const dy = toRect.top - fromRect.top;
-        const id = team + "-fallback-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
-        const baseStyle =
-          "left:" +
-          String(fromRect.left) +
-          "px;top:" +
-          String(fromRect.top) +
-          "px;width:" +
-          String(fromRect.width) +
-          "px;height:" +
-          String(fromRect.height) +
-          "px;";
-        const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
-        startItems.push({
-          id,
-          team,
-          number,
-          isCaptain,
-          style: baseStyle + "transform:translate(0,0);transition:none;",
-        });
-        endItems.push({
-          id,
-          team,
-          number,
-          isCaptain,
-          style:
-            baseStyle +
-            "transform:translate(" +
-            String(dx) +
-            "px," +
-            String(dy) +
-            "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
-        });
-      });
-    }
-    if (!startItems.length) {
+    this.rotateMotionInFlight = true;
+    try {
       await this.nextTickAsync();
-      await this.delayAsync(24);
-      afterRects = await this.measureTeamMainPosRectsStable(team, 220);
-      MAIN_POSITIONS.forEach((targetPos) => {
-        const sourcePos = NUMBER_SOURCE_MAP[targetPos] as MainPosition;
+      await this.delayAsync(10);
+      let afterRects = await this.measureTeamMainPosRectsStable(team, 1200);
+      afterRects = this.mergeRectMapWithFallback(afterRects || {}, mergedBeforeRects || {});
+      const afterNoMap = this.getTeamMainNumberMap(team);
+      const startItems: RotateFlyItem[] = [];
+      const endItems: RotateFlyItem[] = [];
+      MAIN_POSITIONS.forEach((sourcePos) => {
         const number = beforeNoMap[sourcePos] || "?";
-        const fromRect = beforeRects[sourcePos];
+        const targetPos = MAIN_POSITIONS.find((pos) => (afterNoMap[pos] || "?") === number);
+        if (!targetPos) {
+          return;
+        }
+        const fromRect = mergedBeforeRects[sourcePos];
         const toRect = afterRects[targetPos];
         if (!fromRect || !toRect) {
           return;
         }
         const dx = toRect.left - fromRect.left;
         const dy = toRect.top - fromRect.top;
-        const id = team + "-retry-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
+        const id = team + "-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
         const baseStyle =
           "left:" +
           String(fromRect.left) +
@@ -1165,19 +1110,18 @@ Page({
           "px;height:" +
           String(fromRect.height) +
           "px;";
-        const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
         startItems.push({
           id,
           team,
           number,
-          isCaptain,
+          isCaptain: normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo),
           style: baseStyle + "transform:translate(0,0);transition:none;",
         });
         endItems.push({
           id,
           team,
           number,
-          isCaptain,
+          isCaptain: normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo),
           style:
             baseStyle +
             "transform:translate(" +
@@ -1187,27 +1131,136 @@ Page({
             "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
         });
       });
-    }
-    if (!startItems.length) {
-      return;
-    }
-    if (team === "A") {
-      this.setData({ hideTeamAMainNumbers: true, rotateFlyItems: startItems });
-    } else {
-      this.setData({ hideTeamBMainNumbers: true, rotateFlyItems: startItems });
-    }
-    await this.nextTickAsync();
-    this.setData({ rotateFlyItems: endItems });
-    setTimeout(() => {
+      if (!startItems.length) {
+        MAIN_POSITIONS.forEach((targetPos) => {
+          const sourcePos = NUMBER_SOURCE_MAP[targetPos] as MainPosition;
+          const number = beforeNoMap[sourcePos] || "?";
+          const fromRect = mergedBeforeRects[sourcePos];
+          const toRect = afterRects[targetPos];
+          if (!fromRect || !toRect) {
+            return;
+          }
+          const dx = toRect.left - fromRect.left;
+          const dy = toRect.top - fromRect.top;
+          const id = team + "-fallback-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
+          const baseStyle =
+            "left:" +
+            String(fromRect.left) +
+            "px;top:" +
+            String(fromRect.top) +
+            "px;width:" +
+            String(fromRect.width) +
+            "px;height:" +
+            String(fromRect.height) +
+            "px;";
+          const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
+          startItems.push({
+            id,
+            team,
+            number,
+            isCaptain,
+            style: baseStyle + "transform:translate(0,0);transition:none;",
+          });
+          endItems.push({
+            id,
+            team,
+            number,
+            isCaptain,
+            style:
+              baseStyle +
+              "transform:translate(" +
+              String(dx) +
+              "px," +
+              String(dy) +
+              "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
+          });
+        });
+      }
+      if (!startItems.length) {
+        await this.nextTickAsync();
+        await this.delayAsync(24);
+        afterRects = await this.measureTeamMainPosRectsStable(team, 220);
+        afterRects = this.mergeRectMapWithFallback(afterRects || {}, mergedBeforeRects || {});
+        MAIN_POSITIONS.forEach((targetPos) => {
+          const sourcePos = NUMBER_SOURCE_MAP[targetPos] as MainPosition;
+          const number = beforeNoMap[sourcePos] || "?";
+          const fromRect = mergedBeforeRects[sourcePos];
+          const toRect = afterRects[targetPos];
+          if (!fromRect || !toRect) {
+            return;
+          }
+          const dx = toRect.left - fromRect.left;
+          const dy = toRect.top - fromRect.top;
+          const id = team + "-retry-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
+          const baseStyle =
+            "left:" +
+            String(fromRect.left) +
+            "px;top:" +
+            String(fromRect.top) +
+            "px;width:" +
+            String(fromRect.width) +
+            "px;height:" +
+            String(fromRect.height) +
+            "px;";
+          const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
+          startItems.push({
+            id,
+            team,
+            number,
+            isCaptain,
+            style: baseStyle + "transform:translate(0,0);transition:none;",
+          });
+          endItems.push({
+            id,
+            team,
+            number,
+            isCaptain,
+            style:
+              baseStyle +
+              "transform:translate(" +
+              String(dx) +
+              "px," +
+              String(dy) +
+              "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
+          });
+        });
+      }
+      if (!startItems.length) {
+        return;
+      }
+      this.setCachedTeamRectMap(team, afterRects);
+      if (team === "A") {
+        this.setData({ hideTeamAMainNumbers: true, rotateFlyItems: startItems });
+      } else {
+        this.setData({ hideTeamBMainNumbers: true, rotateFlyItems: startItems });
+      }
+      await this.nextTickAsync();
+      this.setData({ rotateFlyItems: endItems });
+      await this.delayAsync(340);
       if (team === "A") {
         this.setData({ hideTeamAMainNumbers: false, rotateFlyItems: [] });
       } else {
         this.setData({ hideTeamBMainNumbers: false, rotateFlyItems: [] });
       }
-    }, 340);
+    } finally {
+      this.rotateMotionInFlight = false;
+      if (!this.roomLoadInFlight && this.roomLoadPending) {
+        const pendingForce = !!this.roomLoadPendingForce;
+        this.roomLoadPending = false;
+        this.roomLoadPendingForce = false;
+        if (this.data.roomId) {
+          this.loadRoom(this.data.roomId, pendingForce);
+        }
+      }
+    }
   },
 
   async loadRoom(roomId: string, force: boolean) {
+    if (this.rotateMotionInFlight) {
+      this.roomLoadPending = true;
+      this.roomLoadPendingForce = this.roomLoadPendingForce || force;
+      return;
+    }
     if (this.roomLoadInFlight) {
       this.roomLoadPending = true;
       this.roomLoadPendingForce = this.roomLoadPendingForce || force;
@@ -1480,7 +1533,11 @@ Page({
         for (let i = 0; i < rotateReplayQueue.length; i += 1) {
           const step = rotateReplayQueue[i];
           const team = step.team;
-          const beforeRects = await this.measureTeamMainPosRectsStable(team, 1000);
+          const measuredBeforeRects = await this.measureTeamMainPosRectsStable(team, 1200);
+          const beforeRects = this.mergeRectMapWithFallback(
+            measuredBeforeRects || {},
+            this.getCachedTeamRectMap(team)
+          );
           const beforeNoMap = this.getTeamMainNumberMap(team);
           const beforeCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
           if (team === "A") {
@@ -1800,10 +1857,10 @@ Page({
       return;
     }
 
-    this.loadRoom(roomId, true);
     if (beforeRotateRects && beforeRotateNoMap) {
       await this.playTeamRotateMotion(rotatedTeam, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
     }
+    this.loadRoom(roomId, true);
     showDecidingSetSwitchChoice();
   },
 
@@ -2025,8 +2082,8 @@ Page({
     if (!next) {
       return;
     }
-    this.loadRoom(roomId, true);
     await this.playTeamRotateMotion(team, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
+    this.loadRoom(roomId, true);
   },
 
   async onResetScore() {
@@ -2148,13 +2205,13 @@ Page({
     if (!undone) {
       return;
     }
-    this.loadRoom(roomId, true);
     if (undoRotateA) {
       await this.playTeamRotateMotion("A", beforeARects, beforeANoMap, beforeACaptain);
     }
     if (undoRotateB) {
       await this.playTeamRotateMotion("B", beforeBRects, beforeBNoMap, beforeBCaptain);
     }
+    this.loadRoom(roomId, true);
   },
 
   async onUndoLastScore() {

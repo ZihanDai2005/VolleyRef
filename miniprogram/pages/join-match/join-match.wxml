@@ -9,8 +9,12 @@
     </view>
 
     <view class="form-block">
+      <text class="title-en-tag">JOIN</text>
       <text class="title">加入已有的</text>
-      <text class="title title-second">裁判协作</text>
+      <view class="title title-second">
+        <text>裁判协作</text>
+        <text class="title-special-dot">.</text>
+      </view>
 
       <view class="input-area">
         <text class="field-hint">6位裁判团队编号</text>

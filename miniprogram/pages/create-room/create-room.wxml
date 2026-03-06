@@ -15,8 +15,12 @@
   </view>
 
   <view class="create-head-block" wx:if="{{createMode}}">
+    <text class="create-head-en-tag">CREATE</text>
     <text class="create-head-title">开始一个新的</text>
-    <text class="create-head-title create-head-title-second">裁判协作</text>
+    <view class="create-head-title create-head-title-second">
+      <text>裁判协作</text>
+      <text class="title-special-dot">.</text>
+    </view>
 
     <view class="create-head-inputs">
       <view class="create-head-hint-row">

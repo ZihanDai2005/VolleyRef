@@ -88,7 +88,7 @@
         </view>
         <view class="main-col">
           <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
-            <view class="player-card {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+            <view class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
               <text
                 class="num pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-num' : ''}} {{hideTeamAMainNumbers ? 'num-hidden' : ''}}"
               >{{item.number}}</text>
@@ -114,7 +114,7 @@
       <view class="lineup-grid reverse {{isSwapped ? 'swap-layout' : ''}}">
         <view class="main-col">
           <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
-            <view class="player-card {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+            <view class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
               <text
                 class="num pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-num' : ''}} {{hideTeamBMainNumbers ? 'num-hidden' : ''}}"
               >{{item.number}}</text>

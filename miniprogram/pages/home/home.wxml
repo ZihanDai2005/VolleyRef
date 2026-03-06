@@ -18,14 +18,20 @@
 
       <view class="button-group">
         <button class="pill-button pill-primary {{createBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateEntryTap">
-          创建新比赛
+          <view class="pill-btn-content">
+            <text class="pill-btn-text">创建比赛</text>
+            <view class="pill-btn-icon"></view>
+          </view>
         </button>
         <button class="pill-button pill-secondary {{joinBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onJoinEntryTap">
-          加入既有比赛
+          <view class="pill-btn-content">
+            <text class="pill-btn-text">加入比赛</text>
+            <view class="pill-btn-icon"></view>
+          </view>
         </button>
       </view>
     </view>
 
-    <text class="version-tag">V1.2.0 BUILD 20260305</text>
+    <text class="version-tag">V1.2.1 BUILD 20260305</text>
   </view>
 </view>
