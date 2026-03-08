@@ -5,6 +5,8 @@
 page {
   --theme-accent: #e82600;
   --theme-accent-rgb: 232, 38, 0;
+  --entry-action-bottom: 140rpx;
+  --entry-tag-bottom: 60rpx;
   --white-ink: #ffffff;
   --page-bg: #ffffff;
   --card-bg: rgba(153, 153, 153, 0.06);
@@ -24,6 +26,8 @@ page {
   page {
     --theme-accent: #e82600;
     --theme-accent-rgb: 232, 38, 0;
+    --entry-action-bottom: 140rpx;
+    --entry-tag-bottom: 60rpx;
     --white-ink: #eaeaea;
     --page-bg: #050202;
     --card-bg: rgba(255, 255, 255, 0.06);
@@ -35,5 +39,12 @@ page {
     --text-secondary: #d4d7dd;
     --text-muted: #a0a6b1;
     --text-tertiary: #bcc1ca;
+  }
+}
+
+@media (min-width: 700px) {
+  page {
+    --entry-action-bottom: 72rpx;
+    --entry-tag-bottom: 28rpx;
   }
 }

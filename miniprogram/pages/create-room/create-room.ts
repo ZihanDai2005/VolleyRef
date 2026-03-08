@@ -179,6 +179,18 @@ function getTeamNameError(teamANameRaw: string, teamBNameRaw: string): string | 
   return null;
 }
 
+function getTeamNameWhitespaceOnlyError(teamANameRaw: string, teamBNameRaw: string): string | null {
+  const rawA = String(teamANameRaw || "");
+  const rawB = String(teamBNameRaw || "");
+  if (rawA.length > 0 && rawA.trim().length === 0) {
+    return "甲队名称不能仅为空格";
+  }
+  if (rawB.length > 0 && rawB.trim().length === 0) {
+    return "乙队名称不能仅为空格";
+  }
+  return null;
+}
+
 function hexToRgbString(hex: string): string {
   const value = String(hex || "").replace("#", "").trim();
   if (!/^[0-9a-fA-F]{6}$/.test(value)) {
@@ -245,6 +257,7 @@ Page({
   themeOff: null as null | (() => void),
   captainPickerResolver: null as null | ((value: string | null) => void),
   saveInFlight: false as boolean,
+  copyInviteInFlight: false as boolean,
 
   onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
@@ -692,6 +705,11 @@ Page({
     } else if (wasTooLongB) {
       showToastHint("团队名称最多8个字");
     }
+    if (field === "teamAName" && rawA.length > 0 && rawA.trim().length === 0) {
+      showToastHint("名称不能仅为空格");
+    } else if (field === "teamBName" && rawB.length > 0 && rawB.trim().length === 0) {
+      showToastHint("名称不能仅为空格");
+    }
     const err = getTeamNameError(rawA.slice(0, 8), rawB.slice(0, 8));
     if (err) {
       showToastHint(err);
@@ -1020,6 +1038,31 @@ Page({
     }).catch(() => {});
   },
 
+  prepareSaveValidationUI() {
+    const shouldClearFocus =
+      !!this.data.activeCreateInputKey ||
+      !!this.data.focusCreatePasswordInput ||
+      !!this.data.passwordFocused ||
+      !!this.data.teamANameFocused ||
+      !!this.data.teamBNameFocused;
+    if (shouldClearFocus) {
+      this.setData({
+        activeCreateInputKey: "",
+        focusCreatePasswordInput: false,
+        passwordFocused: false,
+        teamANameFocused: false,
+        teamBNameFocused: false,
+      });
+    }
+  },
+
+  dismissKeyboardForSave() {
+    this.prepareSaveValidationUI();
+    wx.hideKeyboard({
+      fail: () => {},
+    });
+  },
+
   async onSaveAndStart() {
     if (this.saveInFlight) {
       return;
@@ -1027,6 +1070,7 @@ Page({
     this.saveInFlight = true;
     let showCreatingLoading = false;
     try {
+    this.dismissKeyboardForSave();
     const teamAName = this.data.teamAName.trim() || "甲";
     const teamBName = this.data.teamBName.trim() || "乙";
     const roomPassword = this.data.roomPassword.trim();
@@ -1038,6 +1082,11 @@ Page({
 
     if (roomPassword.length !== 6) {
       showBlockHint("房间密码需6位数字");
+      return;
+    }
+    const teamNameSpaceOnlyErr = getTeamNameWhitespaceOnlyError(this.data.teamAName, this.data.teamBName);
+    if (teamNameSpaceOnlyErr) {
+      showBlockHint(teamNameSpaceOnlyErr);
       return;
     }
     const teamNameErr = getTeamNameError(this.data.teamAName, this.data.teamBName);
@@ -1209,11 +1258,15 @@ Page({
   },
 
   async onCopyInviteAndStart() {
+    if (this.copyInviteInFlight) {
+      return;
+    }
     const roomPassword = this.data.roomPassword.trim();
     if (!/^\d{6}$/.test(roomPassword)) {
       showBlockHint("房间密码需6位数字");
       return;
     }
+    this.copyInviteInFlight = true;
     const inviteText = this.buildInviteText();
     wx.setClipboardData({
       data: inviteText,
@@ -1222,6 +1275,9 @@ Page({
       },
       fail: () => {
         showBlockHint("复制失败，请重试");
+      },
+      complete: () => {
+        this.copyInviteInFlight = false;
       },
     });
   },

@@ -1,4 +1,4 @@
-import { getRoomAsync, heartbeatRoomAsync, verifyRoomPasswordAsync } from "../../utils/room-service";
+import { getRoomAsync, verifyRoomPasswordAsync } from "../../utils/room-service";
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 
@@ -20,6 +20,7 @@ Page({
   },
   themeOff() {},
   themeBound: false,
+  joining: false as boolean,
 
   onLoad() {
     this.applyNavigationTheme();
@@ -189,7 +190,17 @@ Page({
   },
 
   async onJoinRoomSubmit() {
-    const clientId = getApp<IAppOption>().globalData.clientId;
+    if (this.joining) {
+      return;
+    }
+    this.setData({
+      activeInput: "",
+      focusRoomInput: false,
+      focusPasswordInput: false,
+    });
+    wx.hideKeyboard({
+      fail: () => {},
+    });
     const roomId = this.data.joinRoomId.trim();
     const password = this.data.joinPassword.trim();
 
@@ -201,25 +212,35 @@ Page({
       showBlockHint("请输入6位数字密码");
       return;
     }
+    this.joining = true;
+    wx.showLoading({
+      title: "加入中",
+      mask: true,
+    });
+    try {
+      const check = await verifyRoomPasswordAsync(roomId, password);
+      if (!check.ok) {
+        showBlockHint(check.message);
+        return;
+      }
 
-    const check = await verifyRoomPasswordAsync(roomId, password);
-    if (!check.ok) {
-      showBlockHint(check.message);
-      return;
+      const room = await getRoomAsync(roomId);
+      if (!room) {
+        showBlockHint("房间不存在");
+        return;
+      }
+      const target = room.status === "result" ? "result" : room.status === "match" ? "match" : "room";
+      if (target === "result") {
+        wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
+        return;
+      }
+      wx.navigateTo({ url: "/pages/" + target + "/" + target + "?roomId=" + roomId });
+    } finally {
+      this.joining = false;
+      wx.hideLoading({
+        fail: () => {},
+      });
     }
-
-    await heartbeatRoomAsync(roomId, clientId);
-    const room = await getRoomAsync(roomId);
-    if (!room) {
-      showBlockHint("房间不存在");
-      return;
-    }
-    const target = room.status === "result" ? "result" : room.status === "match" ? "match" : "room";
-    if (target === "result") {
-      wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
-      return;
-    }
-    wx.navigateTo({ url: "/pages/" + target + "/" + target + "?roomId=" + roomId });
   },
 
   onContinueTap() {

@@ -12,13 +12,13 @@ page {
   box-sizing: border-box;
   background-color: var(--page-bg);
   background-image: linear-gradient(
-    90deg,
-    rgba(var(--theme-accent-rgb), 0.05) 0%,
+    180deg,
+    rgba(var(--theme-accent-rgb), 0.12) 0%,
     rgba(var(--theme-accent-rgb), 0) 100%
   );
   background-repeat: no-repeat;
-  background-position: left top;
-  background-size: 100rpx 100%;
+  background-position: top left;
+  background-size: 100% 400rpx;
 }
 
 .entry-shell {
@@ -92,7 +92,7 @@ page {
 
 .form-block {
   width: 100%;
-  padding-top: 12vh;
+  padding-top: 220rpx;
   box-sizing: border-box;
 }
 
@@ -268,7 +268,7 @@ page {
   width: 100%;
   margin-top: auto;
   padding-top: 40rpx;
-  margin-bottom: 140rpx;
+  margin-bottom: var(--entry-action-bottom);
 }
 
 .action-row .entry-btn {
@@ -338,8 +338,8 @@ page {
 @media (prefers-color-scheme: dark) {
   .entry-container {
     background-image: linear-gradient(
-      90deg,
-      rgba(var(--theme-accent-rgb), 0.03) 0%,
+      180deg,
+      rgba(var(--theme-accent-rgb), 0.1) 0%,
       rgba(var(--theme-accent-rgb), 0) 100%
     );
   }
@@ -382,5 +382,88 @@ page {
   46%,
   100% {
     opacity: 0;
+  }
+}
+
+@media (min-width: 700px) {
+  .entry-container {
+    padding-left: 24px;
+    padding-right: 24px;
+    background-size: 100% 200rpx;
+  }
+
+  .entry-shell {
+    max-width: 460px;
+    margin: 0 auto;
+    padding-top: calc(var(--custom-nav-offset, 54px) + 16px);
+  }
+
+  .custom-nav {
+    left: 24px;
+    right: 24px;
+  }
+
+  .form-block {
+    padding-top: 140px;
+  }
+
+  .title {
+    font-size: 36px;
+    line-height: 1.15;
+  }
+
+  .title-special-dot {
+    margin-left: 2px;
+    transform: translateY(0);
+  }
+
+  .input-area {
+    margin-top: 32px;
+    margin-bottom: 28px;
+  }
+
+  .field-hint {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+
+  .input-wrap {
+    height: 56px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+  }
+
+  .num-input-native,
+  .num-input-display {
+    font-size: 26px;
+    letter-spacing: 6px;
+    padding: 0 16px;
+  }
+
+  .paste-link-btn {
+    font-size: 15px;
+  }
+
+  .paste-icon {
+    width: 18px;
+    height: 18px;
+  }
+
+  .action-row {
+    margin-bottom: var(--entry-action-bottom);
+    padding-top: 20px;
+  }
+
+  .action-row .entry-btn {
+    height: 52px;
+    line-height: 52px;
+    font-size: 18px;
+    letter-spacing: 2px;
+  }
+
+  .entry-btn-icon {
+    right: 16px;
+    width: 24px;
+    height: 24px;
   }
 }

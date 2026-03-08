@@ -181,12 +181,21 @@
     </view>
   </view>
 
-  <view class="rotate-fly-layer" wx:if="{{rotateFlyItems.length}}">
+  <view class="rotate-fly-layer" wx:if="{{rotateFlyItemsA.length || rotateFlyItemsB.length}}">
     <view
-      wx:for="{{rotateFlyItems}}"
+      wx:for="{{rotateFlyItemsA}}"
       wx:key="id"
       wx:for-item="item"
-      class="rotate-fly-item team-{{item.team === 'A' ? 'a' : 'b'}}"
+      class="rotate-fly-item team-a"
+      style="{{item.style}}"
+    >
+      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+    </view>
+    <view
+      wx:for="{{rotateFlyItemsB}}"
+      wx:key="id"
+      wx:for-item="item"
+      class="rotate-fly-item team-b"
       style="{{item.style}}"
     >
       <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
@@ -250,7 +259,7 @@
         <block wx:else>
           <view class="set-end-btn-home outline pressable" hover-class="tap-active" bindtap="onSetEndUndo">
             <view class="set-end-btn-content">
-              <text class="set-end-btn-text">撤回比分</text>
+              <text class="set-end-btn-text">撤回最后一分</text>
               <view class="set-end-btn-icon undo"></view>
             </view>
           </view>

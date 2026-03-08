@@ -8,6 +8,8 @@ type MatchLogItem = {
   team: "A" | "B" | "";
   note: string;
   setNo?: number;
+  opId?: string;
+  revertedOpId?: string;
 };
 
 type DisplayLogItem = MatchLogItem & { timeText: string };
@@ -31,6 +33,10 @@ function formatLogTime(ts: number): string {
   return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
 }
 
+function escapeRegExp(input: string): string {
+  return String(input || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
 function toSetNo(val: unknown, fallback = 1): number {
   return Math.max(1, Number(val) || fallback);
 }
@@ -41,6 +47,42 @@ function extractSetNoFromText(text: string): number | null {
     return null;
   }
   return toSetNo(match[1], 1);
+}
+
+function normalizeLogsBySet(logs: MatchLogItem[]): MatchLogItem[] {
+  let cursorSetNo = 1;
+  return (logs || []).map((item, idx) => {
+    const action = String(item && item.action ? item.action : "");
+    const note = String(item && item.note ? item.note : "");
+    const explicitSetNo = Number((item as any).setNo) || 0;
+    const noteSetNo = extractSetNoFromText(note);
+    let resolvedSetNo = explicitSetNo > 0 ? toSetNo(explicitSetNo, cursorSetNo) : 0;
+    if (!resolvedSetNo) {
+      if (action === "next_set" && noteSetNo) {
+        // “进入第N局”应归属上一局日志。
+        resolvedSetNo = Math.max(1, noteSetNo - 1);
+      } else if (noteSetNo) {
+        resolvedSetNo = noteSetNo;
+      } else {
+        resolvedSetNo = cursorSetNo;
+      }
+    }
+    if (action === "next_set" && noteSetNo) {
+      cursorSetNo = Math.max(cursorSetNo, noteSetNo);
+    } else {
+      cursorSetNo = Math.max(cursorSetNo, resolvedSetNo);
+    }
+    return {
+      id: String(item && item.id ? item.id : "log-" + idx),
+      ts: Number(item && item.ts) || Date.now(),
+      action: String(item && item.action ? item.action : "unknown"),
+      team: item && (item.team === "A" || item.team === "B") ? item.team : "",
+      note: note,
+      setNo: resolvedSetNo,
+      opId: String((item as any).opId || ""),
+      revertedOpId: String((item as any).revertedOpId || ""),
+    };
+  });
 }
 
 function extractScoreFromText(text: string): { a: string; b: string } | null {
@@ -69,6 +111,26 @@ function extractWinnerFromText(text: string, teamAName: string, teamBName: strin
     return teamBName;
   }
   return "";
+}
+
+function withTeamSuffixForDisplay(noteRaw: string, teamANameRaw: string, teamBNameRaw: string): string {
+  let note = String(noteRaw || "");
+  const names = [String(teamANameRaw || "").trim(), String(teamBNameRaw || "").trim()].filter(Boolean);
+  names.forEach((name) => {
+    const esc = escapeRegExp(name);
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*胜)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*暂停)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*暂停结束)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*结束暂停)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*\\+1)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*-1\\s*比分撤回)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*手动轮转)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*撤回手动轮转)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*撤回手动换边)", "g"), name + "队$1");
+    note = note.replace(new RegExp("比赛结束\\s*结果确认：" + esc + "(?!队)", "g"), "比赛结束 结果确认：" + name + "队");
+    note = note.replace(new RegExp("第\\s*\\d+\\s*局结束：" + esc + "(?!队)", "g"), (full) => full + "队");
+  });
+  return note;
 }
 
 Page({
@@ -144,15 +206,40 @@ Page({
 
   getDisplayLogsBySet(logs: MatchLogItem[], setNo: number): DisplayLogItem[] {
     const targetSet = toSetNo(setNo, 1);
+    const teamAName = String(this.data.teamAName || "甲");
+    const teamBName = String(this.data.teamBName || "乙");
+    const hiddenOpIds = new Set<string>();
+    (logs || []).forEach((item) => {
+      const action = String(item && item.action ? item.action : "");
+      const revertedOpId = String((item as any).revertedOpId || "");
+      if (action === "score_undo" && revertedOpId) {
+        hiddenOpIds.add(revertedOpId);
+      }
+    });
     return (logs || [])
       .filter((item) => {
-        return toSetNo(item.setNo, 1) === targetSet;
+        const action = String(item.action || "");
+        if (
+          action === "timeout_end" ||
+          action === "next_set" ||
+          action === "score_undo" ||
+          action === "switch_sides_prompt"
+        ) {
+          return false;
+        }
+        const opId = String((item as any).opId || "");
+        if (opId && hiddenOpIds.has(opId)) {
+          return false;
+        }
+        const noteSetNo = extractSetNoFromText(String(item.note || ""));
+        return toSetNo(item.setNo, noteSetNo || 1) === targetSet;
       })
       .slice()
       .reverse()
       .map((item) => {
         return {
           ...item,
+          note: withTeamSuffixForDisplay(String(item.note || ""), teamAName, teamBName),
           timeText: formatLogTime(item.ts),
         };
       });
@@ -198,18 +285,23 @@ Page({
     const bigScoreB = String(Math.max(0, Number(room.match && room.match.bSetWins) || 0));
 
     const incomingLogs = Array.isArray(room.match && room.match.logs) ? ((room.match && room.match.logs) as MatchLogItem[]) : [];
-    this.allLogs = incomingLogs.map((item, idx) => {
-      return {
-        id: String(item.id || "log-" + idx),
-        ts: Number(item.ts) || Date.now(),
-        action: String(item.action || "unknown"),
-        team: item.team === "A" || item.team === "B" ? item.team : "",
-        note: String(item.note || ""),
-        setNo: toSetNo((item as any).setNo, extractSetNoFromText(String(item.note || "")) || 1),
-      };
-    });
+    this.allLogs = normalizeLogsBySet(incomingLogs);
 
     const setSummaryMap: Record<number, SetSummaryItem> = {};
+    const storedSetSummaries = (room.match as any).setSummaries || {};
+    Object.keys(storedSetSummaries || {}).forEach((key) => {
+      const s = storedSetSummaries[key] || {};
+      const setNo = toSetNo(s.setNo, toSetNo(key, 1));
+      setSummaryMap[setNo] = {
+        setNo,
+        teamAName: String(s.teamAName || teamAName),
+        teamBName: String(s.teamBName || teamBName),
+        smallScoreA: String(Math.max(0, Number(s.smallScoreA) || 0)),
+        smallScoreB: String(Math.max(0, Number(s.smallScoreB) || 0)),
+        winnerName: String(s.winnerName || ""),
+        durationText: String(s.durationText || ""),
+      };
+    });
     this.allLogs.forEach((log) => {
       if (String(log.action) !== "set_end") {
         return;
@@ -217,14 +309,17 @@ Page({
       const setNo = toSetNo(log.setNo, 1);
       const score = extractScoreFromText(log.note);
       const winnerName = extractWinnerFromText(log.note, teamAName, teamBName);
+      const prev = setSummaryMap[setNo];
+      const nextSmallA = score ? score.a : prev ? prev.smallScoreA : "--";
+      const nextSmallB = score ? score.b : prev ? prev.smallScoreB : "--";
       setSummaryMap[setNo] = {
         setNo,
         teamAName,
         teamBName,
-        smallScoreA: score ? score.a : "--",
-        smallScoreB: score ? score.b : "--",
-        winnerName: winnerName,
-        durationText: "",
+        smallScoreA: nextSmallA,
+        smallScoreB: nextSmallB,
+        winnerName: winnerName || (prev ? prev.winnerName : ""),
+        durationText: prev ? prev.durationText : "",
       };
     });
 
@@ -358,8 +453,8 @@ Page({
     const mins = remainMin % 60;
     const text =
       hours > 0
-        ? "距离数据清除 剩余" + String(hours) + "小时" + String(mins) + "分钟"
-        : "距离数据清除 剩余" + String(remainMin) + "分钟";
+        ? "数据将在 " + String(hours) + " 小时 " + String(mins) + " 分钟后被清除，请自行做好数据留存。"
+        : "数据将在 " + String(remainMin) + " 分钟后被清除，请自行做好数据留存。";
     this.setData({ clearCountdownText: text });
   },
 });

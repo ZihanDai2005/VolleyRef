@@ -250,14 +250,40 @@ function setKeepScreenOnSafe(keepScreenOn: boolean): void {
   });
 }
 
+function buildAdjustHeadHint(setNo: number, wins: number): string {
+  const nSet = Math.max(1, Number(setNo || 1));
+  const nWins = Math.max(1, Number(wins || 1));
+  const decidingSetNo = nWins > 1 ? nWins * 2 - 1 : 1;
+  if (nWins > 1 && nSet === decidingSetNo) {
+    return "已沿用上一局首发阵容，点击球员可修改";
+  }
+  return "已沿用上一局首发阵容并按结束时场区换边，点击球员可修改";
+}
+
+function isDecidingSetByRule(setNo: number, wins: number): boolean {
+  const nSet = Math.max(1, Number(setNo || 1));
+  const nWins = Math.max(1, Number(wins || 1));
+  const decidingSetNo = nWins > 1 ? nWins * 2 - 1 : 1;
+  return nWins > 1 && nSet === decidingSetNo;
+}
+
 Page({
   currentSetNo: 1 as number,
   draftSaveTimer: 0 as number,
   inputEditing: false as boolean,
   inputEditingReleaseTimer: 0 as number,
   roomWatchOff: null as null | (() => void),
+  continueInFlight: false as boolean,
+  leavingPage: false as boolean,
+  sideSwitchInFlight: false as boolean,
+  sideSwitchPendingCount: 0 as number,
+  sideSwitchActionQueue: Promise.resolve() as Promise<void>,
+  rotateActionQueueA: Promise.resolve() as Promise<void>,
+  rotateActionQueueB: Promise.resolve() as Promise<void>,
   data: {
     continueBtnFx: false,
+    adjustHeadHint: "已沿用上一局首发阵容并按结束时场区换边，点击球员可修改",
+    isDecidingSet: false,
     isSwapped: false,
     switchingOut: false,
     switchingIn: false,
@@ -285,6 +311,8 @@ Page({
     teamBCaptainBtnText: "选择场上队长",
     teamACaptainResolved: false,
     teamBCaptainResolved: false,
+    teamASideText: "左场区",
+    teamBSideText: "右场区",
     teamAShowCaptainCheck: false,
     teamBShowCaptainCheck: false,
     teamAShowCaptainRepick: false,
@@ -300,7 +328,8 @@ Page({
     safePadRight: "0px",
     safePadBottom: "0px",
     safePadLeft: "0px",
-    rotateFlyItems: [] as RotateFlyItem[],
+    rotateFlyItemsA: [] as RotateFlyItem[],
+    rotateFlyItemsB: [] as RotateFlyItem[],
     showCaptainPicker: false,
     captainPickerTitle: "",
     captainPickerTeam: "A" as CaptainPickerTeam,
@@ -327,6 +356,7 @@ Page({
   },
 
   onShow() {
+    this.leavingPage = false;
     setKeepScreenOnSafe(true);
     this.syncSafePadding();
     setTimeout(() => {
@@ -364,7 +394,29 @@ Page({
     this.stopRoomWatch();
   },
 
+  enqueueRotateAction(team: TeamCode, task: () => Promise<void>) {
+    const key = team === "A" ? "rotateActionQueueA" : "rotateActionQueueB";
+    (this as any)[key] = (this as any)[key]
+      .catch(() => {})
+      .then(async () => {
+        await task();
+      });
+    return (this as any)[key] as Promise<void>;
+  },
+
+  enqueueSideSwitchAction(task: () => Promise<void>) {
+    this.sideSwitchActionQueue = this.sideSwitchActionQueue
+      .catch(() => {})
+      .then(async () => {
+        await task();
+      });
+    return this.sideSwitchActionQueue;
+  },
+
   startRoomWatch() {
+    if (this.leavingPage || this.continueInFlight) {
+      return;
+    }
     if (this.roomWatchOff) {
       return;
     }
@@ -373,7 +425,7 @@ Page({
       return;
     }
     this.roomWatchOff = subscribeRoomWatch(roomId, () => {
-      if (this.inputEditing) {
+      if (this.inputEditing || this.sideSwitchInFlight || this.sideSwitchPendingCount > 0) {
         return;
       }
       this.loadRoom();
@@ -417,6 +469,9 @@ Page({
   },
 
   async persistLineupDraftNow() {
+    if (this.leavingPage || this.continueInFlight) {
+      return;
+    }
     this.clearDraftSaveTimer();
     const roomId = String(this.data.roomId || "");
     if (!roomId) {
@@ -451,6 +506,8 @@ Page({
       teamAMainGrid: buildMainGridByOrder(teamAPlayers, getMainOrderForTeam("A", teamASide), "A"),
       teamBLibero: bRows.libero,
       teamBMainGrid: buildMainGridByOrder(teamBPlayers, getMainOrderForTeam("B", teamASide), "B"),
+      teamASideText: isSwapped ? "右场区" : "左场区",
+      teamBSideText: isSwapped ? "左场区" : "右场区",
     });
     this.syncCaptainPickState(teamAPlayers, teamBPlayers);
   },
@@ -561,6 +618,12 @@ Page({
   },
 
   async loadRoom() {
+    if (this.leavingPage || this.continueInFlight) {
+      return;
+    }
+    if (this.sideSwitchInFlight || this.sideSwitchPendingCount > 0) {
+      return;
+    }
     const roomId = String(this.data.roomId || "");
     if (!roomId) {
       return;
@@ -589,6 +652,7 @@ Page({
     }
 
     const roomSetNo = Math.max(1, Number(room.match && room.match.setNo) || 1);
+    const roomWins = Math.max(1, Number((room.settings && room.settings.wins) || 1));
     if (this.inputEditing) {
       return;
     }
@@ -621,6 +685,8 @@ Page({
 
     this.setData(
       {
+        adjustHeadHint: buildAdjustHeadHint(roomSetNo, roomWins),
+        isDecidingSet: isDecidingSetByRule(roomSetNo, roomWins),
         teamAName: room.teamA.name || "甲",
         teamBName: room.teamB.name || "乙",
         teamAColor: room.teamA.color || TEAM_COLOR_OPTIONS[2].value,
@@ -853,33 +919,81 @@ Page({
     );
   },
 
+  prepareContinueValidationUI() {
+    if (this.data.activeAdjustInputKey) {
+      this.setData({ activeAdjustInputKey: "" });
+    }
+    wx.hideKeyboard({
+      fail: () => {},
+    });
+  },
+
+  dismissKeyboardForContinue(): Promise<void> {
+    return new Promise((resolve) => {
+      let done = false;
+      const finish = () => {
+        if (done) {
+          return;
+        }
+        done = true;
+        resolve();
+      };
+      if (this.data.activeAdjustInputKey) {
+        this.setData({ activeAdjustInputKey: "" });
+      }
+      this.inputEditing = false;
+      wx.hideKeyboard({
+        complete: () => {
+          setTimeout(finish, 90);
+        },
+      });
+      setTimeout(finish, 220);
+    });
+  },
+
   async onContinueTap() {
+    if (this.continueInFlight) {
+      return;
+    }
+    this.prepareContinueValidationUI();
+    await this.dismissKeyboardForContinue();
     const teamAName = (this.data.teamAName || "").trim() || "甲";
     const teamBName = (this.data.teamBName || "").trim() || "乙";
     const errA = validateTeamPlayers(this.data.teamAPlayers, teamAName);
     if (errA) {
-      showBlockHint(errA);
+      setTimeout(() => {
+        showBlockHint(errA);
+      }, 40);
       return;
     }
     const errB = validateTeamPlayers(this.data.teamBPlayers, teamBName);
     if (errB) {
-      showBlockHint(errB);
+      setTimeout(() => {
+        showBlockHint(errB);
+      }, 40);
       return;
     }
 
     if (!this.data.teamACaptainResolved || !this.data.teamBCaptainResolved) {
-      wx.showModal({
-        title: "无法继续",
-        content: "请先为两队确定下一局场上队长后再继续。",
-        showCancel: false,
-        confirmText: "知道了",
-      });
+      setTimeout(() => {
+        wx.showModal({
+          title: "无法继续",
+          content: "请先为两队确定下一局场上队长后再继续。",
+          showCancel: false,
+          confirmText: "知道了",
+        });
+      }, 40);
       return;
     }
+    this.continueInFlight = true;
+    this.leavingPage = true;
+    this.stopRoomWatch();
+    this.clearDraftSaveTimer();
     this.setData({ continueBtnFx: true });
     const roomId = String(this.data.roomId || "");
-    if (roomId) {
-      await updateRoomAsync(roomId, (room) => {
+    try {
+      if (roomId) {
+        await updateRoomAsync(roomId, (room) => {
         room.teamA.players = this.data.teamAPlayers.slice();
         room.teamB.players = this.data.teamBPlayers.slice();
         (room.match as any).teamACurrentCaptainNo = this.data.teamACaptainNo;
@@ -905,17 +1019,23 @@ Page({
         delete (room.match as any).setEndState;
         delete (room.match as any).lineupAdjustDraft;
         return room;
-      });
-    }
-    setTimeout(() => {
+        });
+      }
+      setTimeout(() => {
       this.setData({ continueBtnFx: false });
-      const pages = getCurrentPages();
-      if (pages.length > 1) {
-        wx.navigateBack({ delta: 1 });
+      if (roomId) {
+        wx.redirectTo({ url: "/pages/match/match?roomId=" + roomId });
         return;
       }
       wx.reLaunch({ url: "/pages/home/home" });
     }, 150);
+    } catch (_e) {
+      this.continueInFlight = false;
+      this.leavingPage = false;
+      showBlockHint("系统繁忙，请重试");
+      this.setData({ continueBtnFx: false });
+      this.startRoomWatch();
+    }
   },
 
   onBackTap() {
@@ -931,30 +1051,61 @@ Page({
     return true;
   },
 
-  async onRotateTeam(e: WechatMiniprogram.TouchEvent) {
+  onRotateTeam(e: WechatMiniprogram.TouchEvent) {
     const team = String((e.currentTarget.dataset as { team?: string }).team || "") as TeamCode;
     if (team !== "A" && team !== "B") {
       return;
     }
-    const beforeRects = await this.measureTeamMainPosRects(team);
-    const beforeNoMap = this.getTeamMainNumberMap(team);
-    if (team === "A") {
-      if (this.data.hideTeamAMainNumbers) {
-        return;
+    void this.enqueueRotateAction(team, async () => {
+      const beforeRects = await this.measureTeamMainPosRects(team);
+      const beforeNoMap = this.getTeamMainNumberMap(team);
+      if (team === "A") {
+        const rotated = rotateTeamByRule(this.data.teamAPlayers);
+        this.applyDisplay(rotated, this.data.teamBPlayers, this.data.isSwapped);
+        this.schedulePersistLineupDraft();
+        await this.playTeamRotateMotion("A", beforeRects, beforeNoMap, this.data.teamACaptainNo);
+      } else {
+        const rotated = rotateTeamByRule(this.data.teamBPlayers);
+        this.applyDisplay(this.data.teamAPlayers, rotated, this.data.isSwapped);
+        this.schedulePersistLineupDraft();
+        await this.playTeamRotateMotion("B", beforeRects, beforeNoMap, this.data.teamBCaptainNo);
       }
-      const rotated = rotateTeamByRule(this.data.teamAPlayers);
-      this.applyDisplay(rotated, this.data.teamBPlayers, this.data.isSwapped);
-      this.schedulePersistLineupDraft();
-      await this.playTeamRotateMotion("A", beforeRects, beforeNoMap, this.data.teamACaptainNo);
-    } else {
-      if (this.data.hideTeamBMainNumbers) {
-        return;
-      }
-      const rotated = rotateTeamByRule(this.data.teamBPlayers);
-      this.applyDisplay(this.data.teamAPlayers, rotated, this.data.isSwapped);
-      this.schedulePersistLineupDraft();
-      await this.playTeamRotateMotion("B", beforeRects, beforeNoMap, this.data.teamBCaptainNo);
+    });
+  },
+
+  onToggleServeTeam(e: WechatMiniprogram.TouchEvent) {
+    if (!this.data.isDecidingSet) {
+      return;
     }
+    const team = String((e.currentTarget.dataset as { team?: string }).team || "") as TeamCode;
+    if (team !== "A" && team !== "B") {
+      return;
+    }
+    const nextServing: TeamCode = this.data.servingTeam === "A" ? "B" : "A";
+    this.setData({ servingTeam: nextServing });
+    this.schedulePersistLineupDraft();
+  },
+
+  onToggleCourtSide() {
+    this.sideSwitchPendingCount += 1;
+    void this.enqueueSideSwitchAction(async () => {
+      this.sideSwitchInFlight = true;
+      try {
+        this.setData({ switchingOut: true, switchingIn: false });
+        await this.delayAsync(120);
+        this.applyDisplay(this.data.teamAPlayers, this.data.teamBPlayers, !this.data.isSwapped);
+        this.setData({ switchingOut: false, switchingIn: true });
+        await this.persistLineupDraftNow();
+        await this.delayAsync(220);
+        this.setData({ switchingIn: false });
+      } finally {
+        this.sideSwitchInFlight = false;
+        this.sideSwitchPendingCount = Math.max(0, this.sideSwitchPendingCount - 1);
+        if (this.sideSwitchPendingCount === 0 && !this.inputEditing) {
+          this.loadRoom();
+        }
+      }
+    });
   },
 
   nextTickAsync() {
@@ -980,7 +1131,7 @@ Page({
       const base = team === "A" ? ".team-panel.team-a" : ".team-panel.team-b";
       const query = wx.createSelectorQuery().in(this);
       MAIN_POSITIONS.forEach((pos) => {
-        query.select(base + " .player-input.pos-" + pos).boundingClientRect();
+        query.select(base + " .player-card.pos-card-" + pos).boundingClientRect();
       });
       query.exec((res) => {
         const list = Array.isArray(res) ? res : [];
@@ -1089,19 +1240,22 @@ Page({
       return;
     }
     if (team === "A") {
-      this.setData({ hideTeamAMainNumbers: true, rotateFlyItems: startItems });
+      this.setData({ hideTeamAMainNumbers: true, rotateFlyItemsA: startItems });
     } else {
-      this.setData({ hideTeamBMainNumbers: true, rotateFlyItems: startItems });
+      this.setData({ hideTeamBMainNumbers: true, rotateFlyItemsB: startItems });
     }
     await this.nextTickAsync();
-    this.setData({ rotateFlyItems: endItems });
-    setTimeout(() => {
-      if (team === "A") {
-        this.setData({ hideTeamAMainNumbers: false, rotateFlyItems: [] });
-      } else {
-        this.setData({ hideTeamBMainNumbers: false, rotateFlyItems: [] });
-      }
-    }, 340);
+    if (team === "A") {
+      this.setData({ rotateFlyItemsA: endItems });
+    } else {
+      this.setData({ rotateFlyItemsB: endItems });
+    }
+    await this.delayAsync(340);
+    if (team === "A") {
+      this.setData({ hideTeamAMainNumbers: false, rotateFlyItemsA: [] });
+    } else {
+      this.setData({ hideTeamBMainNumbers: false, rotateFlyItemsB: [] });
+    }
   },
 
   syncSafePadding() {

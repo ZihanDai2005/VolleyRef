@@ -20,6 +20,8 @@ type MatchLogItem = {
   team: TeamCode | "";
   note: string;
   setNo?: number;
+  opId?: string;
+  revertedOpId?: string;
 };
 type DisplayLogItem = MatchLogItem & { timeText: string };
 type TeamRows = {
@@ -92,13 +94,18 @@ function rotateTeamByRule(players: PlayerSlot[]): PlayerSlot[] {
 }
 
 function rotateTeamAndLog(room: any, team: TeamCode, noteSuffix: string): void {
+  const shouldLog = String(noteSuffix || "") !== "轮转";
   if (team === "A") {
     room.teamA.players = rotateTeamByRule(room.teamA.players);
-    appendMatchLog(room, "rotate", room.teamA.name + " " + noteSuffix, "A");
+    if (shouldLog) {
+      appendMatchLog(room, "rotate", room.teamA.name + " " + noteSuffix, "A");
+    }
     return;
   }
   room.teamB.players = rotateTeamByRule(room.teamB.players);
-  appendMatchLog(room, "rotate", room.teamB.name + " " + noteSuffix, "B");
+  if (shouldLog) {
+    appendMatchLog(room, "rotate", room.teamB.name + " " + noteSuffix, "B");
+  }
 }
 
 function getSetTargetScore(room: any): number {
@@ -138,6 +145,73 @@ function pad2(n: number): string {
 function formatLogTime(ts: number): string {
   const d = new Date(ts);
   return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+}
+
+function escapeRegExp(input: string): string {
+  return String(input || "").replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function extractSetNoFromNote(note: string): number | null {
+  const m = String(note || "").match(/第\s*(\d+)\s*局/);
+  if (!m) {
+    return null;
+  }
+  return Math.max(1, Number(m[1]) || 1);
+}
+
+function normalizeLogsBySet(logs: MatchLogItem[]): MatchLogItem[] {
+  let cursorSetNo = 1;
+  return (logs || []).map((item, idx) => {
+    const action = String(item && item.action ? item.action : "");
+    const note = String(item && item.note ? item.note : "");
+    const explicitSetNo = Number((item as any).setNo) || 0;
+    const noteSetNo = extractSetNoFromNote(note);
+    let resolvedSetNo = explicitSetNo > 0 ? Math.max(1, explicitSetNo) : 0;
+    if (!resolvedSetNo) {
+      if (action === "next_set" && noteSetNo) {
+        resolvedSetNo = Math.max(1, noteSetNo - 1);
+      } else if (noteSetNo) {
+        resolvedSetNo = Math.max(1, noteSetNo);
+      } else {
+        resolvedSetNo = cursorSetNo;
+      }
+    }
+    if (action === "next_set" && noteSetNo) {
+      cursorSetNo = Math.max(cursorSetNo, noteSetNo);
+    } else {
+      cursorSetNo = Math.max(cursorSetNo, resolvedSetNo);
+    }
+    return {
+      id: String(item && item.id ? item.id : "log-" + idx),
+      ts: Number(item && item.ts) || Date.now(),
+      action: String(item && item.action ? item.action : "unknown"),
+      team: item && (item.team === "A" || item.team === "B") ? item.team : "",
+      note: note,
+      setNo: resolvedSetNo,
+      opId: String((item as any).opId || ""),
+      revertedOpId: String((item as any).revertedOpId || ""),
+    };
+  });
+}
+
+function withTeamSuffixForDisplay(noteRaw: string, teamANameRaw: string, teamBNameRaw: string): string {
+  let note = String(noteRaw || "");
+  const names = [String(teamANameRaw || "").trim(), String(teamBNameRaw || "").trim()].filter(Boolean);
+  names.forEach((name) => {
+    const esc = escapeRegExp(name);
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*胜)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*暂停)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*暂停结束)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*结束暂停)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*\\+1)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*-1\\s*比分撤回)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*手动轮转)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*撤回手动轮转)", "g"), name + "队$1");
+    note = note.replace(new RegExp(esc + "(?!队)(\\s*撤回手动换边)", "g"), name + "队$1");
+    note = note.replace(new RegExp("比赛结束\\s*结果确认：" + esc + "(?!队)", "g"), "比赛结束 结果确认：" + name + "队");
+    note = note.replace(new RegExp("第\\s*\\d+\\s*局结束：" + esc + "(?!队)", "g"), (full) => full + "队");
+  });
+  return note;
 }
 
 function clonePlayerList(players: PlayerSlot[]): PlayerSlot[] {
@@ -221,10 +295,11 @@ function buildRotateStepsByDiff(beforePlayers: PlayerSlot[], afterPlayers: Playe
   return [];
 }
 
-function appendMatchLog(room: any, action: string, note: string, team?: TeamCode): void {
+function appendMatchLog(room: any, action: string, note: string, team?: TeamCode, opId?: string, revertedOpId?: string): void {
   if (!room.match.logs) {
     room.match.logs = [];
   }
+  const resolvedOpId = String(opId || (room.match as any).currentOpId || "");
   room.match.logs.push({
     id: createLogId(),
     ts: Date.now(),
@@ -232,6 +307,8 @@ function appendMatchLog(room: any, action: string, note: string, team?: TeamCode
     team: team || "",
     note: note,
     setNo: Math.max(1, Number(room.match.setNo || 1)),
+    opId: resolvedOpId,
+    revertedOpId: String(revertedOpId || ""),
   });
   if (room.match.logs.length > 300) {
     room.match.logs.shift();
@@ -257,6 +334,8 @@ function pushUndoSnapshot(room: any): void {
     bSetWins: room.match.bSetWins,
     // 业务要求：暂停态/暂停次数不可被“撤回比分”回退，因此不进 undo 快照。
     isFinished: room.match.isFinished,
+    setSummaries: JSON.parse(JSON.stringify((room.match as any).setSummaries || {})),
+    lastActionOpId: String((room.match as any).lastActionOpId || ""),
   });
   if (room.match.undoStack.length > 100) {
     room.match.undoStack.shift();
@@ -419,7 +498,8 @@ Page({
     selectedLogSet: 1,
     hideTeamAMainNumbers: false,
     hideTeamBMainNumbers: false,
-    rotateFlyItems: [] as RotateFlyItem[],
+    rotateFlyItemsA: [] as RotateFlyItem[],
+    rotateFlyItemsB: [] as RotateFlyItem[],
     switchingOut: false,
     switchingIn: false,
     teamAPlayers: [] as PlayerSlot[],
@@ -472,7 +552,13 @@ Page({
   roomWatchOff: null as null | (() => void),
   clientId: "" as string,
   openingLineup: false as boolean,
-  rotateMotionInFlight: false as boolean,
+  lineupNavigateLockUntil: 0 as number,
+  setEndActionInFlight: false as boolean,
+  timeoutActionInFlight: false as boolean,
+  rotateConfirming: false as boolean,
+  switchConfirming: false as boolean,
+  actionQueue: Promise.resolve() as Promise<void>,
+  rotateMotionInFlightCount: 0 as number,
   pendingLowerParticipantCount: 0 as number,
   pendingLowerParticipantHit: 0 as number,
   lastTeamARects: {} as TeamRectMap,
@@ -485,24 +571,46 @@ Page({
 
   getDisplayLogsBySet(logs: MatchLogItem[], setNo: number): DisplayLogItem[] {
     const targetSet = Math.max(1, Number(setNo || 1));
+    const teamAName = String(this.data.teamAName || "甲");
+    const teamBName = String(this.data.teamBName || "乙");
     return (logs || [])
       .filter((item) => {
-        const itemSetNo = Math.max(1, Number((item as any).setNo || 1));
+        if (String(item.action || "") === "timeout_end") {
+          return false;
+        }
+        if (String(item.action || "") === "switch_sides_prompt") {
+          return false;
+        }
+        if (String(item.action || "") === "next_set") {
+          return false;
+        }
+        const noteSetNo = extractSetNoFromNote(String(item.note || ""));
+        const itemSetNo = Math.max(1, Number((item as any).setNo || noteSetNo || 1));
         return itemSetNo === targetSet;
       })
       .slice()
       .reverse()
       .map(function (item: MatchLogItem) {
+        const note = withTeamSuffixForDisplay(String(item.note || ""), teamAName, teamBName);
         return {
           id: item.id,
           ts: item.ts,
           action: item.action,
           team: item.team || "",
-          note: item.note,
+          note: note,
           setNo: item.setNo,
           timeText: formatLogTime(item.ts),
         };
       });
+  },
+
+  enqueueAction(task: () => Promise<void>) {
+    this.actionQueue = this.actionQueue
+      .catch(() => {})
+      .then(async () => {
+        await task();
+      });
+    return this.actionQueue;
   },
 
   onLoad(query: Record<string, string>) {
@@ -536,6 +644,8 @@ Page({
   },
 
   onShow() {
+    this.openingLineup = false;
+    this.lineupNavigateLockUntil = 0;
     setKeepScreenOnSafe(true);
     this.syncSafePadding();
     setTimeout(() => {
@@ -549,6 +659,38 @@ Page({
     this.startTimerTick();
     this.startRoomWatch();
     this.startPolling();
+  },
+
+  openLineupAdjustOnce(roomId: string): boolean {
+    const now = Date.now();
+    const pages = getCurrentPages();
+    const top = pages[pages.length - 1];
+    const topRoute = String((top && (top as any).route) || "");
+    if (topRoute === "pages/lineup-adjust/lineup-adjust") {
+      return false;
+    }
+    if (this.openingLineup || now < this.lineupNavigateLockUntil) {
+      return false;
+    }
+    this.openingLineup = true;
+    this.lineupNavigateLockUntil = now + 4000;
+    wx.navigateTo({
+      url: "/pages/lineup-adjust/lineup-adjust?roomId=" + roomId,
+      complete: () => {
+        setTimeout(() => {
+          const latestPages = getCurrentPages();
+          const latestTop = latestPages[latestPages.length - 1];
+          const latestRoute = String((latestTop && (latestTop as any).route) || "");
+          if (latestRoute !== "pages/lineup-adjust/lineup-adjust") {
+            this.openingLineup = false;
+          }
+        }, 500);
+      },
+      fail: () => {
+        this.openingLineup = false;
+      },
+    });
+    return true;
   },
 
   onHide() {
@@ -655,6 +797,8 @@ Page({
       return;
     }
     const next = await updateRoomAsync(roomId, (room) => {
+      const opId = createLogId();
+      (room.match as any).currentOpId = opId;
       if (!room.match || room.match.isFinished) {
         return room;
       }
@@ -668,7 +812,8 @@ Page({
         }
         (room.match as any).setTimerStartAt = Date.now();
         (room.match as any).setTimerElapsedMs = 0;
-        appendMatchLog(room, "timer_start", "开始比赛，本局计时启动");
+        appendMatchLog(room, "timer_start", "比赛开始", undefined, opId);
+        (room.match as any).lastActionOpId = opId;
       }
       return room;
     });
@@ -680,7 +825,12 @@ Page({
   },
 
   async onSetEndContinue() {
+    if (this.setEndActionInFlight) {
+      showToastHint("操作处理中，请稍候");
+      return;
+    }
     if (this.data.setEndWaiting) {
+      showToastHint("请先接管后继续");
       return;
     }
     if (!this.data.setEndMatchFinished) {
@@ -688,43 +838,111 @@ Page({
       return;
     }
     const roomId = this.data.roomId;
-    await updateRoomAsync(roomId, (room) => {
-      const lockTs = Date.now();
-      room.status = "result";
-      room.match.isFinished = true;
-      delete (room.match as any).setEndState;
-      (room as any).resultLockedAt = lockTs;
-      (room as any).resultExpireAt = lockTs + 24 * 60 * 60 * 1000;
-      (room as any).expiresAt = (room as any).resultExpireAt;
-      appendMatchLog(room, "result_locked", "敲定比分，比赛结果已锁定");
-      return room;
+    this.setEndActionInFlight = true;
+    wx.showLoading({
+      title: "处理中",
+      mask: true,
     });
-    wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
+    try {
+      await updateRoomAsync(roomId, (room) => {
+        const opId = createLogId();
+        (room.match as any).currentOpId = opId;
+        const lockTs = Date.now();
+        room.status = "result";
+        room.match.isFinished = true;
+        delete (room.match as any).setEndState;
+        (room as any).resultLockedAt = lockTs;
+        (room as any).resultExpireAt = lockTs + 24 * 60 * 60 * 1000;
+        (room as any).expiresAt = (room as any).resultExpireAt;
+        const winnerTeam: TeamCode = Number(room.match.aSetWins || 0) > Number(room.match.bSetWins || 0) ? "A" : "B";
+        const winnerName = winnerTeam === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙");
+        appendMatchLog(
+          room,
+          "result_locked",
+          "比赛结束 结果确认：" +
+            winnerName +
+            " 以 " +
+            String(room.match.aSetWins || 0) +
+            ":" +
+            String(room.match.bSetWins || 0) +
+            " 获胜",
+          winnerTeam,
+          opId
+        );
+        (room.match as any).lastActionOpId = opId;
+        return room;
+      });
+      wx.hideLoading({
+        fail: () => {},
+      });
+      wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
+    } finally {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.setEndActionInFlight = false;
+    }
   },
 
   async enterLineupAsOwner() {
+    if (this.setEndActionInFlight) {
+      showToastHint("操作处理中，请稍候");
+      return false;
+    }
+    this.setEndActionInFlight = true;
+    wx.showLoading({
+      title: "处理中",
+      mask: true,
+    });
     const roomId = this.data.roomId;
     const ownerClientId = String(this.clientId || getApp<IAppOption>().globalData.clientId || "");
-    await updateRoomAsync(roomId, (room) => {
-      const state = (room.match as any).setEndState;
-      if (state && state.active) {
-        state.phase = "lineup";
-        state.ownerClientId = ownerClientId;
+    try {
+      const updated = await updateRoomAsync(
+        roomId,
+        (room) => {
+          const state = (room.match as any).setEndState;
+          if (state && state.active && !room.match.isFinished) {
+            state.phase = "lineup";
+            state.ownerClientId = ownerClientId;
+          }
+          return room;
+        },
+        { awaitCloud: true }
+      );
+      const latest = updated || (await getRoomAsync(roomId));
+      const state = latest && latest.match ? ((latest.match as any).setEndState || null) : null;
+      const acquired =
+        !!state &&
+        !!state.active &&
+        String(state.phase || "") === "lineup" &&
+        String(state.ownerClientId || "") === ownerClientId;
+      if (!acquired) {
+        wx.hideLoading({
+          fail: () => {},
+        });
+        showToastHint("已由其他裁判接管");
+        await this.loadRoom(roomId, true);
+        return false;
       }
-      return room;
-    });
-    this.openingLineup = true;
-    wx.navigateTo({
-      url: "/pages/lineup-adjust/lineup-adjust?roomId=" + roomId,
-      complete: () => {
-        setTimeout(() => {
-          this.openingLineup = false;
-        }, 600);
-      },
-    });
+      this.setData({ showSetEndModal: false, setEndWaiting: false });
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.openLineupAdjustOnce(roomId);
+      return true;
+    } finally {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.setEndActionInFlight = false;
+    }
   },
 
   async onSetEndTakeover() {
+    if (this.setEndActionInFlight) {
+      showToastHint("操作处理中，请稍候");
+      return;
+    }
     if (!this.data.setEndWaiting) {
       return;
     }
@@ -933,6 +1151,8 @@ Page({
           const roomId = String(this.data.roomId || "");
           if (roomId) {
             updateRoomAsync(roomId, (room) => {
+              const opId = createLogId();
+              (room.match as any).currentOpId = opId;
               const isActive = !!(room.match as any).timeoutActive;
               const endAt = Math.max(0, Number((room.match as any).timeoutEndAt) || 0);
               if (!isActive || endAt > Date.now()) {
@@ -946,8 +1166,10 @@ Page({
                 room,
                 "timeout_end",
                 (timeoutTeam === "A" ? room.teamA.name : room.teamB.name) + " 暂停结束",
-                timeoutTeam
+                timeoutTeam,
+                opId
               );
+              (room.match as any).lastActionOpId = opId;
               return room;
             })
               .then(() => {
@@ -1135,7 +1357,7 @@ Page({
     if (!mergedBeforeRects || MAIN_POSITIONS.every((pos) => !mergedBeforeRects[pos])) {
       return;
     }
-    this.rotateMotionInFlight = true;
+    this.rotateMotionInFlightCount += 1;
     try {
       await this.nextTickAsync();
       await this.delayAsync(10);
@@ -1288,21 +1510,25 @@ Page({
       }
       this.setCachedTeamRectMap(team, afterRects);
       if (team === "A") {
-        this.setData({ hideTeamAMainNumbers: true, rotateFlyItems: startItems });
+        this.setData({ hideTeamAMainNumbers: true, rotateFlyItemsA: startItems });
       } else {
-        this.setData({ hideTeamBMainNumbers: true, rotateFlyItems: startItems });
+        this.setData({ hideTeamBMainNumbers: true, rotateFlyItemsB: startItems });
       }
       await this.nextTickAsync();
-      this.setData({ rotateFlyItems: endItems });
+      if (team === "A") {
+        this.setData({ rotateFlyItemsA: endItems });
+      } else {
+        this.setData({ rotateFlyItemsB: endItems });
+      }
       await this.delayAsync(340);
       if (team === "A") {
-        this.setData({ hideTeamAMainNumbers: false, rotateFlyItems: [] });
+        this.setData({ hideTeamAMainNumbers: false, rotateFlyItemsA: [] });
       } else {
-        this.setData({ hideTeamBMainNumbers: false, rotateFlyItems: [] });
+        this.setData({ hideTeamBMainNumbers: false, rotateFlyItemsB: [] });
       }
     } finally {
-      this.rotateMotionInFlight = false;
-      if (!this.roomLoadInFlight && this.roomLoadPending) {
+      this.rotateMotionInFlightCount = Math.max(0, this.rotateMotionInFlightCount - 1);
+      if (this.rotateMotionInFlightCount === 0 && !this.roomLoadInFlight && this.roomLoadPending) {
         const pendingForce = !!this.roomLoadPendingForce;
         this.roomLoadPending = false;
         this.roomLoadPendingForce = false;
@@ -1314,7 +1540,7 @@ Page({
   },
 
   async loadRoom(roomId: string, force: boolean) {
-    if (this.rotateMotionInFlight) {
+    if (this.rotateMotionInFlightCount > 0) {
       this.roomLoadPending = true;
       this.roomLoadPendingForce = this.roomLoadPendingForce || force;
       return;
@@ -1349,7 +1575,8 @@ Page({
       if (!force && incomingUpdatedAt === currentUpdatedAt) {
         return;
       }
-      const incomingLogs = Array.isArray(room.match.logs) ? (room.match.logs as MatchLogItem[]) : [];
+      const incomingRawLogs = Array.isArray(room.match.logs) ? (room.match.logs as MatchLogItem[]) : [];
+      const incomingLogs = normalizeLogsBySet(incomingRawLogs);
       this.allLogs = incomingLogs.slice();
       const sets = Math.max(1, Number((room.settings && room.settings.sets) || 1));
       const wins = Math.max(1, Number((room.settings && room.settings.wins) || 1));
@@ -1437,6 +1664,8 @@ Page({
       if (!!(room.match as any).timeoutActive && timeoutEndAt > 0 && timeoutEndAt <= Date.now() && !this.timeoutAutoClearing) {
         this.timeoutAutoClearing = true;
         updateRoomAsync(roomId, (roomState) => {
+          const opId = createLogId();
+          (roomState.match as any).currentOpId = opId;
           const active = !!(roomState.match as any).timeoutActive;
           const endAt = Math.max(0, Number((roomState.match as any).timeoutEndAt) || 0);
           if (!active || endAt > Date.now()) {
@@ -1450,8 +1679,10 @@ Page({
             roomState,
             "timeout_end",
             (t === "A" ? roomState.teamA.name : roomState.teamB.name) + " 暂停结束",
-            t
+            t,
+            opId
           );
+          (roomState.match as any).lastActionOpId = opId;
           return roomState;
         })
           .then(() => {
@@ -1563,7 +1794,7 @@ Page({
         setEndWinnerName: String(setSummary.winnerName || ""),
         setEndDurationText: String(setSummary.durationText || "00:00"),
         setEndMatchFinished: setEndMatchFinished,
-        setEndActionText: setEndMatchFinished ? "敲定比分" : "继续",
+        setEndActionText: setEndMatchFinished ? "确认比赛结果" : "继续",
         setEndWaiting: setEndWaiting,
         isSwapped: nextSwapped,
         teamAPlayers: useReplayQueue ? prevAPlayers : room.teamA.players,
@@ -1588,21 +1819,42 @@ Page({
       if (useReplayQueue) {
         let tempAPlayers = clonePlayerList(prevAPlayers);
         let tempBPlayers = clonePlayerList(prevBPlayers);
-        for (let i = 0; i < rotateReplayQueue.length; i += 1) {
+        for (let i = 0; i < rotateReplayQueue.length; ) {
           const step = rotateReplayQueue[i];
-          const team = step.team;
-          const measuredBeforeRects = await this.measureTeamMainPosRectsStable(team, 1200);
-          const beforeRects = this.mergeRectMapWithFallback(
-            measuredBeforeRects || {},
-            this.getCachedTeamRectMap(team)
-          );
-          const beforeNoMap = this.getTeamMainNumberMap(team);
-          const beforeCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
-          if (team === "A") {
+          const nextStep = i + 1 < rotateReplayQueue.length ? rotateReplayQueue[i + 1] : null;
+          const canParallel = !!nextStep && nextStep.team !== step.team;
+
+          const measuredBeforeRects1 = await this.measureTeamMainPosRectsStable(step.team, 1200);
+          const beforeRects1 = this.mergeRectMapWithFallback(measuredBeforeRects1 || {}, this.getCachedTeamRectMap(step.team));
+          const beforeNoMap1 = this.getTeamMainNumberMap(step.team);
+          const beforeCaptain1 = step.team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
+
+          let beforeRects2: TeamRectMap | null = null;
+          let beforeNoMap2: TeamMainNoMap | null = null;
+          let beforeCaptain2 = "";
+          if (canParallel && nextStep) {
+            const measuredBeforeRects2 = await this.measureTeamMainPosRectsStable(nextStep.team, 1200);
+            beforeRects2 = this.mergeRectMapWithFallback(
+              measuredBeforeRects2 || {},
+              this.getCachedTeamRectMap(nextStep.team)
+            );
+            beforeNoMap2 = this.getTeamMainNumberMap(nextStep.team);
+            beforeCaptain2 = nextStep.team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
+          }
+
+          if (step.team === "A") {
             tempAPlayers = step.reverse ? rotateTeamReverseByRule(tempAPlayers) : rotateTeamByRule(tempAPlayers);
           } else {
             tempBPlayers = step.reverse ? rotateTeamReverseByRule(tempBPlayers) : rotateTeamByRule(tempBPlayers);
           }
+          if (canParallel && nextStep) {
+            if (nextStep.team === "A") {
+              tempAPlayers = nextStep.reverse ? rotateTeamReverseByRule(tempAPlayers) : rotateTeamByRule(tempAPlayers);
+            } else {
+              tempBPlayers = nextStep.reverse ? rotateTeamReverseByRule(tempBPlayers) : rotateTeamByRule(tempBPlayers);
+            }
+          }
+
           const tempARows = buildTeamRows(tempAPlayers);
           const tempBRows = buildTeamRows(tempBPlayers);
           this.setData({
@@ -1613,7 +1865,17 @@ Page({
             teamBLibero: tempBRows.libero,
             teamBMainGrid: buildMainGridByOrder(tempBPlayers, getMainOrderForTeam("B", teamASide)),
           });
-          await this.playTeamRotateMotion(team, beforeRects, beforeNoMap, beforeCaptain);
+
+          if (canParallel && nextStep && beforeRects2 && beforeNoMap2) {
+            await Promise.all([
+              this.playTeamRotateMotion(step.team, beforeRects1, beforeNoMap1, beforeCaptain1),
+              this.playTeamRotateMotion(nextStep.team, beforeRects2, beforeNoMap2, beforeCaptain2),
+            ]);
+            i += 2;
+          } else {
+            await this.playTeamRotateMotion(step.team, beforeRects1, beforeNoMap1, beforeCaptain1);
+            i += 1;
+          }
         }
         this.setData({
           teamAPlayers: room.teamA.players,
@@ -1638,15 +1900,7 @@ Page({
         setEndOwnerClientId === currentClientId &&
         !this.openingLineup
       ) {
-        this.openingLineup = true;
-        wx.navigateTo({
-          url: "/pages/lineup-adjust/lineup-adjust?roomId=" + roomId,
-          complete: () => {
-            setTimeout(() => {
-              this.openingLineup = false;
-            }, 600);
-          },
-        });
+        this.openLineupAdjustOnce(roomId);
       }
     } finally {
       this.roomLoadInFlight = false;
@@ -1659,11 +1913,19 @@ Page({
     }
   },
 
-  async onScoreChange(e: WechatMiniprogram.CustomEvent) {
+  onScoreChange(e: WechatMiniprogram.CustomEvent) {
+    const raw = (e && e.detail ? (e.detail as { team?: TeamCode; type?: "add" | "sub" }) : {}) || {};
+    const detail = {
+      team: raw.team,
+      type: raw.type || "add",
+    };
+    void this.enqueueAction(() => this.handleScoreChange(detail));
+  },
+
+  async handleScoreChange(detail: { team?: TeamCode; type?: "add" | "sub" }) {
     if (this.data.showSetEndModal) {
       return;
     }
-    const detail = e.detail as { team?: TeamCode; type?: "add" | "sub" };
     const displayTeam = detail.team;
     const team =
       displayTeam === "A" || displayTeam === "B"
@@ -1709,6 +1971,8 @@ Page({
     const beforeRotateCaptain = beforeRotateRects ? (team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo) : "";
 
     const next = await updateRoomAsync(roomId, (room) => {
+      const opId = createLogId();
+      (room.match as any).currentOpId = opId;
       if (room.match.isFinished) {
         return room;
       }
@@ -1741,7 +2005,8 @@ Page({
             ":" +
             String(room.match.bScore) +
             "）",
-          team
+          team,
+          opId
         );
 
         if (room.match.servingTeam !== team) {
@@ -1753,7 +2018,6 @@ Page({
         if (shouldPromptSwitchAtEight(room)) {
           room.match.decidingSetEightHandled = true;
           needDecidingSetSwitchChoice = true;
-          appendMatchLog(room, "switch_sides_prompt", "决胜局8分，请选择是否换边");
         }
 
         const target = getSetTargetScore(room);
@@ -1778,11 +2042,28 @@ Page({
           (room.match as any).timeoutTeam = "";
           (room.match as any).timeoutEndAt = 0;
           const setElapsedText = formatDurationMMSS(finalElapsed);
+          if (!(room.match as any).setSummaries || typeof (room.match as any).setSummaries !== "object") {
+            (room.match as any).setSummaries = {};
+          }
+          (room.match as any).setSummaries[String(endedSetNo)] = {
+            setNo: endedSetNo,
+            teamAName: String(room.teamA.name || "甲"),
+            teamBName: String(room.teamB.name || "乙"),
+            smallScoreA: endedScoreA,
+            smallScoreB: endedScoreB,
+            bigScoreA: Number(room.match.aSetWins || 0) + (setWinner === "A" ? 1 : 0),
+            bigScoreB: Number(room.match.bSetWins || 0) + (setWinner === "B" ? 1 : 0),
+            winnerName: setWinner === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙"),
+            durationText: setElapsedText,
+            matchFinished: false,
+          };
           if (setWinner === "A") {
             room.match.aSetWins += 1;
           } else {
             room.match.bSetWins += 1;
           }
+          (room.match as any).setSummaries[String(endedSetNo)].bigScoreA = Number(room.match.aSetWins || 0);
+          (room.match as any).setSummaries[String(endedSetNo)].bigScoreB = Number(room.match.bSetWins || 0);
           appendMatchLog(
             room,
             "set_end",
@@ -1795,7 +2076,8 @@ Page({
               ":" +
               String(endedScoreB) +
               "）",
-            setWinner
+            setWinner,
+            opId
           );
 
           const reachedWins =
@@ -1805,18 +2087,6 @@ Page({
           if (reachedWins) {
             room.match.isFinished = true;
             const matchWinnerName = setWinner === "A" ? room.teamA.name : room.teamB.name;
-            appendMatchLog(
-              room,
-              "match_end",
-              "比赛结束：" +
-                matchWinnerName +
-                " 以 " +
-                String(room.match.aSetWins) +
-                ":" +
-                String(room.match.bSetWins) +
-                " 获胜",
-              setWinner
-            );
             (room.match as any).setEndState = {
               active: true,
               phase: "pending",
@@ -1869,9 +2139,10 @@ Page({
             (room.match as any).timeoutActive = false;
             (room.match as any).timeoutTeam = "";
             (room.match as any).timeoutEndAt = 0;
-            appendMatchLog(room, "next_set", "进入第" + String(room.match.setNo) + "局", setWinner);
+            appendMatchLog(room, "next_set", "进入第" + String(room.match.setNo) + "局", setWinner, opId);
           }
         }
+        (room.match as any).lastActionOpId = opId;
       }
       return room;
     });
@@ -1881,12 +2152,12 @@ Page({
     }
     if (blockedByTimeout) {
       showToastHint("暂停中，无法加分");
-      this.loadRoom(roomId, true);
+      await this.loadRoom(roomId, true);
       return;
     }
     if (blockedByMaxScore) {
       showToastHint("单局比分不能超过99");
-      this.loadRoom(roomId, true);
+      await this.loadRoom(roomId, true);
       return;
     }
 
@@ -1901,17 +2172,17 @@ Page({
         cancelText: "不换边",
         success: (res) => {
           if (res.confirm) {
-            this.switchSidesWithAnimation("自动换边（决胜局）");
+            void this.switchSidesWithAnimation("自动换边（决胜局）");
             return;
           }
-          this.loadRoom(roomId, true);
+          void this.loadRoom(roomId, true);
         },
       });
     };
 
     if (!rotatedTeam) {
       this.applyLocalScoreFromRoom(next);
-      this.loadRoom(roomId, true);
+      await this.loadRoom(roomId, true);
       showDecidingSetSwitchChoice();
       return;
     }
@@ -1922,36 +2193,47 @@ Page({
       await this.nextTickAsync();
       await this.playTeamRotateMotion(rotatedTeam, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
     }
-    this.loadRoom(roomId, true);
+    await this.loadRoom(roomId, true);
     showDecidingSetSwitchChoice();
   },
 
   switchSidesWithAnimation(logNote: string) {
     const roomId = this.data.roomId;
-    this.setData({ switchingOut: true, switchingIn: false });
-    setTimeout(() => {
-      updateRoomAsync(roomId, (room) => {
-        pushUndoSnapshot(room);
-        room.match.isSwapped = !room.match.isSwapped;
-        appendMatchLog(room, "switch_sides", logNote);
-        return room;
-      })
-        .then((next) => {
-          this.setData({ switchingOut: false, switchingIn: true });
-          if (next) {
-            this.loadRoom(roomId, true);
-          }
-          setTimeout(() => {
-            this.setData({ switchingIn: false });
-          }, 220);
+    return new Promise<void>((resolve) => {
+      this.setData({ switchingOut: true, switchingIn: false });
+      setTimeout(() => {
+        updateRoomAsync(roomId, (room) => {
+          const opId = createLogId();
+          (room.match as any).currentOpId = opId;
+          pushUndoSnapshot(room);
+          room.match.isSwapped = !room.match.isSwapped;
+          appendMatchLog(room, "switch_sides", logNote, undefined, opId);
+          (room.match as any).lastActionOpId = opId;
+          return room;
         })
-        .catch(() => {
-          this.setData({ switchingOut: false, switchingIn: false });
-        });
-    }, 150);
+          .then((next) => {
+            this.setData({ switchingOut: false, switchingIn: true });
+            if (next) {
+              this.loadRoom(roomId, true);
+            }
+            setTimeout(() => {
+              this.setData({ switchingIn: false });
+              resolve();
+            }, 220);
+          })
+          .catch(() => {
+            this.setData({ switchingOut: false, switchingIn: false });
+            resolve();
+          });
+      }, 150);
+    });
   },
 
   onSwitchSides() {
+    if (this.switchConfirming) {
+      showToastHint("操作处理中，请稍候");
+      return;
+    }
     if (this.data.showSetEndModal) {
       return;
     }
@@ -1959,10 +2241,34 @@ Page({
       showToastHint("比赛已结束，无法换边");
       return;
     }
-    this.switchSidesWithAnimation("手动换边");
+    this.switchConfirming = true;
+    wx.showModal({
+      title: "换边确认",
+      content: "是否确认手动换边？",
+      confirmText: "确定",
+      cancelText: "取消",
+      success: (res) => {
+        if (!res.confirm) {
+          this.switchConfirming = false;
+          return;
+        }
+        void this.enqueueAction(async () => {
+          await this.switchSidesWithAnimation("手动换边");
+        }).finally(() => {
+          this.switchConfirming = false;
+        });
+      },
+      fail: () => {
+        this.switchConfirming = false;
+      },
+    });
   },
 
   async onTeamTimeoutTap(e: WechatMiniprogram.TouchEvent) {
+    if (this.timeoutActionInFlight) {
+      showToastHint("操作处理中，请稍候");
+      return;
+    }
     if (this.data.showSetEndModal) {
       return;
     }
@@ -1989,75 +2295,93 @@ Page({
       return;
     }
     const teamName = team === "A" ? String(this.data.teamAName || "甲") : String(this.data.teamBName || "乙");
+    this.timeoutActionInFlight = true;
     wx.showModal({
       title: "暂停确认",
       content: teamName + "队确认暂停？",
       confirmText: "确认",
       cancelText: "取消",
       success: async (res) => {
-        if (!res.confirm) {
-          return;
-        }
-        const roomId = this.data.roomId;
-        const saved = await updateRoomAsync(
-          roomId,
-          (room) => {
-          if (room.match.isFinished) {
-            return room;
-          }
-          if (!!(room.match as any).timeoutActive && Number((room.match as any).timeoutEndAt || 0) > Date.now()) {
-            return room;
-          }
-          const key = team === "A" ? "teamATimeoutCount" : "teamBTimeoutCount";
-          const prev = Math.max(0, Math.min(2, Number((room.match as any)[key]) || 0));
-          if (prev >= 2) {
-            return room;
-          }
-          (room.match as any)[key] = prev + 1;
-          (room.match as any).timeoutActive = true;
-          (room.match as any).timeoutTeam = team;
-          (room.match as any).timeoutEndAt = Date.now() + 30 * 1000;
-          const latestName = team === "A" ? String(room.teamA.name || teamName) : String(room.teamB.name || teamName);
-          appendMatchLog(room, "timeout", latestName + " 暂停（" + String(prev + 1) + "/2）", team);
-          return room;
-          },
-          { awaitCloud: true }
-        );
-        if (!saved) {
-          showToastHint("系统繁忙，请重试");
-          return;
-        }
-        const nextCount = Math.max(
-          0,
-          Math.min(2, Number(saved && saved.match && (saved.match as any)[team === "A" ? "teamATimeoutCount" : "teamBTimeoutCount"]) || 0)
-        );
-        const used =
-          !!saved &&
-          !!(saved.match as any).timeoutActive &&
-          (saved.match as any).timeoutTeam === team &&
-          nextCount > currentCount;
-        if (!used) {
-          if (!!(saved.match as any).isFinished) {
-            showToastHint("比赛已结束，无法暂停");
+        try {
+          if (!res.confirm) {
             return;
           }
-          if (!!(saved.match as any).timeoutActive) {
-            showToastHint("暂停进行中");
+          const roomId = this.data.roomId;
+          const saved = await updateRoomAsync(
+            roomId,
+            (room) => {
+              const opId = createLogId();
+              (room.match as any).currentOpId = opId;
+              if (room.match.isFinished) {
+                return room;
+              }
+              if (!!(room.match as any).timeoutActive && Number((room.match as any).timeoutEndAt || 0) > Date.now()) {
+                return room;
+              }
+              const key = team === "A" ? "teamATimeoutCount" : "teamBTimeoutCount";
+              const prev = Math.max(0, Math.min(2, Number((room.match as any)[key]) || 0));
+              if (prev >= 2) {
+                return room;
+              }
+              (room.match as any)[key] = prev + 1;
+              (room.match as any).timeoutActive = true;
+              (room.match as any).timeoutTeam = team;
+              (room.match as any).timeoutEndAt = Date.now() + 30 * 1000;
+              const latestName = team === "A" ? String(room.teamA.name || teamName) : String(room.teamB.name || teamName);
+              appendMatchLog(room, "timeout", latestName + " 暂停（" + String(prev + 1) + "/2）", team, opId);
+              (room.match as any).lastActionOpId = opId;
+              return room;
+            },
+            { awaitCloud: true }
+          );
+          if (!saved) {
+            showToastHint("系统繁忙，请重试");
             return;
           }
-          if (nextCount >= 2) {
-            showToastHint(teamName + "队本局暂停次数已用完");
+          const nextCount = Math.max(
+            0,
+            Math.min(
+              2,
+              Number(saved && saved.match && (saved.match as any)[team === "A" ? "teamATimeoutCount" : "teamBTimeoutCount"]) || 0
+            )
+          );
+          const used =
+            !!saved &&
+            !!(saved.match as any).timeoutActive &&
+            (saved.match as any).timeoutTeam === team &&
+            nextCount > currentCount;
+          if (!used) {
+            if (!!(saved.match as any).isFinished) {
+              showToastHint("比赛已结束，无法暂停");
+              return;
+            }
+            if (!!(saved.match as any).timeoutActive) {
+              showToastHint("暂停进行中");
+              return;
+            }
+            if (nextCount >= 2) {
+              showToastHint(teamName + "队本局暂停次数已用完");
+              return;
+            }
+            showToastHint("系统繁忙，请重试");
             return;
           }
-          showToastHint("系统繁忙，请重试");
-          return;
+          this.loadRoom(roomId, true);
+        } finally {
+          this.timeoutActionInFlight = false;
         }
-        this.loadRoom(roomId, true);
+      },
+      fail: () => {
+        this.timeoutActionInFlight = false;
       },
     });
   },
 
   async onEndTimeoutTap() {
+    if (this.timeoutActionInFlight) {
+      showToastHint("操作处理中，请稍候");
+      return;
+    }
     if (!this.data.timeoutActive || this.data.showSetEndModal || this.data.isMatchFinished) {
       return;
     }
@@ -2065,94 +2389,111 @@ Page({
     if (!roomId) {
       return;
     }
-    const saved = await updateRoomAsync(
-      roomId,
-      (room) => {
-      const active = !!(room.match as any).timeoutActive;
-      const endAt = Math.max(0, Number((room.match as any).timeoutEndAt) || 0);
-      if (!active || endAt <= Date.now()) {
-        return room;
-      }
-      const timeoutTeam = (room.match as any).timeoutTeam === "B" ? "B" : "A";
-      (room.match as any).timeoutActive = false;
-      (room.match as any).timeoutTeam = "";
-      (room.match as any).timeoutEndAt = 0;
-      appendMatchLog(
-        room,
-        "timeout_end",
-        (timeoutTeam === "A" ? room.teamA.name : room.teamB.name) + " 暂停提前结束",
-        timeoutTeam
+    this.timeoutActionInFlight = true;
+    try {
+      const saved = await updateRoomAsync(
+        roomId,
+        (room) => {
+          const opId = createLogId();
+          (room.match as any).currentOpId = opId;
+          const active = !!(room.match as any).timeoutActive;
+          const endAt = Math.max(0, Number((room.match as any).timeoutEndAt) || 0);
+          if (!active || endAt <= Date.now()) {
+            return room;
+          }
+          const timeoutTeam = (room.match as any).timeoutTeam === "B" ? "B" : "A";
+          (room.match as any).timeoutActive = false;
+          (room.match as any).timeoutTeam = "";
+          (room.match as any).timeoutEndAt = 0;
+          appendMatchLog(
+            room,
+            "timeout_end",
+            (timeoutTeam === "A" ? room.teamA.name : room.teamB.name) + " 暂停提前结束",
+            timeoutTeam,
+            opId
+          );
+          (room.match as any).lastActionOpId = opId;
+          return room;
+        },
+        { awaitCloud: true }
       );
-      return room;
-      },
-      { awaitCloud: true }
-    );
-    const ended = !!saved && !(saved.match as any).timeoutActive;
-    if (ended) {
-      this.timeoutEndAtMs = 0;
-      this.lastRenderedTimeoutText = "暂停 30s";
-      this.timeoutWarnVibratedForEndAt = 0;
-      this.timeoutEndVibratedForEndAt = 0;
-      this.loadRoom(roomId, true);
+      const ended = !!saved && !(saved.match as any).timeoutActive;
+      if (ended) {
+        this.timeoutEndAtMs = 0;
+        this.lastRenderedTimeoutText = "暂停 30s";
+        this.timeoutWarnVibratedForEndAt = 0;
+        this.timeoutEndVibratedForEndAt = 0;
+        this.loadRoom(roomId, true);
+      }
+    } finally {
+      this.timeoutActionInFlight = false;
     }
   },
 
-  async onRotateTeam(e: WechatMiniprogram.TouchEvent) {
-    if (this.data.showSetEndModal) {
-      return;
-    }
-    if (this.data.isMatchFinished) {
-      showToastHint("比赛已结束，无法轮转");
-      return;
-    }
+  onRotateTeam(e: WechatMiniprogram.TouchEvent) {
     const dataset = e.currentTarget.dataset as { team: TeamCode };
     const team = dataset.team;
     if (team !== "A" && team !== "B") {
       return;
     }
-    const teamName =
-      team === "A"
-        ? String(this.data.teamAName || "甲")
-        : String(this.data.teamBName || "乙");
-    const confirmed = await new Promise<boolean>((resolve) => {
-      wx.showModal({
-        title: "轮转确认",
-        content: teamName + "队是否强制轮转？",
-        confirmText: "确定",
-        cancelText: "取消",
-        success: (res) => {
-          resolve(!!res.confirm);
-        },
-        fail: () => {
-          resolve(false);
-        },
-      });
-    });
-    if (!confirmed) {
+    if (this.rotateConfirming) {
+      showToastHint("操作处理中，请稍候");
       return;
     }
-    const roomId = this.data.roomId;
-    const beforeRotateRects = await this.measureTeamMainPosRectsStable(team, 1000);
-    const beforeRotateNoMap = this.getTeamMainNumberMap(team);
-    const beforeRotateCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
-    const next = await updateRoomAsync(roomId, (room) => {
-      pushUndoSnapshot(room);
-      rotateTeamAndLog(room, team, "手动轮转");
-      return room;
+    this.rotateConfirming = true;
+    const teamName = team === "A" ? String(this.data.teamAName || "甲") : String(this.data.teamBName || "乙");
+    wx.showModal({
+      title: "轮转确认",
+      content: teamName + "队是否强制轮转？",
+      confirmText: "确定",
+      cancelText: "取消",
+      success: (res) => {
+        if (!res.confirm) {
+          this.rotateConfirming = false;
+          return;
+        }
+        void this.enqueueAction(async () => {
+          if (this.data.showSetEndModal) {
+            return;
+          }
+          if (this.data.isMatchFinished) {
+            showToastHint("比赛已结束，无法轮转");
+            return;
+          }
+          const roomId = this.data.roomId;
+          const beforeRotateRects = await this.measureTeamMainPosRectsStable(team, 1000);
+          const beforeRotateNoMap = this.getTeamMainNumberMap(team);
+          const beforeRotateCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
+          const next = await updateRoomAsync(roomId, (room) => {
+            const opId = createLogId();
+            (room.match as any).currentOpId = opId;
+            pushUndoSnapshot(room);
+            rotateTeamAndLog(room, team, "手动轮转");
+            (room.match as any).lastActionOpId = opId;
+            return room;
+          });
+          if (!next) {
+            return;
+          }
+          this.applyLocalLineupFromRoom(next);
+          await this.nextTickAsync();
+          await this.playTeamRotateMotion(team, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
+          await this.loadRoom(roomId, true);
+        }).finally(() => {
+          this.rotateConfirming = false;
+        });
+      },
+      fail: () => {
+        this.rotateConfirming = false;
+      },
     });
-
-    if (!next) {
-      return;
-    }
-    this.applyLocalLineupFromRoom(next);
-    await this.nextTickAsync();
-    await this.playTeamRotateMotion(team, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
-    this.loadRoom(roomId, true);
   },
 
   async onResetScore() {
     const roomId = this.data.roomId;
     const next = await updateRoomAsync(roomId, (room) => {
+      const opId = createLogId();
+      (room.match as any).currentOpId = opId;
       pushUndoSnapshot(room);
       room.match.aScore = 0;
       room.match.bScore = 0;
@@ -2170,7 +2511,8 @@ Page({
       (room.match as any).timeoutTeam = "";
       (room.match as any).timeoutEndAt = 0;
       room.match.isFinished = false;
-      appendMatchLog(room, "score_reset", "比分清零（0:0）");
+      appendMatchLog(room, "score_reset", "比分清零（0:0）", undefined, opId);
+      (room.match as any).lastActionOpId = opId;
       return room;
     });
     if (next) {
@@ -2183,8 +2525,12 @@ Page({
     let undone = false;
     let beforeAScore = 0;
     let beforeBScore = 0;
+    let beforeIsSwapped = false;
+    let beforeLastScoringTeam: TeamCode | "" = "";
+    let inferredUndoTeamFromSetEnd: TeamCode | "" = "";
     let undoRotateA = false;
     let undoRotateB = false;
+    let revertedOpId = "";
     const beforeARects = await this.measureTeamMainPosRectsStable("A", 1000);
     const beforeBRects = await this.measureTeamMainPosRectsStable("B", 1000);
     const beforeANoMap = this.getTeamMainNumberMap("A");
@@ -2192,11 +2538,34 @@ Page({
     const beforeACaptain = this.data.teamACaptainNo;
     const beforeBCaptain = this.data.teamBCaptainNo;
     const next = await updateRoomAsync(roomId, (room) => {
+      const opId = createLogId();
+      (room.match as any).currentOpId = opId;
+      const setEndState = (room.match as any).setEndState || null;
+      const setEndSummary = (setEndState && setEndState.summary) || null;
+      const endA = Number(setEndSummary && setEndSummary.smallScoreA);
+      const endB = Number(setEndSummary && setEndSummary.smallScoreB);
+      if (endA > endB) {
+        inferredUndoTeamFromSetEnd = "A";
+      } else if (endB > endA) {
+        inferredUndoTeamFromSetEnd = "B";
+      } else {
+        const winnerName = String((setEndSummary && setEndSummary.winnerName) || "");
+        const teamAName = String((room.teamA && room.teamA.name) || "");
+        const teamBName = String((room.teamB && room.teamB.name) || "");
+        if (winnerName && teamAName && winnerName === teamAName) {
+          inferredUndoTeamFromSetEnd = "A";
+        } else if (winnerName && teamBName && winnerName === teamBName) {
+          inferredUndoTeamFromSetEnd = "B";
+        }
+      }
       if (closeSetEndModal) {
         delete (room.match as any).setEndState;
       }
       beforeAScore = room.match.aScore;
       beforeBScore = room.match.bScore;
+      beforeIsSwapped = !!room.match.isSwapped;
+      beforeLastScoringTeam =
+        room.match.lastScoringTeam === "B" ? "B" : room.match.lastScoringTeam === "A" ? "A" : "";
       const stack = room.match.undoStack;
       if (!stack || stack.length === 0) {
         return room;
@@ -2229,6 +2598,7 @@ Page({
         return room;
       }
       undone = true;
+      revertedOpId = String((room.match as any).lastActionOpId || "");
       room.match.aScore = last.aScore;
       room.match.bScore = last.bScore;
       room.match.lastScoringTeam = last.lastScoringTeam === "B" ? "B" : last.lastScoringTeam === "A" ? "A" : "";
@@ -2243,23 +2613,50 @@ Page({
       room.match.aSetWins = last.aSetWins || 0;
       room.match.bSetWins = last.bSetWins || 0;
       room.match.isFinished = !!last.isFinished;
+      (room.match as any).setSummaries = JSON.parse(JSON.stringify((last as any).setSummaries || {}));
+      (room.match as any).lastActionOpId = String((last as any).lastActionOpId || "");
       undoRotateA = isOneStepRotationBetween(room.teamA.players || [], last.teamAPlayers || []);
       undoRotateB = isOneStepRotationBetween(room.teamB.players || [], last.teamBPlayers || []);
+      const sameScore = Number(beforeAScore) === Number(last.aScore) && Number(beforeBScore) === Number(last.bScore);
+      const swappedChanged = beforeIsSwapped !== !!last.isSwapped;
       room.teamA.players = last.teamAPlayers.slice();
       room.teamB.players = last.teamBPlayers.slice();
-      appendMatchLog(
-        room,
-        "score_undo",
-        "比分撤回（" +
-          String(beforeAScore) +
-          ":" +
-          String(beforeBScore) +
-          " -> " +
+      let undoNote = "";
+      if (sameScore && swappedChanged) {
+        undoNote = "撤回手动换边";
+      } else if (sameScore && undoRotateA !== undoRotateB) {
+        const undoTeamName = undoRotateA ? String((room.teamA && room.teamA.name) || "甲") : String((room.teamB && room.teamB.name) || "乙");
+        undoNote = undoTeamName + " 撤回手动轮转";
+      } else {
+        let undoTeam: TeamCode | "" = beforeLastScoringTeam;
+        if (!undoTeam) {
+          if (inferredUndoTeamFromSetEnd) {
+            undoTeam = inferredUndoTeamFromSetEnd;
+          }
+        }
+        if (!undoTeam) {
+          if (Number(beforeAScore) > Number(last.aScore)) {
+            undoTeam = "A";
+          } else if (Number(beforeBScore) > Number(last.bScore)) {
+            undoTeam = "B";
+          }
+        }
+        const undoTeamName =
+          undoTeam === "A"
+            ? String((room.teamA && room.teamA.name) || "甲")
+            : undoTeam === "B"
+              ? String((room.teamB && room.teamB.name) || "乙")
+              : "未知";
+        undoNote =
+          undoTeamName +
+          " -1 比分撤回（" +
           String(room.match.aScore) +
           ":" +
           String(room.match.bScore) +
-          "）"
-      );
+          "）";
+      }
+      appendMatchLog(room, "score_undo", undoNote, undefined, opId, revertedOpId);
+      (room.match as any).lastActionOpId = opId;
       return room;
     });
 
@@ -2271,8 +2668,19 @@ Page({
       showToastHint("本局无可撤回操作");
       return;
     }
-    this.applyLocalScoreFromRoom(next);
-    this.applyLocalLineupFromRoom(next);
+    const swappedChanged = beforeIsSwapped !== !!(next.match && next.match.isSwapped);
+    if (swappedChanged) {
+      this.setData({ switchingOut: true, switchingIn: false });
+      await this.delayAsync(120);
+      this.applyLocalScoreFromRoom(next);
+      this.applyLocalLineupFromRoom(next);
+      this.setData({ switchingOut: false, switchingIn: true });
+      await this.delayAsync(220);
+      this.setData({ switchingIn: false });
+    } else {
+      this.applyLocalScoreFromRoom(next);
+      this.applyLocalLineupFromRoom(next);
+    }
     await this.nextTickAsync();
     if (undoRotateA) {
       await this.playTeamRotateMotion("A", beforeARects, beforeANoMap, beforeACaptain);
@@ -2280,27 +2688,43 @@ Page({
     if (undoRotateB) {
       await this.playTeamRotateMotion("B", beforeBRects, beforeBNoMap, beforeBCaptain);
     }
-    this.loadRoom(roomId, true);
+    await this.loadRoom(roomId, true);
   },
 
-  async onUndoLastScore() {
-    if (this.data.showSetEndModal) {
-      return;
-    }
-    await this.performUndoLastScore(false);
+  onUndoLastScore() {
+    void this.enqueueAction(async () => {
+      if (this.data.showSetEndModal) {
+        return;
+      }
+      await this.performUndoLastScore(false);
+    });
   },
 
   async onSetEndUndo() {
-    if (this.data.setEndWaiting) {
+    if (this.setEndActionInFlight) {
+      showToastHint("操作处理中，请稍候");
       return;
     }
-    await this.performUndoLastScore(true, true);
+    if (this.data.setEndWaiting) {
+      showToastHint("已由其他裁判接管");
+      return;
+    }
+    this.setEndActionInFlight = true;
+    try {
+      await this.performUndoLastScore(true, true);
+    } finally {
+      this.setEndActionInFlight = false;
+    }
   },
 
   onOpenLogPanel() {
+    const currentSetNo = Math.max(1, Number(this.data.setNo || 1));
+    const availableSetCount = Math.max(1, Number((this.data.logSetOptions || []).length || 1));
+    const targetSetNo = Math.min(currentSetNo, availableSetCount);
     this.setData({
       showLogPanel: true,
-      logs: this.getDisplayLogsBySet(this.allLogs, this.data.selectedLogSet),
+      selectedLogSet: targetSetNo,
+      logs: this.getDisplayLogsBySet(this.allLogs, targetSetNo),
     });
   },
 

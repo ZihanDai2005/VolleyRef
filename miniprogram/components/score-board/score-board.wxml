@@ -1,6 +1,6 @@
 <view class="score-board">
   <view class="team-score a">
-    <view class="side-btn pressable" hover-class="tap-active" bindtap="onAddScoreA">
+    <view class="side-btn pressable" hover-class="tap-active" hover-start-time="0" hover-stay-time="70" bindtap="onAddScoreA">
       <view class="plus-icon"></view>
     </view>
     <text class="score {{pulseA ? 'score-pulse' : ''}} {{lastScoringTeam === 'A' ? 'score-hot' : ''}}">{{aScore}}</text>
@@ -8,7 +8,7 @@
   <view class="vs">VS</view>
   <view class="team-score b">
     <text class="score {{pulseB ? 'score-pulse' : ''}} {{lastScoringTeam === 'B' ? 'score-hot' : ''}}">{{bScore}}</text>
-    <view class="side-btn pressable" hover-class="tap-active" bindtap="onAddScoreB">
+    <view class="side-btn pressable" hover-class="tap-active" hover-start-time="0" hover-stay-time="70" bindtap="onAddScoreB">
       <view class="plus-icon"></view>
     </view>
   </view>

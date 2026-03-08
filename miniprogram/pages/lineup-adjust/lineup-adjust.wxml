@@ -11,17 +11,45 @@
 
   <view class="adjust-head-block">
     <text class="adjust-head-title">确认下一局的球员配置</text>
-    <text class="adjust-head-hint">已自动沿用上一局的首发阵容并左右换边，可点击球员进行撤换</text>
+    <text class="adjust-head-hint">{{adjustHeadHint}}</text>
   </view>
 
   <view class="court-row {{isSwapped ? 'swapped' : ''}} {{switchingOut ? 'switch-out' : ''}} {{switchingIn ? 'switch-in' : ''}}">
     <view class="team-court-wrap">
       <view class="team-panel team-a">
         <view class="team-head">
-          <view class="rotate-btn {{isSwapped ? 'right' : 'left'}} pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
-            <view class="rotate-icon"></view>
-          </view>
-          <text class="team-title">{{teamAName}}</text>
+          <block wx:if="{{!isSwapped}}">
+            <view class="team-actions left">
+              <view class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
+                <view class="rotate-icon"></view>
+              </view>
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="A" bindtap="onToggleServeTeam">
+                <view class="serve-toggle-icon"></view>
+                <text class="team-toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
+              </view>
+              <view class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+                <text class="team-toggle-text">{{teamASideText}}</text>
+              </view>
+            </view>
+            <text class="team-title align-right">{{teamAName}}</text>
+          </block>
+          <block wx:else>
+            <text class="team-title align-left">{{teamAName}}</text>
+            <view class="team-actions right">
+              <view class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
+                <view class="rotate-icon"></view>
+              </view>
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="A" bindtap="onToggleServeTeam">
+                <view class="serve-toggle-icon"></view>
+                <text class="team-toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
+              </view>
+              <view class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+                <text class="team-toggle-text">{{teamASideText}}</text>
+              </view>
+            </view>
+          </block>
         </view>
         <view class="lineup-grid {{isSwapped ? 'swap-layout' : ''}}">
           <view class="libero-col">
@@ -56,7 +84,7 @@
           </view>
           <view class="main-col">
             <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
-              <view class="player-card {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos" catchtap="onAdjustFieldWrapTap" data-focus-key="{{item.inputKey}}">
+              <view class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos" catchtap="onAdjustFieldWrapTap" data-focus-key="{{item.inputKey}}">
                 <input
                   adjust-position="false"
                   always-embed="true"
@@ -116,15 +144,43 @@
     <view class="team-court-wrap">
       <view class="team-panel team-b">
         <view class="team-head">
-          <text class="team-title">{{teamBName}}</text>
-          <view class="rotate-btn {{isSwapped ? 'left' : 'right'}} pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
-            <view class="rotate-icon"></view>
-          </view>
+          <block wx:if="{{!isSwapped}}">
+            <text class="team-title align-left">{{teamBName}}</text>
+            <view class="team-actions right">
+              <view class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
+                <view class="rotate-icon"></view>
+              </view>
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="B" bindtap="onToggleServeTeam">
+                <view class="serve-toggle-icon"></view>
+                <text class="team-toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
+              </view>
+              <view class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+                <text class="team-toggle-text">{{teamBSideText}}</text>
+              </view>
+            </view>
+          </block>
+          <block wx:else>
+            <view class="team-actions left">
+              <view class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
+                <view class="rotate-icon"></view>
+              </view>
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="B" bindtap="onToggleServeTeam">
+                <view class="serve-toggle-icon"></view>
+                <text class="team-toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
+              </view>
+              <view class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+                <text class="team-toggle-text">{{teamBSideText}}</text>
+              </view>
+            </view>
+            <text class="team-title align-right">{{teamBName}}</text>
+          </block>
         </view>
         <view class="lineup-grid reverse {{isSwapped ? 'swap-layout' : ''}}">
           <view class="main-col">
             <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
-              <view class="player-card {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos" catchtap="onAdjustFieldWrapTap" data-focus-key="{{item.inputKey}}">
+              <view class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos" catchtap="onAdjustFieldWrapTap" data-focus-key="{{item.inputKey}}">
                 <input
                   adjust-position="false"
                   always-embed="true"
@@ -212,12 +268,21 @@
     </view>
   </view>
 
-  <view class="rotate-fly-layer" wx:if="{{rotateFlyItems.length}}">
+  <view class="rotate-fly-layer" wx:if="{{rotateFlyItemsA.length || rotateFlyItemsB.length}}">
     <view
-      wx:for="{{rotateFlyItems}}"
+      wx:for="{{rotateFlyItemsA}}"
       wx:key="id"
       wx:for-item="item"
-      class="rotate-fly-item team-{{item.team === 'A' ? 'a' : 'b'}}"
+      class="rotate-fly-item team-a"
+      style="{{item.style}}"
+    >
+      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+    </view>
+    <view
+      wx:for="{{rotateFlyItemsB}}"
+      wx:key="id"
+      wx:for-item="item"
+      class="rotate-fly-item team-b"
       style="{{item.style}}"
     >
       <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>

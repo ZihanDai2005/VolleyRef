@@ -7,17 +7,17 @@
   box-sizing: border-box;
   background-color: var(--page-bg);
   background-image: linear-gradient(
-    90deg,
-    rgba(var(--theme-accent-rgb), 0.05) 0%,
+    180deg,
+    rgba(var(--theme-accent-rgb), 0.12) 0%,
     rgba(var(--theme-accent-rgb), 0) 100%
   );
   background-repeat: no-repeat;
-  background-position: left top;
-  background-size: 100rpx 100%;
+  background-position: top left;
+  background-size: 100% 400rpx;
 }
 
 .room-container.create-mode {
-  padding-top: calc(30rpx + var(--custom-nav-offset, 54px));
+  padding-top: calc(40rpx + var(--custom-nav-offset, 54px));
   padding-left: 64rpx;
   padding-right: 64rpx;
   padding-bottom: 0;
@@ -1034,7 +1034,8 @@
   gap: 28rpx;
   margin-top: auto;
   padding-top: 7vh;
-  padding-bottom: 140rpx;
+  padding-bottom: 0;
+  margin-bottom: var(--entry-action-bottom);
   --entry-fill: var(--theme-accent);
 }
 
@@ -1330,9 +1331,114 @@
   .room-container {
     --page-bg-rgb: 19, 20, 22;
     background-image: linear-gradient(
-      90deg,
-      rgba(var(--theme-accent-rgb), 0.03) 0%,
+      180deg,
+      rgba(var(--theme-accent-rgb), 0.1) 0%,
       rgba(var(--theme-accent-rgb), 0) 100%
     );
+  }
+}
+
+@media (min-width: 700px) {
+  .room-container {
+    background-size: 100% 200rpx;
+  }
+
+  .room-container.create-mode {
+    padding-top: calc(24px + var(--custom-nav-offset, 54px));
+    padding-left: 24px;
+    padding-right: 24px;
+  }
+
+  .create-head-block,
+  .create-actions {
+    max-width: 460px;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .custom-nav {
+    left: 24px !important;
+    right: 24px !important;
+  }
+
+  .create-head-title {
+    font-size: 36px;
+    line-height: 1.15;
+  }
+
+  .title-special-dot {
+    margin-left: 2px;
+    transform: translateY(0);
+  }
+
+  .create-head-inputs {
+    margin-top: 32px;
+  }
+
+  .create-head-hint {
+    font-size: 16px;
+    margin-bottom: 8px;
+  }
+
+  .create-head-hint-row {
+    margin-top: 8px;
+    margin-bottom: 8px;
+  }
+
+  .create-head-input-wrap {
+    height: 56px;
+    border-radius: 12px;
+    margin-bottom: 12px;
+  }
+
+  .create-head-input,
+  .create-head-input-native {
+    font-size: 26px;
+    letter-spacing: 6px;
+    padding: 0 16px;
+  }
+
+  .create-team-input-display {
+    font-size: 22px;
+    letter-spacing: 0;
+  }
+
+  .create-head-section-title {
+    font-size: 24px;
+    margin-bottom: 8px;
+  }
+
+  .create-head-divider-wrap {
+    padding: 24px 0;
+  }
+
+  .create-head-lineup-card {
+    border-radius: 14px;
+  }
+
+  .create-actions {
+    gap: 16px;
+  }
+
+  .create-actions .entry-btn {
+    height: 52px;
+    line-height: 52px;
+    font-size: 18px;
+    letter-spacing: 2px;
+  }
+
+  .create-actions .entry-btn .entry-btn-content {
+    padding: 0 16px;
+  }
+
+  .create-actions .entry-btn .entry-btn-icon,
+  .create-actions .entry-btn .entry-btn-copy-icon {
+    width: 24px;
+    height: 24px;
+    right: 16px;
+  }
+
+  .create-actions .entry-btn.create-invite-btn .entry-btn-content {
+    gap: 8px;
   }
 }

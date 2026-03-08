@@ -44,6 +44,10 @@
   position: relative;
   background: radial-gradient(circle at 50% 50%, var(--bg-deep) 0%, var(--shadow-red) 100%);
   overflow: hidden;
+  --home-button-bottom: var(--entry-action-bottom);
+  --home-version-bottom: var(--entry-tag-bottom);
+  --home-logo-bottom: calc(var(--home-button-bottom) + 410rpx);
+  --home-side-gutter: 64rpx;
 }
 
 .court-motif {
@@ -52,7 +56,7 @@
   bottom: 0;
   width: 100%;
   height: 100%;
-  --line-bottom-offset: 320rpx;
+  --line-bottom-offset: 330rpx;
   --line-gap: 200rpx;
   pointer-events: none;
   opacity: 0.1;
@@ -95,7 +99,7 @@
 }
 
 .content-layer {
-  position: relative;
+  position: static;
   z-index: 2;
   text-align: left;
   width: 100%;
@@ -103,19 +107,23 @@
   padding-left: 0;
   padding-right: 0;
   margin-top: auto;
-  margin-bottom: 140rpx;
+  margin-bottom: 0;
   margin-left: 0;
   margin-right: 0;
 }
 
 .logo-group {
-  margin-bottom: 160rpx;
+  position: absolute;
+  left: var(--home-side-gutter);
+  right: var(--home-side-gutter);
+  bottom: var(--home-logo-bottom);
+  z-index: 2;
+  margin-bottom: 0;
   margin-left: 0;
   margin-right: 0;
   padding-left: 0;
   padding-right: 0;
   text-align: left;
-  position: relative;
 }
 
 .brand-title {
@@ -156,16 +164,20 @@
 }
 
 .button-group {
+  position: absolute;
+  left: var(--home-side-gutter);
+  right: var(--home-side-gutter);
+  bottom: var(--home-button-bottom);
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
   align-items: stretch;
   gap: 32rpx;
-  width: 100%;
-  min-width: 100%;
+  width: auto;
+  min-width: 0;
   padding-left: 0;
   padding-right: 0;
-  margin-top: 80rpx;
+  margin-top: 0;
   margin-left: 0;
   margin-right: 0;
 }
@@ -288,8 +300,85 @@
 
 .version-tag {
   position: absolute;
-  bottom: 60rpx;
+  bottom: var(--home-version-bottom);
   font-size: 20rpx;
   color: var(--text-muted);
   letter-spacing: 2rpx;
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 2;
+}
+
+@media (min-width: 700px) {
+  .screen-container {
+    --home-side-gutter: 24px;
+    --home-logo-bottom: calc(var(--home-button-bottom) + 220px);
+    padding-left: 24px;
+    padding-right: 24px;
+    padding-top: 48px;
+  }
+
+  .content-layer {
+    max-width: 460px;
+    min-width: 0;
+    margin-left: auto;
+    margin-right: auto;
+  }
+
+  .court-motif {
+    --line-bottom-offset: 180px;
+    --line-gap: 100px;
+  }
+
+  .content-layer {
+    margin-bottom: 0;
+  }
+
+  .logo-group {
+    left: 50%;
+    right: auto;
+    width: calc(100% - 48px);
+    max-width: 460px;
+    transform: translateX(-50%);
+    margin-bottom: 0;
+  }
+
+  .brand-title,
+  .brand-dot {
+    font-size: 88px;
+  }
+
+  .brand-subtitle {
+    margin-top: 16px;
+    font-size: 16px;
+    letter-spacing: 6px;
+  }
+
+  .button-group {
+    left: 50%;
+    right: auto;
+    width: calc(100% - 48px);
+    max-width: 460px;
+    transform: translateX(-50%);
+    gap: 16px;
+    margin-top: 0;
+  }
+
+  .pill-button {
+    height: 52px;
+    font-size: 18px;
+    letter-spacing: 2px;
+  }
+
+  .pill-btn-icon {
+    right: 16px;
+    width: 24px;
+    height: 24px;
+  }
+
+  .version-tag {
+    bottom: var(--home-version-bottom);
+    font-size: 12px;
+    letter-spacing: 1px;
+  }
 }

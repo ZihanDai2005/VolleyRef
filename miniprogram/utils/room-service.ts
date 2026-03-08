@@ -39,6 +39,7 @@ export interface MatchState {
   timeoutTeam: "A" | "B" | "";
   timeoutEndAt: number;
   isFinished: boolean;
+  lastActionOpId?: string;
   undoStack: Array<{
     aScore: number;
     bScore: number;
@@ -61,6 +62,7 @@ export interface MatchState {
     timeoutTeam?: "A" | "B" | "";
     timeoutEndAt?: number;
     isFinished?: boolean;
+    lastActionOpId?: string;
   }>;
   logs: Array<{
     id: string;
@@ -69,6 +71,8 @@ export interface MatchState {
     team: "A" | "B" | "";
     note: string;
     setNo?: number;
+    opId?: string;
+    revertedOpId?: string;
   }>;
   setEndState?: {
     active: boolean;
@@ -439,6 +443,7 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
     base.match.timeoutEndAt = 0;
   }
   base.match.isFinished = !!(input.match && (input.match as any).isFinished);
+  (base.match as any).lastActionOpId = String((input.match && (input.match as any).lastActionOpId) || "");
 
   const rawUndoStack = input.match && (input.match as any).undoStack;
   if (Array.isArray(rawUndoStack)) {
@@ -465,6 +470,7 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
         timeoutTeam: item.timeoutTeam === "B" ? "B" : item.timeoutTeam === "A" ? "A" : "",
         timeoutEndAt: Math.max(0, Number(item.timeoutEndAt) || 0),
         isFinished: !!item.isFinished,
+        lastActionOpId: String(item.lastActionOpId || ""),
       };
     });
   } else {
@@ -482,6 +488,8 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
         team: team,
         note: String(item.note || ""),
         setNo: Math.max(1, Number(item.setNo) || 1),
+        opId: String(item.opId || ""),
+        revertedOpId: String(item.revertedOpId || ""),
       };
     });
   } else {

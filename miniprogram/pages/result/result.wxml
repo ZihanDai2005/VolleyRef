@@ -1,15 +1,18 @@
-<view class="result-page">
-  <view class="result-nav" style="padding-top: {{customNavTop}};">
-    <view class="result-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
-      <view class="result-nav-back-icon"></view>
+<view class="result-page" style="--custom-nav-offset: {{customNavOffset}};">
+  <view class="custom-nav-bg result-custom-nav-bg" style="height: {{customNavOffset}};"></view>
+  <view class="custom-nav result-custom-nav" style="top: {{customNavTop}}; left: 64rpx; right: 64rpx;">
+    <view class="custom-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
+      <view class="custom-nav-back-icon"></view>
     </view>
-    <view class="result-nav-title">比赛结果</view>
-    <view class="result-nav-space"></view>
+    <view class="result-custom-nav-title">比赛结果</view>
+    <view class="custom-nav-space"></view>
   </view>
-  <view class="result-nav-spacer" style="height: {{customNavOffset}};"></view>
+  <view class="result-nav-spacer" style="height: calc({{customNavOffset}} + 24rpx);"></view>
 
-  <scroll-view class="result-content" scroll-y="true" style="height: calc(100vh - {{customNavOffset}});">
-    <text class="result-countdown" wx:if="{{clearCountdownText}}">{{clearCountdownText}}</text>
+  <view class="result-content">
+    <view class="result-countdown-row" wx:if="{{clearCountdownText}}">
+      <text class="result-countdown">{{clearCountdownText}}</text>
+    </view>
 
     <view class="result-score-panel">
       <text class="result-section-label">大比分</text>
@@ -65,5 +68,5 @@
         <view class="result-log-empty" wx:if="{{!logs.length}}">暂无记录</view>
       </view>
     </view>
-  </scroll-view>
+  </view>
 </view>
