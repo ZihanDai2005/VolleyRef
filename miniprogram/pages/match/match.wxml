@@ -32,13 +32,23 @@
       <view class="score-pill-row">
         <view class="center-pill-switch">
           <view class="x-room-count-pill center-set-pill stat-num-pill score-switch-pill {{canStartMatch ? 'pill-hidden' : 'pill-visible'}}">{{setWinsText}}</view>
-          <view
-            class="x-room-count-pill center-set-pill start-match-entry-pill pressable score-switch-pill {{canStartMatch ? 'pill-visible' : 'pill-hidden'}}"
-            hover-class="tap-active"
-            bindtap="onOpenStartMatchModal"
-          >
-            <view class="start-match-entry-icon"></view>
-            <text class="start-match-entry-text">开始比赛</text>
+          <view class="start-match-entry-row score-switch-pill {{canStartMatch ? 'pill-visible' : 'pill-hidden'}}">
+            <view
+              class="x-room-count-pill center-set-pill reconfigure-entry-pill pressable"
+              hover-class="tap-active"
+              bindtap="onReconfigurePlayersTap"
+            >
+              <view class="reconfigure-entry-icon"></view>
+              <text class="reconfigure-entry-text">重新配置球员</text>
+            </view>
+            <view
+              class="x-room-count-pill center-set-pill start-match-entry-pill pressable"
+              hover-class="tap-active"
+              bindtap="onOpenStartMatchModal"
+            >
+              <view class="start-match-entry-icon"></view>
+              <text class="start-match-entry-text">开始比赛</text>
+            </view>
           </view>
         </view>
         <view class="timeout-live-pill {{timeoutActive ? 'active' : 'inactive'}}">

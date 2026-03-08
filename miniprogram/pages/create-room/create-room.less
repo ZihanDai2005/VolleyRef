@@ -208,7 +208,8 @@
   height: 108rpx;
   border-radius: 20rpx;
   background: var(--surface);
-  border: 2rpx solid var(--line);
+  border: 0;
+  box-shadow: inset 0 0 0 2rpx var(--line);
   box-sizing: border-box;
   display: flex;
   align-items: center;
@@ -282,7 +283,7 @@
 }
 
 .create-head-input-wrap-readonly {
-  border: 0;
+  box-shadow: none;
   background: var(--surface-soft);
 }
 
@@ -402,7 +403,7 @@
   display: grid;
   grid-template-columns: repeat(6, minmax(0, 1fr));
   row-gap: var(--draw-gap, 24rpx);
-  column-gap: 0;
+  column-gap: 7%;
   justify-content: stretch;
   justify-items: stretch;
   align-items: center;
@@ -410,8 +411,8 @@
 }
 
 .create-head-color-draw-wrap {
-  --draw-size: 48rpx;
-  --draw-gap: 18rpx;
+  --draw-size: 58rpx;
+  --draw-gap: 22rpx;
   --draw-icon-size: 36rpx;
   --draw-content-gap: calc(8rpx + 2px);
   --draw-side-text-w: 92rpx;
@@ -421,8 +422,8 @@
   margin-bottom: 0;
   width: 100%;
   display: grid;
-  grid-template-columns: 65% 30%;
-  column-gap: 5%;
+  grid-template-columns: 60% 30%;
+  column-gap: 10%;
   align-items: flex-start;
 }
 
@@ -827,31 +828,24 @@
 }
 
 .color-dot {
-  width: 42rpx;
-  height: 42rpx;
-  border-radius: 999rpx;
-  border: 2rpx solid transparent;
+  width: 100%;
+  height: 100%;
+  border-radius: 9999rpx;
+  border: 0;
   box-sizing: border-box;
   position: relative;
   overflow: hidden;
 }
 
 .create-head-color-options .color-option {
-  width: 48rpx;
-  height: 48rpx;
-  padding: 3rpx;
+  width: 100%;
+  height: 58rpx;
+  min-width: 0;
+  padding: 4rpx 0;
   box-sizing: border-box;
-  display: inline-flex;
+  display: flex;
   align-items: center;
   justify-content: center;
-}
-
-.create-head-color-options .color-option:nth-child(6n + 1) {
-  padding-left: 0;
-}
-
-.create-head-color-options .color-option:nth-child(6n) {
-  padding-right: 0;
 }
 
 .color-option.active .color-dot {

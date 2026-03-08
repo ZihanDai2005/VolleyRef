@@ -10,7 +10,7 @@
   </view>
 
   <view class="adjust-head-block">
-    <text class="adjust-head-title">确认下一局的球员配置</text>
+    <text class="adjust-head-title">{{adjustHeadTitle}}</text>
     <text class="adjust-head-hint">{{adjustHeadHint}}</text>
   </view>
 

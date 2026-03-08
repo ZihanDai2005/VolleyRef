@@ -269,6 +269,7 @@ function isDecidingSetByRule(setNo: number, wins: number): boolean {
 
 Page({
   currentSetNo: 1 as number,
+  isReconfigureEntry: false as boolean,
   draftSaveTimer: 0 as number,
   inputEditing: false as boolean,
   inputEditingReleaseTimer: 0 as number,
@@ -282,6 +283,7 @@ Page({
   rotateActionQueueB: Promise.resolve() as Promise<void>,
   data: {
     continueBtnFx: false,
+    adjustHeadTitle: "确认下一局的球员配置",
     adjustHeadHint: "已沿用上一局首发阵容并按结束时场区换边，点击球员可修改",
     isDecidingSet: false,
     isSwapped: false,
@@ -340,6 +342,8 @@ Page({
 
   onLoad(options: Record<string, string>) {
     const roomId = String((options && options.roomId) || "");
+    const entry = String((options && options.entry) || "");
+    this.isReconfigureEntry = entry === "reconfigure";
     if (!roomId) {
       wx.reLaunch({ url: "/pages/home/home" });
       return;
@@ -564,14 +568,14 @@ Page({
       : aManualMode
         ? "下一局场上队长 " + nextACaptainNo
         : aInitNo
-          ? "队长" + aInitNo + "不在场上 选择场上队长"
+          ? "队长" + aInitNo + "不在首发6人中 选择场上队长"
           : "选择场上队长";
     const bText = bAutoLocked
       ? "队长号码 " + nextBCaptainNo
       : bManualMode
         ? "下一局场上队长 " + nextBCaptainNo
         : bInitNo
-          ? "队长" + bInitNo + "不在场上 选择场上队长"
+          ? "队长" + bInitNo + "不在首发6人中 选择场上队长"
           : "选择场上队长";
 
     this.setData({
@@ -685,7 +689,10 @@ Page({
 
     this.setData(
       {
-        adjustHeadHint: buildAdjustHeadHint(roomSetNo, roomWins),
+        adjustHeadTitle: this.isReconfigureEntry ? "重新配置本局球员" : "确认下一局的球员配置",
+        adjustHeadHint: this.isReconfigureEntry
+          ? "已恢复本局此前配置，点击球员可继续调整"
+          : buildAdjustHeadHint(roomSetNo, roomWins),
         isDecidingSet: isDecidingSetByRule(roomSetNo, roomWins),
         teamAName: room.teamA.name || "甲",
         teamBName: room.teamB.name || "乙",
@@ -1016,6 +1023,18 @@ Page({
         }
         room.match.isSwapped = this.data.isSwapped;
         room.match.servingTeam = this.data.servingTeam;
+        (room.match as any).lineupAdjustLastCommitted = {
+          setNo: Math.max(1, Number(room.match.setNo || 1)),
+          isSwapped: this.data.isSwapped,
+          servingTeam: this.data.servingTeam === "B" ? "B" : "A",
+          teamAPlayers: clonePlayers(this.data.teamAPlayers),
+          teamBPlayers: clonePlayers(this.data.teamBPlayers),
+          teamACaptainNo: String(this.data.teamACaptainNo || ""),
+          teamBCaptainNo: String(this.data.teamBCaptainNo || ""),
+          teamAManualCaptainChosen: !!this.data.teamAManualCaptainChosen,
+          teamBManualCaptainChosen: !!this.data.teamBManualCaptainChosen,
+          savedAt: Date.now(),
+        };
         delete (room.match as any).setEndState;
         delete (room.match as any).lineupAdjustDraft;
         return room;

@@ -78,6 +78,7 @@ export interface MatchState {
     active: boolean;
     phase: "pending" | "lineup";
     ownerClientId: string;
+    source?: "set_end" | "reconfigure";
     setNo: number;
     matchFinished: boolean;
     summary: {
@@ -503,6 +504,7 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
       active: !!(rawSetEndState as any).active,
       phase: (rawSetEndState as any).phase === "lineup" ? "lineup" : "pending",
       ownerClientId: String((rawSetEndState as any).ownerClientId || ""),
+      source: (rawSetEndState as any).source === "reconfigure" ? "reconfigure" : "set_end",
       setNo: Math.max(1, Number((rawSetEndState as any).setNo) || 1),
       matchFinished: !!(rawSetEndState as any).matchFinished,
       summary: {

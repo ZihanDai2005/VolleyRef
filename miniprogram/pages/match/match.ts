@@ -138,6 +138,22 @@ function createLogId(): string {
   return String(Date.now()) + "-" + String(Math.floor(Math.random() * 100000));
 }
 
+function isNumberOnCourt(players: PlayerSlot[], number: string): boolean {
+  const target = normalizeNumberInput(number);
+  if (!target) {
+    return false;
+  }
+  return (players || []).some((p) => normalizeNumberInput(p.number) === target);
+}
+
+function isNumberInMain(players: PlayerSlot[], number: string): boolean {
+  const target = normalizeNumberInput(number);
+  if (!target) {
+    return false;
+  }
+  return (players || []).some((p) => MAIN_POSITIONS.indexOf(p.pos as MainPosition) >= 0 && normalizeNumberInput(p.number) === target);
+}
+
 function pad2(n: number): string {
   return n < 10 ? "0" + String(n) : String(n);
 }
@@ -661,7 +677,7 @@ Page({
     this.startPolling();
   },
 
-  openLineupAdjustOnce(roomId: string): boolean {
+  openLineupAdjustOnce(roomId: string, entry: "normal" | "reconfigure" = "normal"): boolean {
     const now = Date.now();
     const pages = getCurrentPages();
     const top = pages[pages.length - 1];
@@ -675,7 +691,7 @@ Page({
     this.openingLineup = true;
     this.lineupNavigateLockUntil = now + 4000;
     wx.navigateTo({
-      url: "/pages/lineup-adjust/lineup-adjust?roomId=" + roomId,
+      url: "/pages/lineup-adjust/lineup-adjust?roomId=" + roomId + "&entry=" + entry,
       complete: () => {
         setTimeout(() => {
           const latestPages = getCurrentPages();
@@ -772,6 +788,152 @@ Page({
   },
 
   onSetEndModalTap() {},
+
+  async onReconfigurePlayersTap() {
+    if (!this.data.canStartMatch || this.data.showSetEndModal) {
+      return;
+    }
+    if (this.setEndActionInFlight) {
+      return;
+    }
+    const roomId = String(this.data.roomId || "");
+    if (!roomId) {
+      return;
+    }
+    const ownerClientId = String(this.clientId || getApp<IAppOption>().globalData.clientId || "");
+    if (!ownerClientId) {
+      return;
+    }
+
+    this.setEndActionInFlight = true;
+    wx.showLoading({
+      title: "处理中",
+      mask: true,
+    });
+    try {
+      const updated = await updateRoomAsync(
+        roomId,
+        (room) => {
+          if (!room.match || room.match.isFinished) {
+            return room;
+          }
+          const roomSetNo = Math.max(1, Number(room.match.setNo || 1));
+          const preStart =
+            Number(room.match.aScore || 0) === 0 &&
+            Number(room.match.bScore || 0) === 0 &&
+            Math.max(0, Number((room.match as any).setTimerStartAt) || 0) <= 0 &&
+            Math.max(0, Number((room.match as any).setTimerElapsedMs) || 0) <= 0;
+          if (!preStart) {
+            return room;
+          }
+
+          const lastCommitted = (room.match as any).lineupAdjustLastCommitted || null;
+          const canUseLastCommitted =
+            !!lastCommitted &&
+            Number(lastCommitted.setNo || 0) === roomSetNo &&
+            Array.isArray(lastCommitted.teamAPlayers) &&
+            Array.isArray(lastCommitted.teamBPlayers);
+          const draftTeamAPlayers = canUseLastCommitted
+            ? clonePlayerList(lastCommitted.teamAPlayers as PlayerSlot[])
+            : clonePlayerList((room.teamA && room.teamA.players) || []);
+          const draftTeamBPlayers = canUseLastCommitted
+            ? clonePlayerList(lastCommitted.teamBPlayers as PlayerSlot[])
+            : clonePlayerList((room.teamB && room.teamB.players) || []);
+          const draftIsSwapped = canUseLastCommitted ? !!lastCommitted.isSwapped : !!room.match.isSwapped;
+          const draftServingTeam: TeamCode =
+            (canUseLastCommitted ? lastCommitted.servingTeam : room.match.servingTeam) === "B" ? "B" : "A";
+          const draftTeamACaptainNo = String(
+            (canUseLastCommitted ? lastCommitted.teamACaptainNo : "") ||
+              (room.match as any).teamACurrentCaptainNo ||
+              room.teamA.captainNo ||
+              ""
+          );
+          const draftTeamBCaptainNo = String(
+            (canUseLastCommitted ? lastCommitted.teamBCaptainNo : "") ||
+              (room.match as any).teamBCurrentCaptainNo ||
+              room.teamB.captainNo ||
+              ""
+          );
+          const initCaptainNoA = normalizeNumberInput(room.teamA.captainNo || "");
+          const initCaptainNoB = normalizeNumberInput(room.teamB.captainNo || "");
+          const inferredManualA =
+            !isNumberInMain(draftTeamAPlayers, initCaptainNoA) && isNumberOnCourt(draftTeamAPlayers, draftTeamACaptainNo);
+          const inferredManualB =
+            !isNumberInMain(draftTeamBPlayers, initCaptainNoB) && isNumberOnCourt(draftTeamBPlayers, draftTeamBCaptainNo);
+
+          room.teamA.players = clonePlayerList(draftTeamAPlayers);
+          room.teamB.players = clonePlayerList(draftTeamBPlayers);
+          (room.match as any).teamACurrentCaptainNo = draftTeamACaptainNo;
+          (room.match as any).teamBCurrentCaptainNo = draftTeamBCaptainNo;
+          room.match.isSwapped = draftIsSwapped;
+          room.match.servingTeam = draftServingTeam;
+          (room.match as any).setTimerStartAt = 0;
+          (room.match as any).setTimerElapsedMs = 0;
+
+          const previousSetNo = Math.max(1, roomSetNo - 1);
+          const summaries = ((room.match as any).setSummaries || {}) as Record<string, any>;
+          const previousSummary = summaries[String(previousSetNo)] || null;
+          (room.match as any).setEndState = {
+            active: true,
+            phase: "lineup",
+            ownerClientId: ownerClientId,
+            source: "reconfigure",
+            setNo: previousSetNo,
+            matchFinished: false,
+            summary: {
+              setNo: previousSetNo,
+              teamAName: String((previousSummary && previousSummary.teamAName) || room.teamA.name || "甲"),
+              teamBName: String((previousSummary && previousSummary.teamBName) || room.teamB.name || "乙"),
+              smallScoreA: Math.max(0, Number(previousSummary && previousSummary.smallScoreA) || 0),
+              smallScoreB: Math.max(0, Number(previousSummary && previousSummary.smallScoreB) || 0),
+              bigScoreA: Math.max(0, Number(previousSummary && previousSummary.bigScoreA) || Number(room.match.aSetWins || 0)),
+              bigScoreB: Math.max(0, Number(previousSummary && previousSummary.bigScoreB) || Number(room.match.bSetWins || 0)),
+              winnerName: String((previousSummary && previousSummary.winnerName) || ""),
+              durationText: String((previousSummary && previousSummary.durationText) || "00:00"),
+              matchFinished: false,
+            },
+          };
+          (room.match as any).lineupAdjustDraft = {
+            setNo: roomSetNo,
+            isSwapped: draftIsSwapped,
+            servingTeam: draftServingTeam,
+            teamAPlayers: clonePlayerList(draftTeamAPlayers),
+            teamBPlayers: clonePlayerList(draftTeamBPlayers),
+            teamACaptainNo: draftTeamACaptainNo,
+            teamBCaptainNo: draftTeamBCaptainNo,
+            teamAInitialCaptainNo: String(room.teamA.captainNo || ""),
+            teamBInitialCaptainNo: String(room.teamB.captainNo || ""),
+            teamAManualCaptainChosen: canUseLastCommitted ? !!lastCommitted.teamAManualCaptainChosen : inferredManualA,
+            teamBManualCaptainChosen: canUseLastCommitted ? !!lastCommitted.teamBManualCaptainChosen : inferredManualB,
+          };
+          return room;
+        },
+        { awaitCloud: true }
+      );
+      const latest = updated || (await getRoomAsync(roomId));
+      const latestState = latest && latest.match ? ((latest.match as any).setEndState || null) : null;
+      const latestSetNo = Math.max(1, Number(latest && latest.match && latest.match.setNo) || 1);
+      const latestDraft = latest && latest.match ? ((latest.match as any).lineupAdjustDraft || null) : null;
+      const acquired =
+        !!latestState &&
+        !!latestState.active &&
+        String(latestState.phase || "") === "lineup" &&
+        String(latestState.ownerClientId || "") === ownerClientId &&
+        !!latestDraft &&
+        Number(latestDraft.setNo || 0) === latestSetNo;
+      if (!acquired) {
+        await this.loadRoom(roomId, true);
+        return;
+      }
+      this.setData({ showSetEndModal: false, setEndWaiting: false });
+      this.openLineupAdjustOnce(roomId, "reconfigure");
+    } finally {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.setEndActionInFlight = false;
+    }
+  },
 
   onOpenStartMatchModal() {
     if (!this.data.canStartMatch || this.data.showSetEndModal) {
@@ -1703,6 +1865,7 @@ Page({
             active?: boolean;
             phase?: string;
             ownerClientId?: string;
+            source?: string;
             setNo?: number;
             matchFinished?: boolean;
             summary?: {
@@ -1719,14 +1882,17 @@ Page({
             };
           }
         | null;
+      const setEndSource = String((setEndState && setEndState.source) || "set_end");
+      const isReconfigureFlow = setEndSource === "reconfigure";
       const setEndActive = !!(setEndState && setEndState.active);
-      const canStartMatch = shouldShowStartMatchModal && !setEndActive;
+      const effectiveSetEndActive = setEndActive && !isReconfigureFlow;
+      const canStartMatch = shouldShowStartMatchModal && !effectiveSetEndActive;
       const setEndPhase = String((setEndState && setEndState.phase) || "pending");
       const setEndOwnerClientId = String((setEndState && setEndState.ownerClientId) || "");
       const currentClientId = String(this.clientId || getApp<IAppOption>().globalData.clientId || "");
-      const setEndWaiting = setEndActive && setEndPhase === "lineup" && setEndOwnerClientId !== currentClientId;
+      const setEndWaiting = effectiveSetEndActive && setEndPhase === "lineup" && setEndOwnerClientId !== currentClientId;
       const setSummary = (setEndState && setEndState.summary) || {};
-      const setEndMatchFinished = !!(setEndState && setEndState.matchFinished);
+      const setEndMatchFinished = effectiveSetEndActive && !!(setEndState && setEndState.matchFinished);
       this.timerStartAtMs = timerStartAt;
       this.timerElapsedBaseMs = timerElapsedMs;
       this.timeoutEndAtMs = timeoutActive ? timeoutEndAt : 0;
@@ -1782,7 +1948,7 @@ Page({
         setWinsText: setWinsText,
         canStartMatch: canStartMatch,
         isMatchFinished: !!room.match.isFinished,
-        showSetEndModal: setEndActive,
+        showSetEndModal: effectiveSetEndActive,
         setEndTitleTop: "第" + String(Math.max(1, Number(setSummary.setNo) || Number(setEndState && setEndState.setNo) || 1)) + "局结束",
         setEndTitleBottom: setEndMatchFinished ? "比赛结束" : "",
         setEndTeamAName: String(setSummary.teamAName || room.teamA.name || "甲"),
@@ -1894,7 +2060,7 @@ Page({
       }
       this.lastSeenLogId = latestLogId;
       if (
-        setEndActive &&
+        effectiveSetEndActive &&
         setEndPhase === "lineup" &&
         setEndOwnerClientId &&
         setEndOwnerClientId === currentClientId &&
@@ -2091,6 +2257,7 @@ Page({
               active: true,
               phase: "pending",
               ownerClientId: "",
+              source: "set_end",
               setNo: endedSetNo,
               matchFinished: true,
               summary: {
@@ -2111,6 +2278,7 @@ Page({
               active: true,
               phase: "pending",
               ownerClientId: "",
+              source: "set_end",
               setNo: endedSetNo,
               matchFinished: false,
               summary: {
