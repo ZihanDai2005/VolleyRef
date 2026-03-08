@@ -48,6 +48,7 @@ type RotateStep = {
   team: TeamCode;
   reverse: boolean;
 };
+type RotateDirectionHint = "forward" | "reverse" | "";
 type ConnState = "online" | "reconnecting" | "offline";
 
 const ALL_POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
@@ -424,6 +425,26 @@ function rotateMainMapOnce(map: TeamMainNoMap): TeamMainNoMap {
   return next;
 }
 
+function getForwardTargetPosBySource(sourcePos: MainPosition): MainPosition {
+  const target = MAIN_POSITIONS.find((pos) => (NUMBER_SOURCE_MAP[pos] as MainPosition) === sourcePos);
+  return (target || sourcePos) as MainPosition;
+}
+
+function getReverseTargetPosBySource(sourcePos: MainPosition): MainPosition {
+  const target = NUMBER_SOURCE_MAP[sourcePos] as MainPosition;
+  return MAIN_POSITIONS.indexOf(target) >= 0 ? target : sourcePos;
+}
+
+function resolveRotateDirection(before: TeamMainNoMap, after: TeamMainNoMap): RotateDirectionHint {
+  if (sameMainMap(after, rotateMainMapOnce(before))) {
+    return "forward";
+  }
+  if (sameMainMap(before, rotateMainMapOnce(after))) {
+    return "reverse";
+  }
+  return "";
+}
+
 function sameMainMap(a: TeamMainNoMap, b: TeamMainNoMap): boolean {
   return MAIN_POSITIONS.every((pos) => (a[pos] || "?") === (b[pos] || "?"));
 }
@@ -641,6 +662,9 @@ Page({
   roomMissingVerifyAt: 0 as number,
   roomMissingVerifyInFlight: false as boolean,
   roomClosedHandled: false as boolean,
+  rectCacheWarmupTimer: 0 as number,
+  rectCacheWarmupInFlight: false as boolean,
+  rotateActionInFlight: false as boolean,
 
   getConnState(): ConnState {
     const klass = String(this.data.connStatusClass || "");
@@ -684,11 +708,7 @@ Page({
     if (current === "online") {
       return;
     }
-    if (this.connSuccessStreak >= 2) {
-      this.setConnState("online");
-      return;
-    }
-    this.setConnState("reconnecting");
+    this.setConnState("online", { force: true });
   },
 
   markConnectionIssue() {
@@ -894,6 +914,7 @@ Page({
     this.startTimerTick();
     this.startRoomWatch();
     this.startPolling();
+    this.scheduleRectCacheWarmup(320);
   },
 
   openLineupAdjustOnce(roomId: string, entry: "normal" | "reconfigure" = "normal"): boolean {
@@ -930,6 +951,7 @@ Page({
 
   onHide() {
     setKeepScreenOnSafe(false);
+    this.clearRectCacheWarmup();
     this.clearRoomMissingRetry();
     this.stopConnWatchdog();
     this.stopRoomWatch();
@@ -940,6 +962,7 @@ Page({
 
   onUnload() {
     setKeepScreenOnSafe(false);
+    this.clearRectCacheWarmup();
     this.clearRoomMissingRetry();
     this.stopConnWatchdog();
     if (this.themeOff) {
@@ -1757,6 +1780,179 @@ Page({
     return out;
   },
 
+  getTeamMainOrderInView(team: TeamCode): MainPosition[] {
+    const teamASide: TeamCode = this.data.isSwapped ? "B" : "A";
+    return getMainOrderForTeam(team, teamASide);
+  },
+
+  estimateAxisStep(values: Array<number | null>, fallbackValues: Array<number | null>): number {
+    const collectStep = (arr: Array<number | null>) => {
+      const steps: number[] = [];
+      for (let i = 0; i < arr.length; i += 1) {
+        if (arr[i] == null) {
+          continue;
+        }
+        for (let j = i + 1; j < arr.length; j += 1) {
+          if (arr[j] == null) {
+            continue;
+          }
+          const span = j - i;
+          if (span <= 0) {
+            continue;
+          }
+          steps.push(((arr[j] as number) - (arr[i] as number)) / span);
+        }
+      }
+      return steps;
+    };
+    const steps = collectStep(values);
+    if (steps.length > 0) {
+      return steps.reduce((sum, n) => sum + n, 0) / steps.length;
+    }
+    const fallbackSteps = collectStep(fallbackValues);
+    if (fallbackSteps.length > 0) {
+      return fallbackSteps.reduce((sum, n) => sum + n, 0) / fallbackSteps.length;
+    }
+    return 0;
+  },
+
+  fillAxisValues(values: Array<number | null>, step: number, fallbackValues: Array<number | null>) {
+    const out = values.slice();
+    for (let i = 0; i < out.length; i += 1) {
+      if (out[i] == null && fallbackValues[i] != null) {
+        out[i] = fallbackValues[i];
+      }
+    }
+    for (let pass = 0; pass < out.length * 3; pass += 1) {
+      for (let i = 0; i < out.length; i += 1) {
+        if (out[i] != null) {
+          continue;
+        }
+        if (i > 0 && out[i - 1] != null && step) {
+          out[i] = (out[i - 1] as number) + step;
+          continue;
+        }
+        if (i < out.length - 1 && out[i + 1] != null && step) {
+          out[i] = (out[i + 1] as number) - step;
+          continue;
+        }
+        if (i > 0 && i < out.length - 1 && out[i - 1] != null && out[i + 1] != null) {
+          out[i] = ((out[i - 1] as number) + (out[i + 1] as number)) / 2;
+        }
+      }
+    }
+    return out;
+  },
+
+  completeTeamRectMapByGrid(team: TeamCode, primary: TeamRectMap, fallback: TeamRectMap): TeamRectMap {
+    const primaryCount = this.countRectMap(primary || {});
+    if (primaryCount <= 0) {
+      return this.mergeRectMapWithFallback(primary || {}, fallback || {});
+    }
+    const order = this.getTeamMainOrderInView(team);
+    const indexByPos: Partial<Record<MainPosition, number>> = {};
+    order.forEach((pos, idx) => {
+      indexByPos[pos] = idx;
+    });
+    const rowTopSamples: number[][] = [[], [], []];
+    const rowHeightSamples: number[][] = [[], [], []];
+    const colLeftSamples: number[][] = [[], []];
+    const colWidthSamples: number[][] = [[], []];
+    const fbRowTopSamples: number[][] = [[], [], []];
+    const fbRowHeightSamples: number[][] = [[], [], []];
+    const fbColLeftSamples: number[][] = [[], []];
+    const fbColWidthSamples: number[][] = [[], []];
+    const collect = (src: TeamRectMap, target: "primary" | "fallback") => {
+      MAIN_POSITIONS.forEach((pos) => {
+        const rect = src && src[pos];
+        if (!rect) {
+          return;
+        }
+        const idx = indexByPos[pos];
+        if (typeof idx !== "number") {
+          return;
+        }
+        const row = Math.floor(idx / 2);
+        const col = idx % 2;
+        if (row < 0 || row > 2 || col < 0 || col > 1) {
+          return;
+        }
+        if (target === "primary") {
+          rowTopSamples[row].push(rect.top);
+          rowHeightSamples[row].push(rect.height);
+          colLeftSamples[col].push(rect.left);
+          colWidthSamples[col].push(rect.width);
+        } else {
+          fbRowTopSamples[row].push(rect.top);
+          fbRowHeightSamples[row].push(rect.height);
+          fbColLeftSamples[col].push(rect.left);
+          fbColWidthSamples[col].push(rect.width);
+        }
+      });
+    };
+    collect(primary || {}, "primary");
+    collect(fallback || {}, "fallback");
+    const avg = (arr: number[]) => (arr.length ? arr.reduce((sum, n) => sum + n, 0) / arr.length : 0);
+    const toAxis = (samples: number[][]) => samples.map((s) => (s.length ? avg(s) : null));
+    const rowTop = toAxis(rowTopSamples) as Array<number | null>;
+    const rowHeight = toAxis(rowHeightSamples) as Array<number | null>;
+    const colLeft = toAxis(colLeftSamples) as Array<number | null>;
+    const colWidth = toAxis(colWidthSamples) as Array<number | null>;
+    const fbRowTop = toAxis(fbRowTopSamples) as Array<number | null>;
+    const fbRowHeight = toAxis(fbRowHeightSamples) as Array<number | null>;
+    const fbColLeft = toAxis(fbColLeftSamples) as Array<number | null>;
+    const fbColWidth = toAxis(fbColWidthSamples) as Array<number | null>;
+    const allWidth = colWidthSamples[0].concat(colWidthSamples[1], fbColWidthSamples[0], fbColWidthSamples[1]);
+    const allHeight = rowHeightSamples[0].concat(
+      rowHeightSamples[1],
+      rowHeightSamples[2],
+      fbRowHeightSamples[0],
+      fbRowHeightSamples[1],
+      fbRowHeightSamples[2]
+    );
+    const avgWidth = allWidth.length ? avg(allWidth) : 0;
+    const avgHeight = allHeight.length ? avg(allHeight) : 0;
+    const rowStep = this.estimateAxisStep(rowTop, fbRowTop) || (avgHeight > 0 ? avgHeight + 8 : 0);
+    const colStep = this.estimateAxisStep(colLeft, fbColLeft) || (avgWidth > 0 ? avgWidth + 8 : 0);
+    const rowTopFilled = this.fillAxisValues(rowTop, rowStep, fbRowTop);
+    const colLeftFilled = this.fillAxisValues(colLeft, colStep, fbColLeft);
+    const rowHeightFilled = this.fillAxisValues(rowHeight, 0, fbRowHeight).map((v) =>
+      v != null ? v : avgHeight > 0 ? avgHeight : 0
+    );
+    const colWidthFilled = this.fillAxisValues(colWidth, 0, fbColWidth).map((v) =>
+      v != null ? v : avgWidth > 0 ? avgWidth : 0
+    );
+    const out: TeamRectMap = {};
+    MAIN_POSITIONS.forEach((pos) => {
+      if (primary && primary[pos]) {
+        out[pos] = primary[pos];
+      }
+    });
+    MAIN_POSITIONS.forEach((pos) => {
+      if (out[pos]) {
+        return;
+      }
+      const idx = indexByPos[pos];
+      if (typeof idx !== "number") {
+        return;
+      }
+      const row = Math.floor(idx / 2);
+      const col = idx % 2;
+      const top = rowTopFilled[row];
+      const left = colLeftFilled[col];
+      const width = colWidthFilled[col];
+      const height = rowHeightFilled[row];
+      if (top != null && left != null && width > 0 && height > 0) {
+        out[pos] = { left, top, width, height };
+        return;
+      }
+      if (fallback && fallback[pos]) {
+        out[pos] = fallback[pos];
+      }
+    });
+    return out;
+  },
+
   getCachedTeamRectMap(team: TeamCode): TeamRectMap {
     return team === "A"
       ? (this.lastTeamARects as TeamRectMap)
@@ -1769,6 +1965,45 @@ Page({
       return;
     }
     this.lastTeamBRects = rects;
+  },
+
+  clearRectCacheWarmup() {
+    if (this.rectCacheWarmupTimer) {
+      clearTimeout(this.rectCacheWarmupTimer);
+      this.rectCacheWarmupTimer = 0;
+    }
+  },
+
+  scheduleRectCacheWarmup(delayMs = 0) {
+    if (this.rectCacheWarmupTimer || this.rectCacheWarmupInFlight) {
+      return;
+    }
+    this.rectCacheWarmupTimer = setTimeout(() => {
+      this.rectCacheWarmupTimer = 0;
+      void this.warmupTeamRectCache();
+    }, Math.max(0, Number(delayMs) || 0)) as unknown as number;
+  },
+
+  async warmupTeamRectCache() {
+    if (this.rectCacheWarmupInFlight || this.rotateMotionInFlightCount > 0) {
+      return;
+    }
+    this.rectCacheWarmupInFlight = true;
+    try {
+      await this.nextTickAsync();
+      const [rectsA, rectsB] = await Promise.all([
+        this.measureTeamMainPosRectsStable("A", 450),
+        this.measureTeamMainPosRectsStable("B", 450),
+      ]);
+      if (this.countRectMap(rectsA) > 0) {
+        this.setCachedTeamRectMap("A", rectsA);
+      }
+      if (this.countRectMap(rectsB) > 0) {
+        this.setCachedTeamRectMap("B", rectsB);
+      }
+    } finally {
+      this.rectCacheWarmupInFlight = false;
+    }
   },
 
   measureTeamMainPosRects(team: TeamCode) {
@@ -1808,9 +2043,13 @@ Page({
     let best: TeamRectMap = {};
     while (Date.now() - start < timeoutMs) {
       await this.nextTickAsync();
-      const rects = await this.measureTeamMainPosRects(team);
+      const measured = await this.measureTeamMainPosRects(team);
+      const rects = this.completeTeamRectMapByGrid(team, measured, this.getCachedTeamRectMap(team) || {});
       if (this.countRectMap(rects) >= this.countRectMap(best)) {
         best = rects;
+        if (this.countRectMap(best) > 0) {
+          this.setCachedTeamRectMap(team, best);
+        }
       }
       if (this.countRectMap(best) === MAIN_POSITIONS.length) {
         return best;
@@ -1840,7 +2079,10 @@ Page({
     return observerSide === "B" ? !rawRoomSwapped : !!rawRoomSwapped;
   },
 
-  applyLocalLineupFromRoom(room: any, options?: { observerSide?: "A" | "B"; hasOperationAuthority?: boolean }) {
+  applyLocalLineupFromRoom(
+    room: any,
+    options?: { observerSide?: "A" | "B"; hasOperationAuthority?: boolean; preHideTeams?: TeamCode[] }
+  ) {
     if (!room || !room.teamA || !room.teamB || !room.match) {
       return;
     }
@@ -1857,6 +2099,9 @@ Page({
     const currentTeamBCaptain = normalizeNumberInput(
       String((room.match as any).teamBCurrentCaptainNo || (room.teamB as any).captainNo || "")
     );
+    const preHideTeams = (options && Array.isArray(options.preHideTeams) ? options.preHideTeams : []) as TeamCode[];
+    const preHideA = preHideTeams.indexOf("A") >= 0;
+    const preHideB = preHideTeams.indexOf("B") >= 0;
     this.setData({
       isSwapped: nextSwapped,
       servingTeam: room.match.servingTeam === "B" ? "B" : "A",
@@ -1868,6 +2113,8 @@ Page({
       teamAMainGrid: buildMainGridByOrder(teamAPlayers, getMainOrderForTeam("A", teamASide)),
       teamBLibero: bRows.libero,
       teamBMainGrid: buildMainGridByOrder(teamBPlayers, getMainOrderForTeam("B", teamASide)),
+      hideTeamAMainNumbers: preHideA,
+      hideTeamBMainNumbers: preHideB,
     });
   },
 
@@ -1899,35 +2146,49 @@ Page({
     });
   },
 
-  async playTeamRotateMotion(team: TeamCode, beforeRects: TeamRectMap, beforeNoMap: TeamMainNoMap, captainNo: string) {
+  async playTeamRotateMotion(
+    team: TeamCode,
+    beforeRects: TeamRectMap,
+    beforeNoMap: TeamMainNoMap,
+    captainNo: string,
+    directionHint: RotateDirectionHint = ""
+  ) {
+    const clearTeamMotion = () => {
+      if (team === "A") {
+        this.setData({ hideTeamAMainNumbers: false, rotateFlyItemsA: [] });
+      } else {
+        this.setData({ hideTeamBMainNumbers: false, rotateFlyItemsB: [] });
+      }
+    };
     const cachedRects = this.getCachedTeamRectMap(team);
-    let mergedBeforeRects = this.mergeRectMapWithFallback(beforeRects || {}, cachedRects || {});
+    let mergedBeforeRects = this.completeTeamRectMapByGrid(team, beforeRects || {}, cachedRects || {});
     if (!mergedBeforeRects || MAIN_POSITIONS.every((pos) => !mergedBeforeRects[pos])) {
-      return;
+      const retryBeforeRects = await this.measureTeamMainPosRectsStable(team, 360);
+      mergedBeforeRects = this.completeTeamRectMapByGrid(team, retryBeforeRects || {}, this.getCachedTeamRectMap(team) || {});
+      if (!mergedBeforeRects || MAIN_POSITIONS.every((pos) => !mergedBeforeRects[pos])) {
+        clearTeamMotion();
+        this.scheduleRectCacheWarmup(80);
+        return;
+      }
     }
     this.rotateMotionInFlightCount += 1;
     try {
-      await this.nextTickAsync();
-      await this.delayAsync(10);
-      let afterRects = await this.measureTeamMainPosRectsStable(team, 1200);
-      afterRects = this.mergeRectMapWithFallback(afterRects || {}, mergedBeforeRects || {});
-      const afterNoMap = this.getTeamMainNumberMap(team);
-      const startItems: RotateFlyItem[] = [];
-      const endItems: RotateFlyItem[] = [];
+      const startSeeds: Array<{
+        sourcePos: MainPosition;
+        fromRect: TeamPosRect;
+        number: string;
+        isCaptain: boolean;
+        id: string;
+        baseStyle: string;
+      }> = [];
       MAIN_POSITIONS.forEach((sourcePos) => {
-        const number = beforeNoMap[sourcePos] || "?";
-        const targetPos = MAIN_POSITIONS.find((pos) => (afterNoMap[pos] || "?") === number);
-        if (!targetPos) {
-          return;
-        }
         const fromRect = mergedBeforeRects[sourcePos];
-        const toRect = afterRects[targetPos];
-        if (!fromRect || !toRect) {
+        if (!fromRect) {
           return;
         }
-        const dx = toRect.left - fromRect.left;
-        const dy = toRect.top - fromRect.top;
-        const id = team + "-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
+        const number = beforeNoMap[sourcePos] || "?";
+        const isCaptain =
+          normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
         const baseStyle =
           "left:" +
           String(fromRect.left) +
@@ -1938,20 +2199,91 @@ Page({
           "px;height:" +
           String(fromRect.height) +
           "px;";
-        startItems.push({
-          id,
-          team,
+        startSeeds.push({
+          sourcePos,
+          fromRect,
           number,
-          isCaptain: normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo),
-          style: baseStyle + "transform:translate(0,0);transition:none;",
+          isCaptain,
+          id: team + "-" + sourcePos + "-" + String(Date.now()) + "-" + String(startSeeds.length),
+          baseStyle,
         });
+      });
+      if (!startSeeds.length) {
+        clearTeamMotion();
+        this.scheduleRectCacheWarmup(80);
+        return;
+      }
+      const startItems: RotateFlyItem[] = startSeeds.map((seed) => ({
+        id: seed.id,
+        team,
+        number: seed.number,
+        isCaptain: seed.isCaptain,
+        style: seed.baseStyle + "transform:translate(0,0);transition:none;",
+      }));
+      if (team === "A") {
+        this.setData({ hideTeamAMainNumbers: true, rotateFlyItemsA: startItems });
+      } else {
+        this.setData({ hideTeamBMainNumbers: true, rotateFlyItemsB: startItems });
+      }
+      await this.nextTickAsync();
+      await this.delayAsync(10);
+      let afterRects = await this.measureTeamMainPosRectsStable(team, 1200);
+      afterRects = this.completeTeamRectMapByGrid(team, afterRects || {}, mergedBeforeRects || {});
+      const afterNoMap = this.getTeamMainNumberMap(team);
+      const endItems: RotateFlyItem[] = [];
+      const usedTargets = new Set<MainPosition>();
+      const targetBySource: Partial<Record<MainPosition, MainPosition>> = {};
+      if (directionHint) {
+        startSeeds.forEach((seed) => {
+          const targetPos =
+            directionHint === "forward"
+              ? getForwardTargetPosBySource(seed.sourcePos)
+              : getReverseTargetPosBySource(seed.sourcePos);
+          if (!afterRects[targetPos]) {
+            return;
+          }
+          targetBySource[seed.sourcePos] = targetPos;
+          usedTargets.add(targetPos);
+        });
+      }
+      startSeeds.forEach((seed) => {
+        if (targetBySource[seed.sourcePos]) {
+          return;
+        }
+        const targetPos =
+          MAIN_POSITIONS.find((pos) => !usedTargets.has(pos) && !!afterRects[pos] && (afterNoMap[pos] || "?") === seed.number) || null;
+        if (!targetPos) {
+          return;
+        }
+        targetBySource[seed.sourcePos] = targetPos;
+        usedTargets.add(targetPos);
+      });
+      const fallbackTargets = MAIN_POSITIONS.filter((pos) => !usedTargets.has(pos) && !!afterRects[pos]);
+      let fallbackIndex = 0;
+      startSeeds.forEach((seed) => {
+        if (targetBySource[seed.sourcePos]) {
+          return;
+        }
+        const targetPos = fallbackTargets[fallbackIndex] || null;
+        if (!targetPos) {
+          return;
+        }
+        fallbackIndex += 1;
+        targetBySource[seed.sourcePos] = targetPos;
+        usedTargets.add(targetPos);
+      });
+      startSeeds.forEach((seed) => {
+        const targetPos = targetBySource[seed.sourcePos] || seed.sourcePos;
+        const toRect = afterRects[targetPos] || seed.fromRect;
+        const dx = toRect.left - seed.fromRect.left;
+        const dy = toRect.top - seed.fromRect.top;
         endItems.push({
-          id,
+          id: seed.id,
           team,
-          number,
-          isCaptain: normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo),
+          number: seed.number,
+          isCaptain: seed.isCaptain,
           style:
-            baseStyle +
+            seed.baseStyle +
             "transform:translate(" +
             String(dx) +
             "px," +
@@ -1959,110 +2291,14 @@ Page({
             "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
         });
       });
-      if (!startItems.length) {
-        MAIN_POSITIONS.forEach((targetPos) => {
-          const sourcePos = NUMBER_SOURCE_MAP[targetPos] as MainPosition;
-          const number = beforeNoMap[sourcePos] || "?";
-          const fromRect = mergedBeforeRects[sourcePos];
-          const toRect = afterRects[targetPos];
-          if (!fromRect || !toRect) {
-            return;
-          }
-          const dx = toRect.left - fromRect.left;
-          const dy = toRect.top - fromRect.top;
-          const id = team + "-fallback-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
-          const baseStyle =
-            "left:" +
-            String(fromRect.left) +
-            "px;top:" +
-            String(fromRect.top) +
-            "px;width:" +
-            String(fromRect.width) +
-            "px;height:" +
-            String(fromRect.height) +
-            "px;";
-          const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
-          startItems.push({
-            id,
-            team,
-            number,
-            isCaptain,
-            style: baseStyle + "transform:translate(0,0);transition:none;",
-          });
-          endItems.push({
-            id,
-            team,
-            number,
-            isCaptain,
-            style:
-              baseStyle +
-              "transform:translate(" +
-              String(dx) +
-              "px," +
-              String(dy) +
-              "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
-          });
-        });
-      }
-      if (!startItems.length) {
-        await this.nextTickAsync();
-        await this.delayAsync(24);
-        afterRects = await this.measureTeamMainPosRectsStable(team, 220);
-        afterRects = this.mergeRectMapWithFallback(afterRects || {}, mergedBeforeRects || {});
-        MAIN_POSITIONS.forEach((targetPos) => {
-          const sourcePos = NUMBER_SOURCE_MAP[targetPos] as MainPosition;
-          const number = beforeNoMap[sourcePos] || "?";
-          const fromRect = mergedBeforeRects[sourcePos];
-          const toRect = afterRects[targetPos];
-          if (!fromRect || !toRect) {
-            return;
-          }
-          const dx = toRect.left - fromRect.left;
-          const dy = toRect.top - fromRect.top;
-          const id = team + "-retry-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
-          const baseStyle =
-            "left:" +
-            String(fromRect.left) +
-            "px;top:" +
-            String(fromRect.top) +
-            "px;width:" +
-            String(fromRect.width) +
-            "px;height:" +
-            String(fromRect.height) +
-            "px;";
-          const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
-          startItems.push({
-            id,
-            team,
-            number,
-            isCaptain,
-            style: baseStyle + "transform:translate(0,0);transition:none;",
-          });
-          endItems.push({
-            id,
-            team,
-            number,
-            isCaptain,
-            style:
-              baseStyle +
-              "transform:translate(" +
-              String(dx) +
-              "px," +
-              String(dy) +
-              "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
-          });
-        });
-      }
-      if (!startItems.length) {
+      if (!endItems.length) {
+        clearTeamMotion();
+        this.scheduleRectCacheWarmup(80);
         return;
       }
       this.setCachedTeamRectMap(team, afterRects);
-      if (team === "A") {
-        this.setData({ hideTeamAMainNumbers: true, rotateFlyItemsA: startItems });
-      } else {
-        this.setData({ hideTeamBMainNumbers: true, rotateFlyItemsB: startItems });
-      }
       await this.nextTickAsync();
+      await this.delayAsync(16);
       if (team === "A") {
         this.setData({ rotateFlyItemsA: endItems });
       } else {
@@ -2074,6 +2310,7 @@ Page({
       } else {
         this.setData({ hideTeamBMainNumbers: false, rotateFlyItemsB: [] });
       }
+      this.scheduleRectCacheWarmup(50);
     } finally {
       this.rotateMotionInFlightCount = Math.max(0, this.rotateMotionInFlightCount - 1);
       if (this.rotateMotionInFlightCount === 0 && !this.roomLoadInFlight && this.roomLoadPending) {
@@ -2088,7 +2325,7 @@ Page({
   },
 
   async loadRoom(roomId: string, force: boolean, localOnly = false) {
-    if (this.rotateMotionInFlightCount > 0) {
+    if (this.rotateMotionInFlightCount > 0 || this.rotateActionInFlight) {
       this.roomLoadPending = true;
       this.roomLoadPendingForce = this.roomLoadPendingForce || force;
       return;
@@ -2314,12 +2551,17 @@ Page({
       const isReconfigureFlow = setEndSource === "reconfigure";
       const setEndActive = !!(setEndState && setEndState.active);
       const effectiveSetEndActive = setEndActive && !isReconfigureFlow;
+      // 局结束弹窗已出现时，保持当前页底层比赛展示不被“下一局初始化快照”打断，
+      // 但不影响此前已经发生的合法轮转/加分本地动画。
+      const freezeSetEndDisplay = effectiveSetEndActive && this.data.updatedAt > 0;
       const canStartMatch = shouldShowStartMatchModal && !effectiveSetEndActive;
       const setEndPhase = String((setEndState && setEndState.phase) || "pending");
       const setEndOwnerClientId = String((setEndState && setEndState.ownerClientId) || "");
       const setEndWaiting = effectiveSetEndActive && setEndPhase === "lineup" && setEndOwnerClientId !== currentClientId;
       const setSummary = (setEndState && setEndState.summary) || {};
       const setEndMatchFinished = effectiveSetEndActive && !!(setEndState && setEndState.matchFinished);
+      const effectiveShouldSwapAnimate = !freezeSetEndDisplay && shouldSwapAnimate;
+      const effectiveUseReplayQueue = !freezeSetEndDisplay && useReplayQueue;
       this.timerStartAtMs = timerStartAt;
       this.timerElapsedBaseMs = timerElapsedMs;
       this.timeoutEndAtMs = timeoutActive ? timeoutEndAt : 0;
@@ -2338,7 +2580,7 @@ Page({
       wx.setNavigationBarTitle({
         title: "裁判团队编号 " + roomId,
       });
-      if (shouldSwapAnimate) {
+      if (effectiveShouldSwapAnimate) {
         this.setData({ switchingOut: true, switchingIn: false });
         await this.delayAsync(120);
       }
@@ -2357,24 +2599,24 @@ Page({
         teamBCaptainNo: currentTeamBCaptain,
         teamARGB: hexToRgbTriplet(teamAColor),
         teamBRGB: hexToRgbTriplet(teamBColor),
-        aScore: leftScore,
-        bScore: rightScore,
-        lastScoringTeam: displayLastScoringTeam,
-        setTimerText: timerText,
-        servingTeam: room.match.servingTeam,
-        setNo: room.match.setNo || 1,
-        aSetWins: room.match.aSetWins || 0,
-        bSetWins: room.match.bSetWins || 0,
-        teamATimeoutCount: teamATimeoutCount,
-        teamBTimeoutCount: teamBTimeoutCount,
-        timeoutActive: timeoutActive,
-        timeoutTeam: timeoutActive ? timeoutTeam : "",
-        timeoutLeftText: timeoutLeftText,
-        setNoText: setNoText,
+        aScore: freezeSetEndDisplay ? Number(this.data.aScore || 0) : leftScore,
+        bScore: freezeSetEndDisplay ? Number(this.data.bScore || 0) : rightScore,
+        lastScoringTeam: freezeSetEndDisplay ? this.data.lastScoringTeam : displayLastScoringTeam,
+        setTimerText: freezeSetEndDisplay ? String(this.data.setTimerText || "00:00") : timerText,
+        servingTeam: freezeSetEndDisplay ? this.data.servingTeam : room.match.servingTeam,
+        setNo: freezeSetEndDisplay ? Number(this.data.setNo || 1) : room.match.setNo || 1,
+        aSetWins: freezeSetEndDisplay ? Number(this.data.aSetWins || 0) : room.match.aSetWins || 0,
+        bSetWins: freezeSetEndDisplay ? Number(this.data.bSetWins || 0) : room.match.bSetWins || 0,
+        teamATimeoutCount: freezeSetEndDisplay ? Number(this.data.teamATimeoutCount || 0) : teamATimeoutCount,
+        teamBTimeoutCount: freezeSetEndDisplay ? Number(this.data.teamBTimeoutCount || 0) : teamBTimeoutCount,
+        timeoutActive: freezeSetEndDisplay ? !!this.data.timeoutActive : timeoutActive,
+        timeoutTeam: freezeSetEndDisplay ? this.data.timeoutTeam : timeoutActive ? timeoutTeam : "",
+        timeoutLeftText: freezeSetEndDisplay ? String(this.data.timeoutLeftText || "暂停 30s") : timeoutLeftText,
+        setNoText: freezeSetEndDisplay ? String(this.data.setNoText || "第1局") : setNoText,
         matchModeText: matchModeText,
-        setWinsText: setWinsText,
-        canStartMatch: canStartMatch,
-        isMatchFinished: !!room.match.isFinished,
+        setWinsText: freezeSetEndDisplay ? String(this.data.setWinsText || "0 : 0") : setWinsText,
+        canStartMatch: freezeSetEndDisplay ? !!this.data.canStartMatch : canStartMatch,
+        isMatchFinished: freezeSetEndDisplay ? !!this.data.isMatchFinished : !!room.match.isFinished,
         showSetEndModal: effectiveSetEndActive,
         setEndTitleTop: "第" + String(Math.max(1, Number(setSummary.setNo) || Number(setEndState && setEndState.setNo) || 1)) + "局结束",
         setEndTitleBottom: setEndMatchFinished ? "比赛结束" : "",
@@ -2394,23 +2636,23 @@ Page({
         controlRole: controlRole,
         hasOperationAuthority: controlRole === "operator",
         observerViewSide: observerViewSide,
-        rawRoomSwapped: roomSwapped,
-        isSwapped: nextSwapped,
-        teamAPlayers: useReplayQueue ? prevAPlayers : room.teamA.players,
-        teamBPlayers: useReplayQueue ? prevBPlayers : room.teamB.players,
-        teamALibero: useReplayQueue ? prevARows.libero : aRows.libero,
-        teamAMainGrid: useReplayQueue ? prevAMainGrid : aMainGrid,
-        teamBLibero: useReplayQueue ? prevBRows.libero : bRows.libero,
-        teamBMainGrid: useReplayQueue ? prevBMainGrid : bMainGrid,
+        rawRoomSwapped: freezeSetEndDisplay ? !!this.data.rawRoomSwapped : roomSwapped,
+        isSwapped: freezeSetEndDisplay ? !!this.data.isSwapped : nextSwapped,
+        teamAPlayers: freezeSetEndDisplay ? this.data.teamAPlayers : effectiveUseReplayQueue ? prevAPlayers : room.teamA.players,
+        teamBPlayers: freezeSetEndDisplay ? this.data.teamBPlayers : effectiveUseReplayQueue ? prevBPlayers : room.teamB.players,
+        teamALibero: freezeSetEndDisplay ? this.data.teamALibero : effectiveUseReplayQueue ? prevARows.libero : aRows.libero,
+        teamAMainGrid: freezeSetEndDisplay ? this.data.teamAMainGrid : effectiveUseReplayQueue ? prevAMainGrid : aMainGrid,
+        teamBLibero: freezeSetEndDisplay ? this.data.teamBLibero : effectiveUseReplayQueue ? prevBRows.libero : bRows.libero,
+        teamBMainGrid: freezeSetEndDisplay ? this.data.teamBMainGrid : effectiveUseReplayQueue ? prevBMainGrid : bMainGrid,
         logs: logsForSet,
         logSetSwitchVisible: logSetSwitchVisible,
         logSetOptions: this.buildLogSetOptions(availableLogSets),
         selectedLogSet: selectedLogSet,
         updatedAt: room.updatedAt,
         switchingOut: false,
-        switchingIn: shouldSwapAnimate,
+        switchingIn: effectiveShouldSwapAnimate,
       });
-      if (controlRole !== "operator") {
+      if (!freezeSetEndDisplay && controlRole !== "operator") {
         const latestLocalObserverSide =
           this.observerViewSideLocal === "A" || this.observerViewSideLocal === "B"
             ? this.observerViewSideLocal
@@ -2424,12 +2666,12 @@ Page({
           });
         }
       }
-      if (shouldSwapAnimate) {
+      if (effectiveShouldSwapAnimate) {
         setTimeout(() => {
           this.setData({ switchingIn: false });
         }, 220);
       }
-      if (useReplayQueue) {
+      if (effectiveUseReplayQueue) {
         let tempAPlayers = clonePlayerList(prevAPlayers);
         let tempBPlayers = clonePlayerList(prevBPlayers);
         for (let i = 0; i < rotateReplayQueue.length; ) {
@@ -2438,19 +2680,27 @@ Page({
           const canParallel = !!nextStep && nextStep.team !== step.team;
 
           const measuredBeforeRects1 = await this.measureTeamMainPosRectsStable(step.team, 1200);
-          const beforeRects1 = this.mergeRectMapWithFallback(measuredBeforeRects1 || {}, this.getCachedTeamRectMap(step.team));
+          const beforeRects1 = this.completeTeamRectMapByGrid(
+            step.team,
+            measuredBeforeRects1 || {},
+            this.getCachedTeamRectMap(step.team)
+          );
+          const canAnimateStep1 = this.countRectMap(beforeRects1 || {}) > 0;
           const beforeNoMap1 = this.getTeamMainNumberMap(step.team);
           const beforeCaptain1 = step.team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
 
           let beforeRects2: TeamRectMap | null = null;
           let beforeNoMap2: TeamMainNoMap | null = null;
           let beforeCaptain2 = "";
+          let canAnimateStep2 = false;
           if (canParallel && nextStep) {
             const measuredBeforeRects2 = await this.measureTeamMainPosRectsStable(nextStep.team, 1200);
-            beforeRects2 = this.mergeRectMapWithFallback(
+            beforeRects2 = this.completeTeamRectMapByGrid(
+              nextStep.team,
               measuredBeforeRects2 || {},
               this.getCachedTeamRectMap(nextStep.team)
             );
+            canAnimateStep2 = this.countRectMap(beforeRects2 || {}) > 0;
             beforeNoMap2 = this.getTeamMainNumberMap(nextStep.team);
             beforeCaptain2 = nextStep.team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
           }
@@ -2470,6 +2720,10 @@ Page({
 
           const tempARows = buildTeamRows(tempAPlayers);
           const tempBRows = buildTeamRows(tempBPlayers);
+          const preHideA =
+            (step.team === "A" && canAnimateStep1) || !!(canParallel && nextStep && nextStep.team === "A" && canAnimateStep2);
+          const preHideB =
+            (step.team === "B" && canAnimateStep1) || !!(canParallel && nextStep && nextStep.team === "B" && canAnimateStep2);
           this.setData({
             teamAPlayers: tempAPlayers,
             teamBPlayers: tempBPlayers,
@@ -2477,16 +2731,36 @@ Page({
             teamAMainGrid: buildMainGridByOrder(tempAPlayers, getMainOrderForTeam("A", teamASide)),
             teamBLibero: tempBRows.libero,
             teamBMainGrid: buildMainGridByOrder(tempBPlayers, getMainOrderForTeam("B", teamASide)),
+            hideTeamAMainNumbers: preHideA,
+            hideTeamBMainNumbers: preHideB,
           });
 
           if (canParallel && nextStep && beforeRects2 && beforeNoMap2) {
             await Promise.all([
-              this.playTeamRotateMotion(step.team, beforeRects1, beforeNoMap1, beforeCaptain1),
-              this.playTeamRotateMotion(nextStep.team, beforeRects2, beforeNoMap2, beforeCaptain2),
+              this.playTeamRotateMotion(
+                step.team,
+                beforeRects1,
+                beforeNoMap1,
+                beforeCaptain1,
+                step.reverse ? "reverse" : "forward"
+              ),
+              this.playTeamRotateMotion(
+                nextStep.team,
+                beforeRects2,
+                beforeNoMap2,
+                beforeCaptain2,
+                nextStep.reverse ? "reverse" : "forward"
+              ),
             ]);
             i += 2;
           } else {
-            await this.playTeamRotateMotion(step.team, beforeRects1, beforeNoMap1, beforeCaptain1);
+            await this.playTeamRotateMotion(
+              step.team,
+              beforeRects1,
+              beforeNoMap1,
+              beforeCaptain1,
+              step.reverse ? "reverse" : "forward"
+            );
             i += 1;
           }
         }
@@ -2505,6 +2779,7 @@ Page({
       if (autoAnimateB && beforeBRects && beforeBNoMap) {
         await this.playTeamRotateMotion("B", beforeBRects, beforeBNoMap, beforeBCaptain);
       }
+      this.scheduleRectCacheWarmup(36);
       this.lastSeenLogId = latestLogId;
       if (
         effectiveSetEndActive &&
@@ -2576,242 +2851,269 @@ Page({
       return;
     }
     const roomId = this.data.roomId;
+    const shouldGuardRotateAction = type === "add" && this.data.servingTeam !== team;
+    let rotateLockHeld = false;
+    const releaseRotateLock = () => {
+      if (!rotateLockHeld) {
+        return;
+      }
+      this.rotateActionInFlight = false;
+      rotateLockHeld = false;
+    };
+    if (shouldGuardRotateAction) {
+      this.rotateActionInFlight = true;
+      rotateLockHeld = true;
+    }
     let rotatedTeam: TeamCode | "" = "";
     let needDecidingSetSwitchChoice = false;
     let blockedByTimeout = false;
     let blockedByMaxScore = false;
-    const beforeRotateRects =
-      type === "add" && this.data.servingTeam !== team ? await this.measureTeamMainPosRectsStable(team, 1000) : null;
-    const beforeRotateNoMap = beforeRotateRects ? this.getTeamMainNumberMap(team) : null;
-    const beforeRotateCaptain = beforeRotateRects ? (team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo) : "";
+    try {
+      const beforeRotateRects = shouldGuardRotateAction ? await this.measureTeamMainPosRectsStable(team, 1000) : null;
+      const beforeRotateNoMap = beforeRotateRects ? this.getTeamMainNumberMap(team) : null;
+      const beforeRotateCaptain = beforeRotateRects ? (team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo) : "";
 
-    const next = await updateRoomAsync(roomId, (room) => {
-      const opId = createLogId();
-      (room.match as any).currentOpId = opId;
-      if (room.match.isFinished) {
-        return room;
-      }
-      if (type === "add") {
-        if (!room.match.setTimerStartAt) {
+      const next = await updateRoomAsync(roomId, (room) => {
+        const opId = createLogId();
+        (room.match as any).currentOpId = opId;
+        if (room.match.isFinished) {
           return room;
         }
-        if (!!(room.match as any).timeoutActive && Number((room.match as any).timeoutEndAt || 0) > Date.now()) {
-          blockedByTimeout = true;
-          return room;
-        }
-        if ((team === "A" ? Number(room.match.aScore || 0) : Number(room.match.bScore || 0)) >= 99) {
-          blockedByMaxScore = true;
-          return room;
-        }
-        pushUndoSnapshot(room);
-
-        if (team === "A") {
-          room.match.aScore += 1;
-        } else {
-          room.match.bScore += 1;
-        }
-        room.match.lastScoringTeam = team;
-        appendMatchLog(
-          room,
-          "score_add",
-          (team === "A" ? room.teamA.name : room.teamB.name) +
-            " +1（" +
-            String(room.match.aScore) +
-            ":" +
-            String(room.match.bScore) +
-            "）",
-          team,
-          opId
-        );
-
-        if (room.match.servingTeam !== team) {
-          rotateTeamAndLog(room, team, "轮转");
-          rotatedTeam = team;
-          room.match.servingTeam = team;
-        }
-
-        if (shouldPromptSwitchAtEight(room)) {
-          room.match.decidingSetEightHandled = true;
-          needDecidingSetSwitchChoice = true;
-        }
-
-        const target = getSetTargetScore(room);
-        const diff = room.match.aScore - room.match.bScore;
-        let setWinner: TeamCode | "" = "";
-        if (room.match.aScore >= target && diff >= 2) {
-          setWinner = "A";
-        } else if (room.match.bScore >= target && diff <= -2) {
-          setWinner = "B";
-        }
-
-        if (setWinner) {
-          const endedSetNo = Number(room.match.setNo || 1);
-          const endedScoreA = Number(room.match.aScore || 0);
-          const endedScoreB = Number(room.match.bScore || 0);
-          const startedAt = Number(room.match.setTimerStartAt) || 0;
-          const baseElapsed = Number(room.match.setTimerElapsedMs) || 0;
-          const finalElapsed = startedAt > 0 ? baseElapsed + (Date.now() - startedAt) : baseElapsed;
-          room.match.setTimerElapsedMs = finalElapsed;
-          room.match.setTimerStartAt = 0;
-          (room.match as any).timeoutActive = false;
-          (room.match as any).timeoutTeam = "";
-          (room.match as any).timeoutEndAt = 0;
-          const setElapsedText = formatDurationMMSS(finalElapsed);
-          if (!(room.match as any).setSummaries || typeof (room.match as any).setSummaries !== "object") {
-            (room.match as any).setSummaries = {};
+        if (type === "add") {
+          if (!room.match.setTimerStartAt) {
+            return room;
           }
-          (room.match as any).setSummaries[String(endedSetNo)] = {
-            setNo: endedSetNo,
-            teamAName: String(room.teamA.name || "甲"),
-            teamBName: String(room.teamB.name || "乙"),
-            smallScoreA: endedScoreA,
-            smallScoreB: endedScoreB,
-            bigScoreA: Number(room.match.aSetWins || 0) + (setWinner === "A" ? 1 : 0),
-            bigScoreB: Number(room.match.bSetWins || 0) + (setWinner === "B" ? 1 : 0),
-            winnerName: setWinner === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙"),
-            durationText: setElapsedText,
-            matchFinished: false,
-          };
-          if (setWinner === "A") {
-            room.match.aSetWins += 1;
+          if (!!(room.match as any).timeoutActive && Number((room.match as any).timeoutEndAt || 0) > Date.now()) {
+            blockedByTimeout = true;
+            return room;
+          }
+          if ((team === "A" ? Number(room.match.aScore || 0) : Number(room.match.bScore || 0)) >= 99) {
+            blockedByMaxScore = true;
+            return room;
+          }
+          pushUndoSnapshot(room);
+
+          if (team === "A") {
+            room.match.aScore += 1;
           } else {
-            room.match.bSetWins += 1;
+            room.match.bScore += 1;
           }
-          (room.match as any).setSummaries[String(endedSetNo)].bigScoreA = Number(room.match.aSetWins || 0);
-          (room.match as any).setSummaries[String(endedSetNo)].bigScoreB = Number(room.match.bSetWins || 0);
+          room.match.lastScoringTeam = team;
           appendMatchLog(
             room,
-            "set_end",
-            "第" +
-              String(endedSetNo) +
-              "局结束：" +
-              (setWinner === "A" ? room.teamA.name : room.teamB.name) +
-              " 胜（" +
-              String(endedScoreA) +
+            "score_add",
+            (team === "A" ? room.teamA.name : room.teamB.name) +
+              " +1（" +
+              String(room.match.aScore) +
               ":" +
-              String(endedScoreB) +
+              String(room.match.bScore) +
               "）",
-            setWinner,
+            team,
             opId
           );
 
-          const reachedWins =
-            setWinner === "A"
-              ? room.match.aSetWins >= room.settings.wins
-              : room.match.bSetWins >= room.settings.wins;
-          if (reachedWins) {
-            room.match.isFinished = true;
-            const matchWinnerName = setWinner === "A" ? room.teamA.name : room.teamB.name;
-            (room.match as any).setEndState = {
-              active: true,
-              phase: "pending",
-              ownerClientId: "",
-              source: "set_end",
-              setNo: endedSetNo,
-              matchFinished: true,
-              summary: {
-                setNo: endedSetNo,
-                teamAName: room.teamA.name,
-                teamBName: room.teamB.name,
-                smallScoreA: endedScoreA,
-                smallScoreB: endedScoreB,
-                bigScoreA: room.match.aSetWins,
-                bigScoreB: room.match.bSetWins,
-                winnerName: matchWinnerName,
-                durationText: setElapsedText,
-                matchFinished: true,
-              },
-            };
-          } else {
-            (room.match as any).setEndState = {
-              active: true,
-              phase: "pending",
-              ownerClientId: "",
-              source: "set_end",
-              setNo: endedSetNo,
-              matchFinished: false,
-              summary: {
-                setNo: endedSetNo,
-                teamAName: room.teamA.name,
-                teamBName: room.teamB.name,
-                smallScoreA: endedScoreA,
-                smallScoreB: endedScoreB,
-                bigScoreA: room.match.aSetWins,
-                bigScoreB: room.match.bSetWins,
-                winnerName: setWinner === "A" ? room.teamA.name : room.teamB.name,
-                durationText: setElapsedText,
-                matchFinished: false,
-              },
-            };
-            room.match.setNo += 1;
-            room.match.aScore = 0;
-            room.match.bScore = 0;
-            room.match.lastScoringTeam = "";
-            room.match.setTimerStartAt = 0;
-            // 小局结束后先保持上一局局时间，等待中场配置页返回比赛后再清零。
+          if (room.match.servingTeam !== team) {
+            rotateTeamAndLog(room, team, "轮转");
+            rotatedTeam = team;
+            room.match.servingTeam = team;
+          }
+
+          if (shouldPromptSwitchAtEight(room)) {
+            room.match.decidingSetEightHandled = true;
+            needDecidingSetSwitchChoice = true;
+          }
+
+          const target = getSetTargetScore(room);
+          const diff = room.match.aScore - room.match.bScore;
+          let setWinner: TeamCode | "" = "";
+          if (room.match.aScore >= target && diff >= 2) {
+            setWinner = "A";
+          } else if (room.match.bScore >= target && diff <= -2) {
+            setWinner = "B";
+          }
+
+          if (setWinner) {
+            const endedSetNo = Number(room.match.setNo || 1);
+            const endedScoreA = Number(room.match.aScore || 0);
+            const endedScoreB = Number(room.match.bScore || 0);
+            const startedAt = Number(room.match.setTimerStartAt) || 0;
+            const baseElapsed = Number(room.match.setTimerElapsedMs) || 0;
+            const finalElapsed = startedAt > 0 ? baseElapsed + (Date.now() - startedAt) : baseElapsed;
             room.match.setTimerElapsedMs = finalElapsed;
-            room.match.servingTeam = setWinner;
-            room.match.isSwapped = false;
-            room.match.decidingSetEightHandled = false;
+            room.match.setTimerStartAt = 0;
             (room.match as any).timeoutActive = false;
             (room.match as any).timeoutTeam = "";
             (room.match as any).timeoutEndAt = 0;
-            appendMatchLog(room, "next_set", "进入第" + String(room.match.setNo) + "局", setWinner, opId);
+            const setElapsedText = formatDurationMMSS(finalElapsed);
+            if (!(room.match as any).setSummaries || typeof (room.match as any).setSummaries !== "object") {
+              (room.match as any).setSummaries = {};
+            }
+            (room.match as any).setSummaries[String(endedSetNo)] = {
+              setNo: endedSetNo,
+              teamAName: String(room.teamA.name || "甲"),
+              teamBName: String(room.teamB.name || "乙"),
+              smallScoreA: endedScoreA,
+              smallScoreB: endedScoreB,
+              bigScoreA: Number(room.match.aSetWins || 0) + (setWinner === "A" ? 1 : 0),
+              bigScoreB: Number(room.match.bSetWins || 0) + (setWinner === "B" ? 1 : 0),
+              winnerName: setWinner === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙"),
+              durationText: setElapsedText,
+              matchFinished: false,
+            };
+            if (setWinner === "A") {
+              room.match.aSetWins += 1;
+            } else {
+              room.match.bSetWins += 1;
+            }
+            (room.match as any).setSummaries[String(endedSetNo)].bigScoreA = Number(room.match.aSetWins || 0);
+            (room.match as any).setSummaries[String(endedSetNo)].bigScoreB = Number(room.match.bSetWins || 0);
+            appendMatchLog(
+              room,
+              "set_end",
+              "第" +
+                String(endedSetNo) +
+                "局结束：" +
+                (setWinner === "A" ? room.teamA.name : room.teamB.name) +
+                " 胜（" +
+                String(endedScoreA) +
+                ":" +
+                String(endedScoreB) +
+                "）",
+              setWinner,
+              opId
+            );
+
+            const reachedWins =
+              setWinner === "A"
+                ? room.match.aSetWins >= room.settings.wins
+                : room.match.bSetWins >= room.settings.wins;
+            if (reachedWins) {
+              room.match.isFinished = true;
+              const matchWinnerName = setWinner === "A" ? room.teamA.name : room.teamB.name;
+              (room.match as any).setEndState = {
+                active: true,
+                phase: "pending",
+                ownerClientId: "",
+                source: "set_end",
+                setNo: endedSetNo,
+                matchFinished: true,
+                summary: {
+                  setNo: endedSetNo,
+                  teamAName: room.teamA.name,
+                  teamBName: room.teamB.name,
+                  smallScoreA: endedScoreA,
+                  smallScoreB: endedScoreB,
+                  bigScoreA: room.match.aSetWins,
+                  bigScoreB: room.match.bSetWins,
+                  winnerName: matchWinnerName,
+                  durationText: setElapsedText,
+                  matchFinished: true,
+                },
+              };
+            } else {
+              (room.match as any).setEndState = {
+                active: true,
+                phase: "pending",
+                ownerClientId: "",
+                source: "set_end",
+                setNo: endedSetNo,
+                matchFinished: false,
+                summary: {
+                  setNo: endedSetNo,
+                  teamAName: room.teamA.name,
+                  teamBName: room.teamB.name,
+                  smallScoreA: endedScoreA,
+                  smallScoreB: endedScoreB,
+                  bigScoreA: room.match.aSetWins,
+                  bigScoreB: room.match.bSetWins,
+                  winnerName: setWinner === "A" ? room.teamA.name : room.teamB.name,
+                  durationText: setElapsedText,
+                  matchFinished: false,
+                },
+              };
+              room.match.setNo += 1;
+              room.match.aScore = 0;
+              room.match.bScore = 0;
+              room.match.lastScoringTeam = "";
+              room.match.setTimerStartAt = 0;
+              // 小局结束后先保持上一局局时间，等待中场配置页返回比赛后再清零。
+              room.match.setTimerElapsedMs = finalElapsed;
+              room.match.servingTeam = setWinner;
+              room.match.isSwapped = false;
+              room.match.decidingSetEightHandled = false;
+              (room.match as any).timeoutActive = false;
+              (room.match as any).timeoutTeam = "";
+              (room.match as any).timeoutEndAt = 0;
+              appendMatchLog(room, "next_set", "进入第" + String(room.match.setNo) + "局", setWinner, opId);
+            }
           }
+          (room.match as any).lastActionOpId = opId;
         }
-        (room.match as any).lastActionOpId = opId;
-      }
-      return room;
-    });
+        return room;
+      });
 
-    if (!next) {
-      return;
-    }
-    if (blockedByTimeout) {
-      showToastHint("暂停中，无法加分");
-      await this.loadRoom(roomId, true);
-      return;
-    }
-    if (blockedByMaxScore) {
-      showToastHint("单局比分不能超过99");
-      await this.loadRoom(roomId, true);
-      return;
-    }
-
-    const showDecidingSetSwitchChoice = () => {
-      if (!needDecidingSetSwitchChoice) {
+      if (!next) {
         return;
       }
-      wx.showModal({
-        title: "决胜局8分",
-        content: "是否现在换边？",
-        confirmText: "换边",
-        cancelText: "不换边",
-        success: (res) => {
-          if (res.confirm) {
-            void this.switchSidesWithAnimation("自动换边（决胜局）");
-            return;
-          }
-          void this.loadRoom(roomId, true);
-        },
-      });
-    };
+      if (blockedByTimeout) {
+        releaseRotateLock();
+        showToastHint("暂停中，无法加分");
+        await this.loadRoom(roomId, true);
+        return;
+      }
+      if (blockedByMaxScore) {
+        releaseRotateLock();
+        showToastHint("单局比分不能超过99");
+        await this.loadRoom(roomId, true);
+        return;
+      }
+      const nextSetEndState = (next.match && (next.match as any).setEndState) || null;
+      const nextSetEndSource = String((nextSetEndState && nextSetEndState.source) || "set_end");
+      const shouldKeepSetEndDisplay = !!(nextSetEndState && nextSetEndState.active) && nextSetEndSource !== "reconfigure";
+      if (shouldKeepSetEndDisplay) {
+        releaseRotateLock();
+        await this.loadRoom(roomId, true);
+        return;
+      }
+      const showDecidingSetSwitchChoice = () => {
+        if (!needDecidingSetSwitchChoice) {
+          return;
+        }
+        wx.showModal({
+          title: "决胜局8分",
+          content: "是否现在换边？",
+          confirmText: "换边",
+          cancelText: "不换边",
+          success: (res) => {
+            if (res.confirm) {
+              void this.switchSidesWithAnimation("自动换边（决胜局）");
+              return;
+            }
+            void this.loadRoom(roomId, true);
+          },
+        });
+      };
 
-    if (!rotatedTeam) {
-      this.applyLocalScoreFromRoom(next);
+      if (!rotatedTeam) {
+        this.applyLocalScoreFromRoom(next);
+        releaseRotateLock();
+        await this.loadRoom(roomId, true);
+        showDecidingSetSwitchChoice();
+        return;
+      }
+
+      if (beforeRotateRects && beforeRotateNoMap) {
+        this.applyLocalScoreFromRoom(next);
+        this.applyLocalLineupFromRoom(next, { preHideTeams: [rotatedTeam] });
+        await this.nextTickAsync();
+        await this.playTeamRotateMotion(rotatedTeam, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain, "forward");
+      }
+      releaseRotateLock();
       await this.loadRoom(roomId, true);
       showDecidingSetSwitchChoice();
-      return;
+    } finally {
+      releaseRotateLock();
     }
-
-    if (beforeRotateRects && beforeRotateNoMap) {
-      this.applyLocalScoreFromRoom(next);
-      this.applyLocalLineupFromRoom(next);
-      await this.nextTickAsync();
-      await this.playTeamRotateMotion(rotatedTeam, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
-    }
-    await this.loadRoom(roomId, true);
-    showDecidingSetSwitchChoice();
   },
 
   switchSidesWithAnimation(logNote: string) {
@@ -2943,6 +3245,9 @@ Page({
   },
 
   async onTeamTimeoutTap(e: WechatMiniprogram.TouchEvent) {
+    if (!this.data.hasOperationAuthority) {
+      return;
+    }
     if (this.timeoutActionInFlight) {
       showToastHint("操作处理中，请稍候");
       return;
@@ -3139,24 +3444,34 @@ Page({
             return;
           }
           const roomId = this.data.roomId;
-          const beforeRotateRects = await this.measureTeamMainPosRectsStable(team, 1000);
-          const beforeRotateNoMap = this.getTeamMainNumberMap(team);
-          const beforeRotateCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
-          const next = await updateRoomAsync(roomId, (room) => {
-            const opId = createLogId();
-            (room.match as any).currentOpId = opId;
-            pushUndoSnapshot(room);
-            rotateTeamAndLog(room, team, "手动轮转");
-            (room.match as any).lastActionOpId = opId;
-            return room;
-          });
-          if (!next) {
-            return;
+          let needReload = false;
+          this.rotateActionInFlight = true;
+          try {
+            const beforeRotateRects = await this.measureTeamMainPosRectsStable(team, 1000);
+            const beforeRotateNoMap = this.getTeamMainNumberMap(team);
+            const canAnimateTeam = this.countRectMap(beforeRotateRects || {}) > 0;
+            const beforeRotateCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
+            const next = await updateRoomAsync(roomId, (room) => {
+              const opId = createLogId();
+              (room.match as any).currentOpId = opId;
+              pushUndoSnapshot(room);
+              rotateTeamAndLog(room, team, "手动轮转");
+              (room.match as any).lastActionOpId = opId;
+              return room;
+            });
+            if (!next) {
+              return;
+            }
+            this.applyLocalLineupFromRoom(next, { preHideTeams: canAnimateTeam ? [team] : [] });
+            await this.nextTickAsync();
+            await this.playTeamRotateMotion(team, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain, "forward");
+            needReload = true;
+          } finally {
+            this.rotateActionInFlight = false;
           }
-          this.applyLocalLineupFromRoom(next);
-          await this.nextTickAsync();
-          await this.playTeamRotateMotion(team, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain);
-          await this.loadRoom(roomId, true);
+          if (needReload) {
+            await this.loadRoom(roomId, true);
+          }
         }).finally(() => {
           this.rotateConfirming = false;
         });
@@ -3200,22 +3515,26 @@ Page({
 
   async performUndoLastScore(allowCrossSet = false, closeSetEndModal = false) {
     const roomId = this.data.roomId;
-    let undone = false;
-    let beforeAScore = 0;
-    let beforeBScore = 0;
-    let beforeIsSwapped = false;
-    let beforeLastScoringTeam: TeamCode | "" = "";
-    let inferredUndoTeamFromSetEnd: TeamCode | "" = "";
-    let undoRotateA = false;
-    let undoRotateB = false;
-    let revertedOpId = "";
-    const beforeARects = await this.measureTeamMainPosRectsStable("A", 1000);
-    const beforeBRects = await this.measureTeamMainPosRectsStable("B", 1000);
-    const beforeANoMap = this.getTeamMainNumberMap("A");
-    const beforeBNoMap = this.getTeamMainNumberMap("B");
-    const beforeACaptain = this.data.teamACaptainNo;
-    const beforeBCaptain = this.data.teamBCaptainNo;
-    const next = await updateRoomAsync(roomId, (room) => {
+    this.rotateActionInFlight = true;
+    try {
+      let undone = false;
+      let beforeAScore = 0;
+      let beforeBScore = 0;
+      let beforeIsSwapped = false;
+      let beforeLastScoringTeam: TeamCode | "" = "";
+      let inferredUndoTeamFromSetEnd: TeamCode | "" = "";
+      let undoRotateA = false;
+      let undoRotateB = false;
+      let revertedOpId = "";
+      const beforeARects = await this.measureTeamMainPosRectsStable("A", 1000);
+      const beforeBRects = await this.measureTeamMainPosRectsStable("B", 1000);
+      const beforeANoMap = this.getTeamMainNumberMap("A");
+      const beforeBNoMap = this.getTeamMainNumberMap("B");
+      const canAnimateA = this.countRectMap(beforeARects || {}) > 0;
+      const canAnimateB = this.countRectMap(beforeBRects || {}) > 0;
+      const beforeACaptain = this.data.teamACaptainNo;
+      const beforeBCaptain = this.data.teamBCaptainNo;
+      const next = await updateRoomAsync(roomId, (room) => {
       const opId = createLogId();
       (room.match as any).currentOpId = opId;
       const setEndState = (room.match as any).setEndState || null;
@@ -3336,35 +3655,52 @@ Page({
       appendMatchLog(room, "score_undo", undoNote, undefined, opId, revertedOpId);
       (room.match as any).lastActionOpId = opId;
       return room;
-    });
+      });
 
-    if (!next) {
-      showToastHint("系统繁忙，请重试");
-      return;
-    }
-    if (!undone) {
-      showToastHint("本局无可撤回操作");
-      return;
-    }
-    const swappedChanged = beforeIsSwapped !== !!(next.match && next.match.isSwapped);
-    if (swappedChanged) {
-      this.setData({ switchingOut: true, switchingIn: false });
-      await this.delayAsync(120);
-      this.applyLocalScoreFromRoom(next);
-      this.applyLocalLineupFromRoom(next);
-      this.setData({ switchingOut: false, switchingIn: true });
-      await this.delayAsync(220);
-      this.setData({ switchingIn: false });
-    } else {
-      this.applyLocalScoreFromRoom(next);
-      this.applyLocalLineupFromRoom(next);
-    }
-    await this.nextTickAsync();
-    if (undoRotateA) {
-      await this.playTeamRotateMotion("A", beforeARects, beforeANoMap, beforeACaptain);
-    }
-    if (undoRotateB) {
-      await this.playTeamRotateMotion("B", beforeBRects, beforeBNoMap, beforeBCaptain);
+      if (!next) {
+        showToastHint("系统繁忙，请重试");
+        return;
+      }
+      if (!undone) {
+        showToastHint("本局无可撤回操作");
+        return;
+      }
+      const afterANoMap = buildMainMap((next.teamA && next.teamA.players) || []);
+      const afterBNoMap = buildMainMap((next.teamB && next.teamB.players) || []);
+      const undoDirectionA: RotateDirectionHint = undoRotateA ? resolveRotateDirection(beforeANoMap, afterANoMap) : "";
+      const undoDirectionB: RotateDirectionHint = undoRotateB ? resolveRotateDirection(beforeBNoMap, afterBNoMap) : "";
+      const swappedChanged = beforeIsSwapped !== !!(next.match && next.match.isSwapped);
+      if (swappedChanged) {
+        this.setData({ switchingOut: true, switchingIn: false });
+        await this.delayAsync(120);
+        this.applyLocalScoreFromRoom(next);
+        this.applyLocalLineupFromRoom(next, {
+          preHideTeams: [
+            ...(undoRotateA && canAnimateA ? (["A"] as TeamCode[]) : []),
+            ...(undoRotateB && canAnimateB ? (["B"] as TeamCode[]) : []),
+          ],
+        });
+        this.setData({ switchingOut: false, switchingIn: true });
+        await this.delayAsync(220);
+        this.setData({ switchingIn: false });
+      } else {
+        this.applyLocalScoreFromRoom(next);
+        this.applyLocalLineupFromRoom(next, {
+          preHideTeams: [
+            ...(undoRotateA && canAnimateA ? (["A"] as TeamCode[]) : []),
+            ...(undoRotateB && canAnimateB ? (["B"] as TeamCode[]) : []),
+          ],
+        });
+      }
+      await this.nextTickAsync();
+      if (undoRotateA) {
+        await this.playTeamRotateMotion("A", beforeARects, beforeANoMap, beforeACaptain, undoDirectionA);
+      }
+      if (undoRotateB) {
+        await this.playTeamRotateMotion("B", beforeBRects, beforeBNoMap, beforeBCaptain, undoDirectionB);
+      }
+    } finally {
+      this.rotateActionInFlight = false;
     }
     await this.loadRoom(roomId, true);
   },

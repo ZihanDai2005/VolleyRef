@@ -21,6 +21,7 @@ type TeamRows = { libero: DisplayPlayerSlot[] };
 type TeamPosRect = { left: number; top: number; width: number; height: number };
 type TeamRectMap = Partial<Record<MainPosition, TeamPosRect>>;
 type TeamMainNoMap = Partial<Record<MainPosition, string>>;
+type RotateDirectionHint = "forward" | "reverse" | "";
 type RotateFlyItem = {
   id: string;
   team: TeamCode;
@@ -149,6 +150,16 @@ function buildMainMap(players: PlayerSlot[]): TeamMainNoMap {
     }
   });
   return map;
+}
+
+function getForwardTargetPosBySource(sourcePos: MainPosition): MainPosition {
+  const target = MAIN_POSITIONS.find((pos) => (NUMBER_SOURCE_MAP[pos] as MainPosition) === sourcePos);
+  return (target || sourcePos) as MainPosition;
+}
+
+function getReverseTargetPosBySource(sourcePos: MainPosition): MainPosition {
+  const target = NUMBER_SOURCE_MAP[sourcePos] as MainPosition;
+  return MAIN_POSITIONS.indexOf(target) >= 0 ? target : sourcePos;
 }
 
 function clonePlayers(players: any[]): PlayerSlot[] {
@@ -312,6 +323,10 @@ Page({
   sideSwitchActionQueue: Promise.resolve() as Promise<void>,
   rotateActionQueueA: Promise.resolve() as Promise<void>,
   rotateActionQueueB: Promise.resolve() as Promise<void>,
+  rotateActionInFlight: false as boolean,
+  rotateLoadPending: false as boolean,
+  lastTeamARects: {} as TeamRectMap,
+  lastTeamBRects: {} as TeamRectMap,
   takeoverInFlight: false as boolean,
   connFailCount: 0 as number,
   connSuccessStreak: 0 as number,
@@ -430,11 +445,7 @@ Page({
     if (current === "online") {
       return;
     }
-    if (this.connSuccessStreak >= 2) {
-      this.setConnState("online");
-      return;
-    }
-    this.setConnState("reconnecting");
+    this.setConnState("online", { force: true });
   },
 
   markConnectionIssue() {
@@ -765,6 +776,10 @@ Page({
       if (this.inputEditing || this.sideSwitchInFlight || this.sideSwitchPendingCount > 0) {
         return;
       }
+      if (this.rotateActionInFlight) {
+        this.rotateLoadPending = true;
+        return;
+      }
       this.loadRoom();
     });
   },
@@ -959,6 +974,10 @@ Page({
       return;
     }
     if (this.sideSwitchInFlight || this.sideSwitchPendingCount > 0) {
+      return;
+    }
+    if (this.rotateActionInFlight) {
+      this.rotateLoadPending = true;
       return;
     }
     const roomId = String(this.data.roomId || "");
@@ -1454,18 +1473,34 @@ Page({
       return;
     }
     void this.enqueueRotateAction(team, async () => {
-      const beforeRects = await this.measureTeamMainPosRects(team);
-      const beforeNoMap = this.getTeamMainNumberMap(team);
-      if (team === "A") {
-        const rotated = rotateTeamByRule(this.data.teamAPlayers);
-        this.applyDisplay(rotated, this.data.teamBPlayers, this.data.isSwapped);
-        this.schedulePersistLineupDraft();
-        await this.playTeamRotateMotion("A", beforeRects, beforeNoMap, this.data.teamACaptainNo);
-      } else {
-        const rotated = rotateTeamByRule(this.data.teamBPlayers);
-        this.applyDisplay(this.data.teamAPlayers, rotated, this.data.isSwapped);
-        this.schedulePersistLineupDraft();
-        await this.playTeamRotateMotion("B", beforeRects, beforeNoMap, this.data.teamBCaptainNo);
+      this.rotateActionInFlight = true;
+      try {
+        const beforeRects = await this.measureTeamMainPosRectsStable(team, 1000);
+        const beforeNoMap = this.getTeamMainNumberMap(team);
+        const canAnimateTeam = this.countRectMap(beforeRects || {}) > 0;
+        if (team === "A") {
+          if (canAnimateTeam) {
+            this.setData({ hideTeamAMainNumbers: true });
+          }
+          const rotated = rotateTeamByRule(this.data.teamAPlayers);
+          this.applyDisplay(rotated, this.data.teamBPlayers, this.data.isSwapped);
+          this.schedulePersistLineupDraft();
+          await this.playTeamRotateMotion("A", beforeRects, beforeNoMap, this.data.teamACaptainNo, "forward");
+        } else {
+          if (canAnimateTeam) {
+            this.setData({ hideTeamBMainNumbers: true });
+          }
+          const rotated = rotateTeamByRule(this.data.teamBPlayers);
+          this.applyDisplay(this.data.teamAPlayers, rotated, this.data.isSwapped);
+          this.schedulePersistLineupDraft();
+          await this.playTeamRotateMotion("B", beforeRects, beforeNoMap, this.data.teamBCaptainNo, "forward");
+        }
+      } finally {
+        this.rotateActionInFlight = false;
+        if (this.rotateLoadPending && !this.inputEditing && !this.sideSwitchInFlight && this.sideSwitchPendingCount <= 0) {
+          this.rotateLoadPending = false;
+          this.loadRoom();
+        }
       }
     });
   },
@@ -1523,6 +1558,205 @@ Page({
     }, 0);
   },
 
+  mergeRectMapWithFallback(primary: TeamRectMap, fallback: TeamRectMap): TeamRectMap {
+    const out: TeamRectMap = {};
+    MAIN_POSITIONS.forEach((pos) => {
+      if (primary && primary[pos]) {
+        out[pos] = primary[pos];
+        return;
+      }
+      if (fallback && fallback[pos]) {
+        out[pos] = fallback[pos];
+      }
+    });
+    return out;
+  },
+
+  getCachedTeamRectMap(team: TeamCode): TeamRectMap {
+    return team === "A" ? (this.lastTeamARects as TeamRectMap) : (this.lastTeamBRects as TeamRectMap);
+  },
+
+  setCachedTeamRectMap(team: TeamCode, rects: TeamRectMap): void {
+    if (team === "A") {
+      this.lastTeamARects = rects;
+      return;
+    }
+    this.lastTeamBRects = rects;
+  },
+
+  getTeamMainOrderInView(team: TeamCode): MainPosition[] {
+    const teamASide: TeamCode = this.data.isSwapped ? "B" : "A";
+    return getMainOrderForTeam(team, teamASide);
+  },
+
+  estimateAxisStep(values: Array<number | null>, fallbackValues: Array<number | null>): number {
+    const collectStep = (arr: Array<number | null>) => {
+      const steps: number[] = [];
+      for (let i = 0; i < arr.length; i += 1) {
+        if (arr[i] == null) {
+          continue;
+        }
+        for (let j = i + 1; j < arr.length; j += 1) {
+          if (arr[j] == null) {
+            continue;
+          }
+          const span = j - i;
+          if (span <= 0) {
+            continue;
+          }
+          steps.push(((arr[j] as number) - (arr[i] as number)) / span);
+        }
+      }
+      return steps;
+    };
+    const steps = collectStep(values);
+    if (steps.length > 0) {
+      return steps.reduce((sum, n) => sum + n, 0) / steps.length;
+    }
+    const fallbackSteps = collectStep(fallbackValues);
+    if (fallbackSteps.length > 0) {
+      return fallbackSteps.reduce((sum, n) => sum + n, 0) / fallbackSteps.length;
+    }
+    return 0;
+  },
+
+  fillAxisValues(values: Array<number | null>, step: number, fallbackValues: Array<number | null>) {
+    const out = values.slice();
+    for (let i = 0; i < out.length; i += 1) {
+      if (out[i] == null && fallbackValues[i] != null) {
+        out[i] = fallbackValues[i];
+      }
+    }
+    for (let pass = 0; pass < out.length * 3; pass += 1) {
+      for (let i = 0; i < out.length; i += 1) {
+        if (out[i] != null) {
+          continue;
+        }
+        if (i > 0 && out[i - 1] != null && step) {
+          out[i] = (out[i - 1] as number) + step;
+          continue;
+        }
+        if (i < out.length - 1 && out[i + 1] != null && step) {
+          out[i] = (out[i + 1] as number) - step;
+          continue;
+        }
+        if (i > 0 && i < out.length - 1 && out[i - 1] != null && out[i + 1] != null) {
+          out[i] = ((out[i - 1] as number) + (out[i + 1] as number)) / 2;
+        }
+      }
+    }
+    return out;
+  },
+
+  completeTeamRectMapByGrid(team: TeamCode, primary: TeamRectMap, fallback: TeamRectMap): TeamRectMap {
+    const primaryCount = this.countRectMap(primary || {});
+    if (primaryCount <= 0) {
+      return this.mergeRectMapWithFallback(primary || {}, fallback || {});
+    }
+    const order = this.getTeamMainOrderInView(team);
+    const indexByPos: Partial<Record<MainPosition, number>> = {};
+    order.forEach((pos, idx) => {
+      indexByPos[pos] = idx;
+    });
+    const rowTopSamples: number[][] = [[], [], []];
+    const rowHeightSamples: number[][] = [[], [], []];
+    const colLeftSamples: number[][] = [[], []];
+    const colWidthSamples: number[][] = [[], []];
+    const fbRowTopSamples: number[][] = [[], [], []];
+    const fbRowHeightSamples: number[][] = [[], [], []];
+    const fbColLeftSamples: number[][] = [[], []];
+    const fbColWidthSamples: number[][] = [[], []];
+    const collect = (src: TeamRectMap, target: "primary" | "fallback") => {
+      MAIN_POSITIONS.forEach((pos) => {
+        const rect = src && src[pos];
+        if (!rect) {
+          return;
+        }
+        const idx = indexByPos[pos];
+        if (typeof idx !== "number") {
+          return;
+        }
+        const row = Math.floor(idx / 2);
+        const col = idx % 2;
+        if (row < 0 || row > 2 || col < 0 || col > 1) {
+          return;
+        }
+        if (target === "primary") {
+          rowTopSamples[row].push(rect.top);
+          rowHeightSamples[row].push(rect.height);
+          colLeftSamples[col].push(rect.left);
+          colWidthSamples[col].push(rect.width);
+        } else {
+          fbRowTopSamples[row].push(rect.top);
+          fbRowHeightSamples[row].push(rect.height);
+          fbColLeftSamples[col].push(rect.left);
+          fbColWidthSamples[col].push(rect.width);
+        }
+      });
+    };
+    collect(primary || {}, "primary");
+    collect(fallback || {}, "fallback");
+    const avg = (arr: number[]) => (arr.length ? arr.reduce((sum, n) => sum + n, 0) / arr.length : 0);
+    const toAxis = (samples: number[][]) => samples.map((s) => (s.length ? avg(s) : null));
+    const rowTop = toAxis(rowTopSamples) as Array<number | null>;
+    const rowHeight = toAxis(rowHeightSamples) as Array<number | null>;
+    const colLeft = toAxis(colLeftSamples) as Array<number | null>;
+    const colWidth = toAxis(colWidthSamples) as Array<number | null>;
+    const fbRowTop = toAxis(fbRowTopSamples) as Array<number | null>;
+    const fbRowHeight = toAxis(fbRowHeightSamples) as Array<number | null>;
+    const fbColLeft = toAxis(fbColLeftSamples) as Array<number | null>;
+    const fbColWidth = toAxis(fbColWidthSamples) as Array<number | null>;
+    const allWidth = colWidthSamples[0].concat(colWidthSamples[1], fbColWidthSamples[0], fbColWidthSamples[1]);
+    const allHeight = rowHeightSamples[0].concat(
+      rowHeightSamples[1],
+      rowHeightSamples[2],
+      fbRowHeightSamples[0],
+      fbRowHeightSamples[1],
+      fbRowHeightSamples[2]
+    );
+    const avgWidth = allWidth.length ? avg(allWidth) : 0;
+    const avgHeight = allHeight.length ? avg(allHeight) : 0;
+    const rowStep = this.estimateAxisStep(rowTop, fbRowTop) || (avgHeight > 0 ? avgHeight + 8 : 0);
+    const colStep = this.estimateAxisStep(colLeft, fbColLeft) || (avgWidth > 0 ? avgWidth + 8 : 0);
+    const rowTopFilled = this.fillAxisValues(rowTop, rowStep, fbRowTop);
+    const colLeftFilled = this.fillAxisValues(colLeft, colStep, fbColLeft);
+    const rowHeightFilled = this.fillAxisValues(rowHeight, 0, fbRowHeight).map((v) =>
+      v != null ? v : avgHeight > 0 ? avgHeight : 0
+    );
+    const colWidthFilled = this.fillAxisValues(colWidth, 0, fbColWidth).map((v) =>
+      v != null ? v : avgWidth > 0 ? avgWidth : 0
+    );
+    const out: TeamRectMap = {};
+    MAIN_POSITIONS.forEach((pos) => {
+      if (primary && primary[pos]) {
+        out[pos] = primary[pos];
+      }
+    });
+    MAIN_POSITIONS.forEach((pos) => {
+      if (out[pos]) {
+        return;
+      }
+      const idx = indexByPos[pos];
+      if (typeof idx !== "number") {
+        return;
+      }
+      const row = Math.floor(idx / 2);
+      const col = idx % 2;
+      const top = rowTopFilled[row];
+      const left = colLeftFilled[col];
+      const width = colWidthFilled[col];
+      const height = rowHeightFilled[row];
+      if (top != null && left != null && width > 0 && height > 0) {
+        out[pos] = { left, top, width, height };
+        return;
+      }
+      if (fallback && fallback[pos]) {
+        out[pos] = fallback[pos];
+      }
+    });
+    return out;
+  },
+
   measureTeamMainPosRects(team: TeamCode) {
     return new Promise<TeamRectMap>((resolve) => {
       const base = team === "A" ? ".team-panel.team-a" : ".team-panel.team-b";
@@ -1560,9 +1794,13 @@ Page({
     let best: TeamRectMap = {};
     while (Date.now() - start < timeoutMs) {
       await this.nextTickAsync();
-      const rects = await this.measureTeamMainPosRects(team);
+      const measured = await this.measureTeamMainPosRects(team);
+      const rects = this.completeTeamRectMapByGrid(team, measured, this.getCachedTeamRectMap(team) || {});
       if (this.countRectMap(rects) >= this.countRectMap(best)) {
         best = rects;
+        if (this.countRectMap(best) > 0) {
+          this.setCachedTeamRectMap(team, best);
+        }
       }
       if (this.countRectMap(best) === 6) {
         return best;
@@ -1577,30 +1815,39 @@ Page({
     return buildMainMap(players || []);
   },
 
-  async playTeamRotateMotion(team: TeamCode, beforeRects: TeamRectMap, beforeNoMap: TeamMainNoMap, captainNo: string) {
+  async playTeamRotateMotion(
+    team: TeamCode,
+    beforeRects: TeamRectMap,
+    beforeNoMap: TeamMainNoMap,
+    captainNo: string,
+    directionHint: RotateDirectionHint = ""
+  ) {
+    const clearTeamMotion = () => {
+      if (team === "A") {
+        this.setData({ hideTeamAMainNumbers: false, rotateFlyItemsA: [] });
+      } else {
+        this.setData({ hideTeamBMainNumbers: false, rotateFlyItemsB: [] });
+      }
+    };
     if (!beforeRects || MAIN_POSITIONS.every((pos) => !beforeRects[pos])) {
+      clearTeamMotion();
       return;
     }
-    await this.nextTickAsync();
-    await this.delayAsync(10);
-    const afterRects = await this.measureTeamMainPosRectsStable(team, 1000);
-    const afterNoMap = this.getTeamMainNumberMap(team);
-    const startItems: RotateFlyItem[] = [];
-    const endItems: RotateFlyItem[] = [];
+    const startSeeds: Array<{
+      sourcePos: MainPosition;
+      fromRect: TeamPosRect;
+      number: string;
+      isCaptain: boolean;
+      id: string;
+      baseStyle: string;
+    }> = [];
     MAIN_POSITIONS.forEach((sourcePos) => {
-      const number = beforeNoMap[sourcePos] || "?";
-      const targetPos = MAIN_POSITIONS.find((pos) => (afterNoMap[pos] || "?") === number);
-      if (!targetPos) {
-        return;
-      }
       const fromRect = beforeRects[sourcePos];
-      const toRect = afterRects[targetPos];
-      if (!fromRect || !toRect) {
+      if (!fromRect) {
         return;
       }
-      const dx = toRect.left - fromRect.left;
-      const dy = toRect.top - fromRect.top;
-      const id = team + "-" + sourcePos + "-" + targetPos + "-" + String(Date.now());
+      const number = beforeNoMap[sourcePos] || "?";
+      const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
       const baseStyle =
         "left:" +
         String(fromRect.left) +
@@ -1611,21 +1858,90 @@ Page({
         "px;height:" +
         String(fromRect.height) +
         "px;";
-      const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
-      startItems.push({
-        id,
-        team,
+      startSeeds.push({
+        sourcePos,
+        fromRect,
         number,
         isCaptain,
-        style: baseStyle + "transform:translate(0,0);transition:none;",
+        id: team + "-" + sourcePos + "-" + String(Date.now()) + "-" + String(startSeeds.length),
+        baseStyle,
       });
+    });
+    if (!startSeeds.length) {
+      clearTeamMotion();
+      return;
+    }
+    const startItems: RotateFlyItem[] = startSeeds.map((seed) => ({
+      id: seed.id,
+      team,
+      number: seed.number,
+      isCaptain: seed.isCaptain,
+      style: seed.baseStyle + "transform:translate(0,0);transition:none;",
+    }));
+    if (team === "A") {
+      this.setData({ hideTeamAMainNumbers: true, rotateFlyItemsA: startItems });
+    } else {
+      this.setData({ hideTeamBMainNumbers: true, rotateFlyItemsB: startItems });
+    }
+    await this.nextTickAsync();
+    await this.delayAsync(10);
+    const measuredAfterRects = await this.measureTeamMainPosRectsStable(team, 1000);
+    const afterRects = this.completeTeamRectMapByGrid(team, measuredAfterRects || {}, beforeRects || {});
+    const afterNoMap = this.getTeamMainNumberMap(team);
+    const endItems: RotateFlyItem[] = [];
+    const usedTargets = new Set<MainPosition>();
+    const targetBySource: Partial<Record<MainPosition, MainPosition>> = {};
+    if (directionHint) {
+      startSeeds.forEach((seed) => {
+        const targetPos =
+          directionHint === "forward"
+            ? getForwardTargetPosBySource(seed.sourcePos)
+            : getReverseTargetPosBySource(seed.sourcePos);
+        if (!afterRects[targetPos]) {
+          return;
+        }
+        targetBySource[seed.sourcePos] = targetPos;
+        usedTargets.add(targetPos);
+      });
+    }
+    startSeeds.forEach((seed) => {
+      if (targetBySource[seed.sourcePos]) {
+        return;
+      }
+      const targetPos =
+        MAIN_POSITIONS.find((pos) => !usedTargets.has(pos) && !!afterRects[pos] && (afterNoMap[pos] || "?") === seed.number) || null;
+      if (!targetPos) {
+        return;
+      }
+      targetBySource[seed.sourcePos] = targetPos;
+      usedTargets.add(targetPos);
+    });
+    const fallbackTargets = MAIN_POSITIONS.filter((pos) => !usedTargets.has(pos) && !!afterRects[pos]);
+    let fallbackIndex = 0;
+    startSeeds.forEach((seed) => {
+      if (targetBySource[seed.sourcePos]) {
+        return;
+      }
+      const targetPos = fallbackTargets[fallbackIndex] || null;
+      if (!targetPos) {
+        return;
+      }
+      fallbackIndex += 1;
+      targetBySource[seed.sourcePos] = targetPos;
+      usedTargets.add(targetPos);
+    });
+    startSeeds.forEach((seed) => {
+      const targetPos = targetBySource[seed.sourcePos] || seed.sourcePos;
+      const toRect = afterRects[targetPos] || seed.fromRect;
+      const dx = toRect.left - seed.fromRect.left;
+      const dy = toRect.top - seed.fromRect.top;
       endItems.push({
-        id,
+        id: seed.id,
         team,
-        number,
-        isCaptain,
+        number: seed.number,
+        isCaptain: seed.isCaptain,
         style:
-          baseStyle +
+          seed.baseStyle +
           "transform:translate(" +
           String(dx) +
           "px," +
@@ -1633,15 +1949,12 @@ Page({
           "px);transition:transform 320ms cubic-bezier(0.22, 0.7, 0.2, 1);",
       });
     });
-    if (!startItems.length) {
+    if (!endItems.length) {
+      clearTeamMotion();
       return;
     }
-    if (team === "A") {
-      this.setData({ hideTeamAMainNumbers: true, rotateFlyItemsA: startItems });
-    } else {
-      this.setData({ hideTeamBMainNumbers: true, rotateFlyItemsB: startItems });
-    }
     await this.nextTickAsync();
+    await this.delayAsync(16);
     if (team === "A") {
       this.setData({ rotateFlyItemsA: endItems });
     } else {

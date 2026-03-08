@@ -111,32 +111,40 @@
     <view class="team-panel team-a">
       <view class="team-head">
         <block wx:if="{{!isSwapped}}">
-          <view wx:if="{{hasOperationAuthority}}" class="team-actions left">
-            <view class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
+          <view class="team-actions left">
+            <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
             <view class="timeout-btn timeout-btn-extra">
               <view class="timeout-icon timeout-icon-human"></view>
               <text class="timeout-count">0</text>
             </view>
-            <view class="timeout-btn pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
+            <view wx:if="{{hasOperationAuthority}}" class="timeout-btn pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
+              <view class="timeout-icon"></view>
+              <text class="timeout-count">{{teamATimeoutCount}}</text>
+            </view>
+            <view wx:else class="timeout-btn timeout-static">
               <view class="timeout-icon"></view>
               <text class="timeout-count">{{teamATimeoutCount}}</text>
             </view>
           </view>
-          <text class="team-title {{hasOperationAuthority ? 'align-right' : 'observer-center'}}">{{teamAName}}</text>
+          <text class="team-title align-right">{{teamAName}}</text>
         </block>
         <block wx:else>
-          <text class="team-title {{hasOperationAuthority ? 'align-left' : 'observer-center'}}">{{teamAName}}</text>
-          <view wx:if="{{hasOperationAuthority}}" class="team-actions right">
-            <view class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
+          <text class="team-title align-left">{{teamAName}}</text>
+          <view class="team-actions right">
+            <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
             <view class="timeout-btn timeout-btn-extra">
               <view class="timeout-icon timeout-icon-human"></view>
               <text class="timeout-count">0</text>
             </view>
-            <view class="timeout-btn pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
+            <view wx:if="{{hasOperationAuthority}}" class="timeout-btn pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
+              <view class="timeout-icon"></view>
+              <text class="timeout-count">{{teamATimeoutCount}}</text>
+            </view>
+            <view wx:else class="timeout-btn timeout-static">
               <view class="timeout-icon"></view>
               <text class="timeout-count">{{teamATimeoutCount}}</text>
             </view>
@@ -167,36 +175,44 @@
     <view class="team-panel team-b">
       <view class="team-head">
         <block wx:if="{{!isSwapped}}">
-          <text class="team-title {{hasOperationAuthority ? 'align-left' : 'observer-center'}}">{{teamBName}}</text>
-          <view wx:if="{{hasOperationAuthority}}" class="team-actions right">
-            <view class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
+          <text class="team-title align-left">{{teamBName}}</text>
+          <view class="team-actions right">
+            <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
             <view class="timeout-btn timeout-btn-extra">
               <view class="timeout-icon timeout-icon-human"></view>
               <text class="timeout-count">0</text>
             </view>
-            <view class="timeout-btn pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
+            <view wx:if="{{hasOperationAuthority}}" class="timeout-btn pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
+              <view class="timeout-icon"></view>
+              <text class="timeout-count">{{teamBTimeoutCount}}</text>
+            </view>
+            <view wx:else class="timeout-btn timeout-static">
               <view class="timeout-icon"></view>
               <text class="timeout-count">{{teamBTimeoutCount}}</text>
             </view>
           </view>
         </block>
         <block wx:else>
-          <view wx:if="{{hasOperationAuthority}}" class="team-actions left">
-            <view class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
+          <view class="team-actions left">
+            <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
             <view class="timeout-btn timeout-btn-extra">
               <view class="timeout-icon timeout-icon-human"></view>
               <text class="timeout-count">0</text>
             </view>
-            <view class="timeout-btn pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
+            <view wx:if="{{hasOperationAuthority}}" class="timeout-btn pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
+              <view class="timeout-icon"></view>
+              <text class="timeout-count">{{teamBTimeoutCount}}</text>
+            </view>
+            <view wx:else class="timeout-btn timeout-static">
               <view class="timeout-icon"></view>
               <text class="timeout-count">{{teamBTimeoutCount}}</text>
             </view>
           </view>
-          <text class="team-title {{hasOperationAuthority ? 'align-right' : 'observer-center'}}">{{teamBName}}</text>
+          <text class="team-title align-right">{{teamBName}}</text>
         </block>
       </view>
       <view class="lineup-grid reverse {{isSwapped ? 'swap-layout' : ''}}">

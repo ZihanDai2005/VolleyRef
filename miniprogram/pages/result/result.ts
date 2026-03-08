@@ -161,6 +161,11 @@ Page({
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
     this.syncCustomNavTop();
+    [80, 220, 420, 1000].forEach((delay) => {
+      setTimeout(() => {
+        this.syncCustomNavTop();
+      }, delay);
+    });
     if (!this.themeOff) {
       this.themeOff = bindThemeChange(() => {
         this.applyNavigationTheme();
@@ -180,6 +185,11 @@ Page({
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
     this.syncCustomNavTop();
+    [80, 220, 420, 1000].forEach((delay) => {
+      setTimeout(() => {
+        this.syncCustomNavTop();
+      }, delay);
+    });
     this.startCountdown();
     const roomId = String(this.data.roomId || "");
     if (roomId) {
