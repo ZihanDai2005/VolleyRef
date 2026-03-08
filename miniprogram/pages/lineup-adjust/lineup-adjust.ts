@@ -1,4 +1,15 @@
-import { getRoomAsync, updateRoomAsync, subscribeRoomWatch, TEAM_COLOR_OPTIONS } from "../../utils/room-service";
+import {
+  getRoomAsync,
+  getRoomExistenceFromServerAsync,
+  updateRoomAsync,
+  subscribeRoomWatch,
+  heartbeatRoomAsync,
+  getRoomOwnerClientId,
+  getRoomOperatorClientId,
+  getRoomControlRole,
+  transferRoomOperatorAsync,
+  TEAM_COLOR_OPTIONS,
+} from "../../utils/room-service";
 import { showBlockHint, showToastHint } from "../../utils/hint";
 import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
 import { computeLandscapeSafePad } from "../../utils/safe-pad";
@@ -17,6 +28,7 @@ type RotateFlyItem = {
   isCaptain: boolean;
   style: string;
 };
+type ConnState = "online" | "reconnecting" | "offline";
 type CaptainPickerTeam = TeamCode;
 type LineupAdjustDraft = {
   setNo: number;
@@ -267,9 +279,28 @@ function isDecidingSetByRule(setNo: number, wins: number): boolean {
   return nWins > 1 && nSet === decidingSetNo;
 }
 
+function ensureClientId(): string {
+  const app = getApp<IAppOption>();
+  let clientId = String((app && app.globalData && app.globalData.clientId) || "");
+  if (clientId) {
+    return clientId;
+  }
+  clientId = String(wx.getStorageSync("volleyball.clientId") || "");
+  if (!clientId) {
+    clientId =
+      "c_" + Date.now().toString(36) + "_" + Math.floor(Math.random() * 1000000).toString(36);
+    wx.setStorageSync("volleyball.clientId", clientId);
+  }
+  if (app && app.globalData) {
+    app.globalData.clientId = clientId;
+  }
+  return clientId;
+}
+
 Page({
   currentSetNo: 1 as number,
   isReconfigureEntry: false as boolean,
+  clientId: "" as string,
   draftSaveTimer: 0 as number,
   inputEditing: false as boolean,
   inputEditingReleaseTimer: 0 as number,
@@ -281,6 +312,19 @@ Page({
   sideSwitchActionQueue: Promise.resolve() as Promise<void>,
   rotateActionQueueA: Promise.resolve() as Promise<void>,
   rotateActionQueueB: Promise.resolve() as Promise<void>,
+  takeoverInFlight: false as boolean,
+  connFailCount: 0 as number,
+  connSuccessStreak: 0 as number,
+  connStateChangedAt: 0 as number,
+  heartbeatTimer: 0 as number,
+  roomMissingRetryTimer: 0 as number,
+  roomMissingToastAt: 0 as number,
+  roomMissingVerifyAt: 0 as number,
+  roomMissingVerifyInFlight: false as boolean,
+  roomClosedHandled: false as boolean,
+  lastRoomSnapshot: null as any,
+  networkOnline: true as boolean,
+  networkStatusHandler: null as null | ((res: { isConnected?: boolean }) => void),
   data: {
     continueBtnFx: false,
     adjustHeadTitle: "确认下一局的球员配置",
@@ -338,6 +382,166 @@ Page({
     captainPickerMainGrid: [] as DisplayPlayerSlot[][],
     captainPickerLibero: [] as DisplayPlayerSlot[],
     captainPickerSelectedNo: "",
+    connStatusText: "连接中",
+    connStatusClass: "status-reconnecting",
+    roomOwnerClientId: "",
+    roomOperatorClientId: "",
+    controlRole: "operator" as "operator" | "observer",
+    hasOperationAuthority: true,
+  },
+
+  setConnState(state: ConnState, options?: { force?: boolean }) {
+    const nextText = state === "online" ? "已连接" : state === "offline" ? "已离线" : "连接中";
+    const nextClass = state === "online" ? "status-online" : state === "offline" ? "status-offline" : "status-reconnecting";
+    if (this.data.connStatusText === nextText && this.data.connStatusClass === nextClass) {
+      return;
+    }
+    const nowTs = Date.now();
+    const force = !!(options && options.force);
+    const elapsed = nowTs - Math.max(0, Number(this.connStateChangedAt) || 0);
+    if (!force && elapsed > 0 && elapsed < 5000) {
+      return;
+    }
+    this.setData({
+      connStatusText: nextText,
+      connStatusClass: nextClass,
+    });
+    this.connStateChangedAt = nowTs;
+  },
+
+  getConnState(): ConnState {
+    const klass = String(this.data.connStatusClass || "");
+    if (klass === "status-online") {
+      return "online";
+    }
+    if (klass === "status-offline") {
+      return "offline";
+    }
+    return "reconnecting";
+  },
+
+  markConnectionAlive() {
+    if (!this.networkOnline) {
+      return;
+    }
+    this.connFailCount = 0;
+    this.connSuccessStreak += 1;
+    const current = this.getConnState();
+    if (current === "online") {
+      return;
+    }
+    if (this.connSuccessStreak >= 2) {
+      this.setConnState("online");
+      return;
+    }
+    this.setConnState("reconnecting");
+  },
+
+  markConnectionIssue() {
+    if (!this.networkOnline) {
+      this.setConnState("offline");
+      return;
+    }
+    this.connSuccessStreak = 0;
+    this.connFailCount += 1;
+    const current = this.getConnState();
+    if (current === "online") {
+      if (this.connFailCount >= 3) {
+        this.setConnState("offline");
+        return;
+      }
+      if (this.connFailCount >= 2) {
+        this.setConnState("reconnecting");
+      }
+      return;
+    }
+    if (this.connFailCount >= 2) {
+      this.setConnState("offline");
+      return;
+    }
+    this.setConnState("reconnecting");
+  },
+
+  updateNetworkState(isConnected: boolean) {
+    this.networkOnline = !!isConnected;
+    if (!this.networkOnline) {
+      this.connFailCount = 0;
+      this.connSuccessStreak = 0;
+      this.setConnState("offline", { force: true });
+      return;
+    }
+    this.connFailCount = 0;
+    this.connSuccessStreak = 0;
+    if (this.data.connStatusClass === "status-offline") {
+      this.setConnState("reconnecting", { force: true });
+    }
+  },
+
+  refreshNetworkState() {
+    if (typeof wx.getNetworkType !== "function") {
+      return;
+    }
+    wx.getNetworkType({
+      success: (res: WechatMiniprogram.GetNetworkTypeSuccessCallbackResult) => {
+        this.updateNetworkState(String(res.networkType || "") !== "none");
+      },
+      fail: () => {},
+    });
+  },
+
+  bindNetworkStatus() {
+    const api = wx as any;
+    if (typeof api.onNetworkStatusChange !== "function") {
+      return;
+    }
+    if (!this.networkStatusHandler) {
+      this.networkStatusHandler = (res: { isConnected?: boolean }) => {
+        this.updateNetworkState(!!(res && res.isConnected));
+      };
+    }
+    api.onNetworkStatusChange(this.networkStatusHandler);
+  },
+
+  unbindNetworkStatus() {
+    const api = wx as any;
+    if (typeof api.offNetworkStatusChange === "function" && this.networkStatusHandler) {
+      api.offNetworkStatusChange(this.networkStatusHandler);
+    }
+  },
+
+  startHeartbeatProbe() {
+    this.stopHeartbeatProbe();
+    this.sendHeartbeatProbe();
+    this.heartbeatTimer = setInterval(() => {
+      this.sendHeartbeatProbe();
+    }, 20000) as unknown as number;
+  },
+
+  stopHeartbeatProbe() {
+    if (!this.heartbeatTimer) {
+      return;
+    }
+    clearInterval(this.heartbeatTimer);
+    this.heartbeatTimer = 0;
+  },
+
+  sendHeartbeatProbe() {
+    const roomId = String(this.data.roomId || "");
+    if (!roomId) {
+      return;
+    }
+    const clientId = String(this.clientId || ensureClientId());
+    if (!clientId) {
+      this.markConnectionIssue();
+      return;
+    }
+    heartbeatRoomAsync(roomId, clientId)
+      .then(() => {
+        this.markConnectionAlive();
+      })
+      .catch(() => {
+        this.markConnectionIssue();
+      });
   },
 
   onLoad(options: Record<string, string>) {
@@ -348,11 +552,15 @@ Page({
       wx.reLaunch({ url: "/pages/home/home" });
       return;
     }
+    this.clientId = ensureClientId();
     this.setData({ roomId: roomId });
+    this.setConnState("reconnecting");
     this.syncSafePadding();
     if ((wx as any).onWindowResize) {
       (wx as any).onWindowResize(this.onWindowResize);
     }
+    this.bindNetworkStatus();
+    this.refreshNetworkState();
     setTimeout(() => {
       this.syncSafePadding();
     }, 80);
@@ -361,6 +569,7 @@ Page({
 
   onShow() {
     this.leavingPage = false;
+    this.setConnState("reconnecting", { force: true });
     setKeepScreenOnSafe(true);
     this.syncSafePadding();
     setTimeout(() => {
@@ -369,6 +578,8 @@ Page({
     setTimeout(() => {
       this.syncSafePadding();
     }, 260);
+    this.refreshNetworkState();
+    this.startHeartbeatProbe();
     this.startRoomWatch();
     this.loadRoom();
   },
@@ -381,9 +592,12 @@ Page({
       this.inputEditingReleaseTimer = 0;
     }
     setKeepScreenOnSafe(false);
+    this.clearRoomMissingRetry();
     if ((wx as any).offWindowResize) {
       (wx as any).offWindowResize(this.onWindowResize);
     }
+    this.unbindNetworkStatus();
+    this.stopHeartbeatProbe();
     this.stopRoomWatch();
   },
 
@@ -395,7 +609,126 @@ Page({
       this.inputEditingReleaseTimer = 0;
     }
     setKeepScreenOnSafe(false);
+    this.clearRoomMissingRetry();
+    this.stopHeartbeatProbe();
     this.stopRoomWatch();
+  },
+
+  scheduleRoomMissingRetry(delayMs = 1200) {
+    if (this.roomMissingRetryTimer) {
+      return;
+    }
+    this.roomMissingRetryTimer = setTimeout(() => {
+      this.roomMissingRetryTimer = 0;
+      this.loadRoom();
+    }, Math.max(400, Number(delayMs) || 1200)) as unknown as number;
+  },
+
+  clearRoomMissingRetry() {
+    if (!this.roomMissingRetryTimer) {
+      return;
+    }
+    clearTimeout(this.roomMissingRetryTimer);
+    this.roomMissingRetryTimer = 0;
+  },
+
+  getRoomSnapshotStorageKey(roomId: string): string {
+    return "volleyball.roomSnapshot." + String(roomId || "");
+  },
+
+  readCachedRoomSnapshot(roomId: string): any | null {
+    try {
+      const key = this.getRoomSnapshotStorageKey(roomId);
+      const cached = wx.getStorageSync(key);
+      if (cached && typeof cached === "object" && String((cached as any).roomId || "") === roomId) {
+        return cached;
+      }
+    } catch (_e) {}
+    return null;
+  },
+
+  writeCachedRoomSnapshot(room: any) {
+    const roomId = String((room && room.roomId) || "");
+    if (!roomId) {
+      return;
+    }
+    try {
+      const key = this.getRoomSnapshotStorageKey(roomId);
+      wx.setStorageSync(key, room);
+    } catch (_e) {}
+  },
+
+  handleRoomClosed() {
+    if (this.roomClosedHandled) {
+      return;
+    }
+    this.roomClosedHandled = true;
+    this.clearRoomMissingRetry();
+    wx.hideToast({
+      fail: () => {},
+    });
+    wx.showModal({
+      title: "房间已失效",
+      content: "该裁判团队不存在或已过期，请重新创建或加入。",
+      showCancel: false,
+      confirmText: "返回首页",
+      success: () => {
+        wx.reLaunch({ url: "/pages/home/home" });
+      },
+    });
+  },
+
+  verifyRoomMissingFromServer() {
+    const roomId = String(this.data.roomId || "");
+    if (!roomId || this.roomClosedHandled) {
+      return;
+    }
+    const nowTs = Date.now();
+    if (this.roomMissingVerifyInFlight) {
+      return;
+    }
+    if (nowTs - Math.max(0, Number(this.roomMissingVerifyAt) || 0) < 2500) {
+      return;
+    }
+    this.roomMissingVerifyInFlight = true;
+    this.roomMissingVerifyAt = nowTs;
+    getRoomExistenceFromServerAsync(roomId)
+      .then((status) => {
+        if (status === "missing") {
+          this.handleRoomClosed();
+          return;
+        }
+        if (status === "exists") {
+          this.roomClosedHandled = false;
+          this.loadRoom();
+          return;
+        }
+        this.scheduleRoomMissingRetry(1600);
+      })
+      .catch(() => {})
+      .finally(() => {
+        this.roomMissingVerifyInFlight = false;
+      });
+  },
+
+  handleRoomTemporarilyUnavailable() {
+    this.markConnectionIssue();
+    this.scheduleRoomMissingRetry(1200);
+    this.verifyRoomMissingFromServer();
+    const nowTs = Date.now();
+    if (nowTs - Math.max(0, Number(this.roomMissingToastAt) || 0) < 1100) {
+      return;
+    }
+    this.roomMissingToastAt = nowTs;
+    wx.showToast({
+      title: "连接中，正在重试",
+      icon: "loading",
+      duration: 1200,
+      mask: false,
+      fail: () => {
+        showToastHint("连接中，正在重试");
+      },
+    });
   },
 
   enqueueRotateAction(team: TeamCode, task: () => Promise<void>) {
@@ -632,24 +965,40 @@ Page({
     if (!roomId) {
       return;
     }
-    const room = await getRoomAsync(roomId);
-    if (!room) {
-      wx.showModal({
-        title: "房间已失效",
-        content: "该裁判团队不存在或已过期，请重新创建或加入。",
-        showCancel: false,
-        confirmText: "返回首页",
-        success: () => {
-          wx.reLaunch({ url: "/pages/home/home" });
-        },
-      });
+    let room: any = null;
+    try {
+      room = await getRoomAsync(roomId);
+    } catch (_e) {
+      this.markConnectionIssue();
       return;
     }
+    if (!room) {
+      const fallback = this.lastRoomSnapshot || this.readCachedRoomSnapshot(roomId);
+      if (fallback) {
+        room = fallback;
+        this.handleRoomTemporarilyUnavailable();
+      } else {
+        this.handleRoomTemporarilyUnavailable();
+        return;
+      }
+    } else {
+      this.roomClosedHandled = false;
+      this.clearRoomMissingRetry();
+      wx.hideToast({
+        fail: () => {},
+      });
+      this.lastRoomSnapshot = room;
+      this.writeCachedRoomSnapshot(room);
+    }
+    this.lastRoomSnapshot = room;
     const setEndState = (room.match && (room.match as any).setEndState) || null;
     const setEndActive = !!(setEndState && setEndState.active);
     const setEndPhase = String((setEndState && setEndState.phase) || "");
     const setEndOwnerClientId = String((setEndState && setEndState.ownerClientId) || "");
-    const currentClientId = String(getApp<IAppOption>().globalData.clientId || "");
+    const currentClientId = String(this.clientId || ensureClientId());
+    const roomOwnerClientId = getRoomOwnerClientId(room);
+    const roomOperatorClientId = getRoomOperatorClientId(room);
+    const controlRole = getRoomControlRole(room, currentClientId);
     if (!setEndActive || setEndPhase !== "lineup" || setEndOwnerClientId !== currentClientId) {
       wx.redirectTo({ url: "/pages/match/match?roomId=" + roomId });
       return;
@@ -710,6 +1059,10 @@ Page({
         teamBCaptainSource: "",
         servingTeam: initServingTeam,
         activeAdjustInputKey: "",
+        roomOwnerClientId: roomOwnerClientId,
+        roomOperatorClientId: roomOperatorClientId,
+        controlRole: controlRole,
+        hasOperationAuthority: controlRole === "operator",
       },
       () => {
         this.applyDisplay(initTeamAPlayers, initTeamBPlayers, initIsSwapped);
@@ -1068,6 +1421,31 @@ Page({
 
   onBackPress() {
     return true;
+  },
+
+  async onTakeoverTap() {
+    if (this.data.hasOperationAuthority || this.takeoverInFlight) {
+      return;
+    }
+    const roomId = String(this.data.roomId || "");
+    const clientId = String(this.clientId || ensureClientId());
+    if (!roomId || !clientId) {
+      showToastHint("接管失败，请稍后重试");
+      return;
+    }
+    this.takeoverInFlight = true;
+    try {
+      const next = await transferRoomOperatorAsync(roomId, clientId, clientId);
+      if (!next || getRoomOperatorClientId(next) !== clientId) {
+        showToastHint("接管失败，请稍后重试");
+        return;
+      }
+      await this.loadRoom();
+    } catch (_e) {
+      showToastHint("接管失败，请稍后重试");
+    } finally {
+      this.takeoverInFlight = false;
+    }
   },
 
   onRotateTeam(e: WechatMiniprogram.TouchEvent) {

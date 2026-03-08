@@ -19,6 +19,13 @@ export interface TeamState {
   players: PlayerSlot[];
 }
 
+export interface CollaborationState {
+  ownerClientId: string;
+  operatorClientId: string;
+  operatorUpdatedAt: number;
+  observerSideMap: Record<string, "A" | "B">;
+}
+
 export interface MatchState {
   aScore: number;
   bScore: number;
@@ -110,6 +117,7 @@ export interface RoomState {
   settings: MatchSettings;
   teamA: TeamState;
   teamB: TeamState;
+  collaboration: CollaborationState;
   match: MatchState;
   participants: Record<string, number>;
   createdAt: number;
@@ -309,6 +317,12 @@ function createDefaultRoom(roomId: string): RoomState {
       color: DEFAULT_TEAM_B_COLOR,
       players: createInitialPlayers(),
     },
+    collaboration: {
+      ownerClientId: "",
+      operatorClientId: "",
+      operatorUpdatedAt: 0,
+      observerSideMap: {},
+    },
     match: {
       aScore: 0,
       bScore: 0,
@@ -370,6 +384,26 @@ function normalizeParticipants(source: unknown): Record<string, number> {
   return output;
 }
 
+function normalizeObserverSideMap(source: unknown): Record<string, "A" | "B"> {
+  if (!source || typeof source !== "object") {
+    return {};
+  }
+  const input = source as Record<string, unknown>;
+  const output: Record<string, "A" | "B"> = {};
+  Object.keys(input).forEach(function (clientId) {
+    const side = input[clientId] === "B" ? "B" : input[clientId] === "A" ? "A" : "";
+    if (!side) {
+      return;
+    }
+    const id = String(clientId || "").trim();
+    if (!id) {
+      return;
+    }
+    output[id] = side;
+  });
+  return output;
+}
+
 function normalizeRoom(roomId: string, raw: unknown): RoomState {
   const input = (raw || {}) as Partial<RoomState>;
   const base = createDefaultRoom(roomId);
@@ -401,6 +435,21 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   }
   base.teamA.players = normalizePlayers(input.teamA && input.teamA.players);
   base.teamB.players = normalizePlayers(input.teamB && input.teamB.players);
+  const rawCollaboration = ((input as any).collaboration || {}) as Partial<CollaborationState>;
+  base.collaboration.ownerClientId = String(
+    rawCollaboration.ownerClientId || (input as any).ownerClientId || ""
+  ).trim();
+  base.collaboration.operatorClientId = String(
+    rawCollaboration.operatorClientId || (input as any).operatorClientId || base.collaboration.ownerClientId || ""
+  ).trim();
+  base.collaboration.operatorUpdatedAt = Math.max(0, Number(rawCollaboration.operatorUpdatedAt) || 0);
+  base.collaboration.observerSideMap = normalizeObserverSideMap(rawCollaboration.observerSideMap);
+  if (!base.collaboration.ownerClientId && base.collaboration.operatorClientId) {
+    base.collaboration.ownerClientId = base.collaboration.operatorClientId;
+  }
+  if (!base.collaboration.operatorClientId && base.collaboration.ownerClientId) {
+    base.collaboration.operatorClientId = base.collaboration.ownerClientId;
+  }
 
   base.match.aScore = Math.max(0, Number(input.match && input.match.aScore) || 0);
   base.match.bScore = Math.max(0, Number(input.match && input.match.bScore) || 0);
@@ -533,6 +582,9 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   base.participants = normalizeParticipants((input as any).participants);
   base.createdAt = Number(input.createdAt) || base.createdAt;
   base.updatedAt = Number(input.updatedAt) || base.updatedAt;
+  if (!base.collaboration.operatorUpdatedAt && base.collaboration.operatorClientId) {
+    base.collaboration.operatorUpdatedAt = Math.max(base.updatedAt || 0, base.createdAt || 0, now());
+  }
 
   if (!base.expiresAt) {
     base.expiresAt = base.createdAt + ROOM_TTL_MS;
@@ -694,12 +746,10 @@ function startRoomWatchInternal(roomId: string): void {
         onChange: (snapshot: any) => {
           const docs = snapshot && Array.isArray(snapshot.docs) ? snapshot.docs : [];
           if (!docs.length) {
-            const store = getStore();
-            if (store[roomId]) {
-              delete store[roomId];
-              saveStore(store);
-            }
-            emitRoomWatch(roomId, null);
+            // 云 watch 可能短暂抖动返回空 docs，避免误删本地房间导致页面误判“房间已关闭”。
+            cloudPullRoom(roomId);
+            const local = getStore()[roomId] || null;
+            emitRoomWatch(roomId, local);
             return;
           }
           const next = saveCloudRoomRaw(docs[0]);
@@ -746,7 +796,8 @@ function cloudPullRoom(roomId: string): void {
   callRoomApi<{ room?: any }>("getRoom", { roomId: roomId })
     .then((res) => {
       if (res && res.room) {
-        saveCloudRoomRaw(res.room);
+        const next = saveCloudRoomRaw(res.room);
+        emitRoomWatch(roomId, next);
       }
     })
     .catch(() => {})
@@ -787,6 +838,7 @@ export function createRoom(input: {
   teamBCaptainNo?: string;
   teamAColor?: string;
   teamBColor?: string;
+  creatorClientId?: string;
   teamAPlayers: PlayerSlot[];
   teamBPlayers: PlayerSlot[];
 }): RoomState {
@@ -828,6 +880,12 @@ export function createRoom(input: {
     if (room.teamA.color === room.teamB.color) {
       room.teamB.color = TEAM_COLOR_OPTIONS[2].value;
     }
+  }
+  const creatorClientId = String(input.creatorClientId || "").trim();
+  if (creatorClientId) {
+    room.collaboration.ownerClientId = creatorClientId;
+    room.collaboration.operatorClientId = creatorClientId;
+    room.collaboration.operatorUpdatedAt = now();
   }
 
   store[roomId] = room;
@@ -1016,6 +1074,7 @@ export async function createRoomAsync(input: {
   teamBCaptainNo?: string;
   teamAColor?: string;
   teamBColor?: string;
+  creatorClientId?: string;
   teamAPlayers: PlayerSlot[];
   teamBPlayers: PlayerSlot[];
 }): Promise<RoomState | null> {
@@ -1048,6 +1107,12 @@ export async function createRoomAsync(input: {
       room.teamB.color = TEAM_COLOR_OPTIONS[2].value;
     }
   }
+  const creatorClientId = String(input.creatorClientId || "").trim();
+  if (creatorClientId) {
+    room.collaboration.ownerClientId = creatorClientId;
+    room.collaboration.operatorClientId = creatorClientId;
+    room.collaboration.operatorUpdatedAt = now();
+  }
   try {
     const res = await callRoomApi<{ room?: any }>("createRoom", { room: room });
     if (res && res.room) {
@@ -1060,18 +1125,17 @@ export async function createRoomAsync(input: {
 export async function getRoomAsync(roomId: string): Promise<RoomState | null> {
   const local = getRoom(roomId);
   if (local) {
+    // 本地命中时也保持低频向云端拉取，避免参与人数等协同信息长期停留在旧快照。
+    cloudPullRoom(roomId);
     return local;
   }
   try {
-    const res = await Promise.race([
-      callRoomApi<{ room?: any }>("getRoom", { roomId: roomId }),
-      new Promise<null>((resolve) => setTimeout(() => resolve(null), 800)),
-    ]);
+    const res = await callRoomApi<{ room?: any }>("getRoom", { roomId: roomId });
     if (res && res.room) {
       return cloneRoom(saveCloudRoomRaw(res.room));
     }
   } catch (e) {}
-  return local;
+  return getRoom(roomId);
 }
 
 export async function verifyRoomPasswordAsync(
@@ -1195,6 +1259,143 @@ export async function forcePullRoomAsync(roomId: string): Promise<RoomState | nu
     }
   } catch (e) {}
   return getRoom(roomId);
+}
+
+export async function getRoomExistenceFromServerAsync(
+  roomId: string
+): Promise<"exists" | "missing" | "unknown"> {
+  if (!canUseCloud()) {
+    return getRoom(roomId) ? "exists" : "unknown";
+  }
+  try {
+    const res = await callRoomApi<{ room?: any }>("getRoom", { roomId: roomId });
+    if (res && res.room) {
+      saveCloudRoomRaw(res.room);
+      return "exists";
+    }
+    return "missing";
+  } catch (e) {
+    return "unknown";
+  }
+}
+
+export type RoomControlRole = "operator" | "observer";
+
+function normalizeClientId(input: unknown): string {
+  return String(input || "").trim();
+}
+
+export function getRoomOwnerClientId(room: RoomState | null | undefined): string {
+  return normalizeClientId(room && room.collaboration && room.collaboration.ownerClientId);
+}
+
+export function getRoomOperatorClientId(room: RoomState | null | undefined): string {
+  const direct = normalizeClientId(room && room.collaboration && room.collaboration.operatorClientId);
+  if (direct) {
+    return direct;
+  }
+  return getRoomOwnerClientId(room);
+}
+
+export function isRoomOperator(room: RoomState | null | undefined, clientId: string): boolean {
+  const cid = normalizeClientId(clientId);
+  if (!room || !cid) {
+    return false;
+  }
+  const operatorClientId = getRoomOperatorClientId(room);
+  if (operatorClientId) {
+    return operatorClientId === cid;
+  }
+  const ownerClientId = getRoomOwnerClientId(room);
+  if (ownerClientId) {
+    return ownerClientId === cid;
+  }
+  // Legacy rooms created before control-role fields existed.
+  return true;
+}
+
+export function getRoomControlRole(room: RoomState | null | undefined, clientId: string): RoomControlRole {
+  return isRoomOperator(room, clientId) ? "operator" : "observer";
+}
+
+export function getClientViewSide(room: RoomState | null | undefined, clientId: string): "A" | "B" | "" {
+  const cid = normalizeClientId(clientId);
+  if (!room || !cid) {
+    return "";
+  }
+  const map = (room.collaboration && room.collaboration.observerSideMap) || {};
+  const side = map[cid];
+  return side === "B" ? "B" : side === "A" ? "A" : "";
+}
+
+export async function setClientViewSideAsync(
+  roomId: string,
+  clientId: string,
+  side: "A" | "B"
+): Promise<RoomState | null> {
+  const cid = normalizeClientId(clientId);
+  if (!cid || !roomId) {
+    return getRoom(roomId);
+  }
+  const targetSide: "A" | "B" = side === "B" ? "B" : "A";
+  return updateRoomAsync(
+    roomId,
+    (room) => {
+      if (!room.collaboration || typeof room.collaboration !== "object") {
+        (room as any).collaboration = {
+          ownerClientId: "",
+          operatorClientId: "",
+          operatorUpdatedAt: 0,
+          observerSideMap: {},
+        };
+      }
+      if (!room.collaboration.observerSideMap || typeof room.collaboration.observerSideMap !== "object") {
+        room.collaboration.observerSideMap = {};
+      }
+      room.collaboration.observerSideMap[cid] = targetSide;
+      return room;
+    },
+    { awaitCloud: true }
+  );
+}
+
+export async function transferRoomOperatorAsync(
+  roomId: string,
+  byClientId: string,
+  nextOperatorClientId: string
+): Promise<RoomState | null> {
+  const actor = normalizeClientId(byClientId);
+  const next = normalizeClientId(nextOperatorClientId);
+  if (!roomId || !actor || !next) {
+    return getRoom(roomId);
+  }
+  return updateRoomAsync(
+    roomId,
+    (room) => {
+      const participants = (room && room.participants) || {};
+      // 业务需求：在线裁判均可发起“接管”操作。
+      const canTransfer = !!participants[actor];
+      if (!canTransfer) {
+        return room;
+      }
+      const operatorClientId = getRoomOperatorClientId(room);
+      room.collaboration.operatorClientId = next;
+      if (!room.collaboration.ownerClientId) {
+        room.collaboration.ownerClientId = operatorClientId || next;
+      }
+      room.collaboration.operatorUpdatedAt = now();
+      const setEndState = ((room.match as any).setEndState || null) as
+        | { active?: boolean; phase?: string; ownerClientId?: string }
+        | null;
+      if (setEndState && !!setEndState.active && String(setEndState.phase || "") === "lineup") {
+        // 接管局间配置时，直接把配置控制权切给接管者，并清空上一个操作者的临时草稿。
+        setEndState.ownerClientId = next;
+        delete (room.match as any).lineupAdjustDraft;
+      }
+      return room;
+    },
+    { awaitCloud: true }
+  );
 }
 
 export function subscribeRoomWatch(roomId: string, listener: (room: RoomState | null) => void): () => void {

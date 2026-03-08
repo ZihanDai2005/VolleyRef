@@ -1147,6 +1147,7 @@ Page({
       }
       const created = await createRoomAsync({
         roomId: roomId,
+        creatorClientId: getApp<IAppOption>().globalData.clientId,
         password: roomPassword,
         settings: {
           sets: mode.sets,

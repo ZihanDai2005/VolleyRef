@@ -22,6 +22,10 @@ Component({
       type: String,
       value: "",
     },
+    allowScore: {
+      type: Boolean,
+      value: true,
+    },
   },
   data: {
     pulseA: false,

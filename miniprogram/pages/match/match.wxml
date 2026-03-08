@@ -3,20 +3,40 @@
   style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}}; --safe-pad-top: {{safePadTop}}; --safe-pad-right: {{safePadRight}}; --safe-pad-bottom: {{safePadBottom}}; --safe-pad-left: {{safePadLeft}};"
 >
   <view class="match-nav">
-    <view class="match-nav-back pressable" hover-class="tap-active" bindtap="confirmBackToHome">
-      <view class="match-nav-back-icon"></view>
+    <view class="match-nav-left">
+      <view class="match-nav-back pressable" hover-class="tap-active" bindtap="confirmBackToHome">
+        <view class="match-nav-back-icon"></view>
+      </view>
+      <view
+        wx:if="{{!hasOperationAuthority}}"
+        class="takeover-btn {{showSetEndModal ? 'set-end-open' : ''}} pressable"
+        hover-class="tap-active"
+        bindtap="onTakeoverTap"
+      >
+        <view class="takeover-btn-icon"></view>
+        <text class="takeover-btn-text">接管</text>
+      </view>
     </view>
-    <view class="match-nav-title">裁判团队编号 {{roomId}}</view>
+    <view class="match-nav-title">裁判团队编号 {{roomId}}   <text class="conn-inline {{connStatusClass}}">● {{connStatusText}}</text></view>
     <view class="match-nav-space"></view>
   </view>
 
   <view class="top-control-row">
     <view class="x-zone">
       <view class="x-row">
-        <view class="action-btn icon-circle-btn pressable" hover-class="tap-active" bindtap="onSwitchSides">
+        <view wx:if="{{hasOperationAuthority}}" class="action-btn icon-circle-btn pressable" hover-class="tap-active" bindtap="onSwitchSides">
           <view class="btn-icon icon-switch"></view>
         </view>
-        <view class="action-btn icon-circle-btn pressable" hover-class="tap-active" bindtap="onUndoLastScore">
+        <view wx:else class="action-btn perspective-btn pressable" hover-class="tap-active" bindtap="onToggleObserverPerspective">
+          <view class="btn-icon icon-switch"></view>
+          <text class="perspective-btn-text">视角</text>
+        </view>
+        <view
+          wx:if="{{hasOperationAuthority}}"
+          class="action-btn icon-circle-btn pressable"
+          hover-class="tap-active"
+          bindtap="onUndoLastScore"
+        >
           <view class="btn-icon icon-undo"></view>
         </view>
         <view class="action-btn icon-circle-btn pressable" hover-class="tap-active" bindtap="onOpenLogPanel">
@@ -24,15 +44,19 @@
         </view>
       </view>
       <view class="x-row">
-        <view class="x-room-count-pill">在线裁判 {{participantCount}}</view>
+        <view class="x-room-count-pill online-pill">
+          <view class="online-judge-icon"></view>
+          <text>{{participantCount}}</text>
+        </view>
+        <view class="x-room-count-pill mode-pill">{{hasOperationAuthority ? '裁判模式' : '观赛模式'}}</view>
       </view>
     </view>
 
-    <view class="score-zone">
+    <view class="score-zone {{switchingOut ? 'switch-out' : ''}} {{switchingIn ? 'switch-in' : ''}}">
       <view class="score-pill-row">
         <view class="center-pill-switch">
-          <view class="x-room-count-pill center-set-pill stat-num-pill score-switch-pill {{canStartMatch ? 'pill-hidden' : 'pill-visible'}}">{{setWinsText}}</view>
-          <view class="start-match-entry-row score-switch-pill {{canStartMatch ? 'pill-visible' : 'pill-hidden'}}">
+          <view class="x-room-count-pill center-set-pill stat-num-pill score-switch-pill {{(canStartMatch && hasOperationAuthority) ? 'pill-hidden' : 'pill-visible'}}">{{setWinsText}}</view>
+          <view wx:if="{{hasOperationAuthority}}" class="start-match-entry-row score-switch-pill {{canStartMatch ? 'pill-visible' : 'pill-hidden'}}">
             <view
               class="x-room-count-pill center-set-pill reconfigure-entry-pill pressable"
               hover-class="tap-active"
@@ -51,9 +75,14 @@
             </view>
           </view>
         </view>
-        <view class="timeout-live-pill {{timeoutActive ? 'active' : 'inactive'}}">
+        <view class="timeout-live-pill {{timeoutActive ? 'active' : 'inactive'}} {{hasOperationAuthority ? '' : 'observer'}}">
           <text class="timeout-live-text">{{timeoutLeftText}}</text>
-          <view class="timeout-live-end-btn pressable" hover-class="tap-active" bindtap="onEndTimeoutTap">
+          <view
+            wx:if="{{hasOperationAuthority}}"
+            class="timeout-live-end-btn pressable"
+            hover-class="tap-active"
+            bindtap="onEndTimeoutTap"
+          >
             <text class="timeout-live-end-label">结束</text>
           </view>
         </view>
@@ -62,6 +91,7 @@
         aScore="{{aScore}}"
         bScore="{{bScore}}"
         lastScoringTeam="{{lastScoringTeam}}"
+        allowScore="{{hasOperationAuthority}}"
         bind:scoreChange="onScoreChange"
       />
     </view>
@@ -81,7 +111,7 @@
     <view class="team-panel team-a">
       <view class="team-head">
         <block wx:if="{{!isSwapped}}">
-          <view class="team-actions left">
+          <view wx:if="{{hasOperationAuthority}}" class="team-actions left">
             <view class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
@@ -94,11 +124,11 @@
               <text class="timeout-count">{{teamATimeoutCount}}</text>
             </view>
           </view>
-          <text class="team-title align-right">{{teamAName}}</text>
+          <text class="team-title {{hasOperationAuthority ? 'align-right' : 'observer-center'}}">{{teamAName}}</text>
         </block>
         <block wx:else>
-          <text class="team-title align-left">{{teamAName}}</text>
-          <view class="team-actions right">
+          <text class="team-title {{hasOperationAuthority ? 'align-left' : 'observer-center'}}">{{teamAName}}</text>
+          <view wx:if="{{hasOperationAuthority}}" class="team-actions right">
             <view class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
@@ -137,8 +167,8 @@
     <view class="team-panel team-b">
       <view class="team-head">
         <block wx:if="{{!isSwapped}}">
-          <text class="team-title align-left">{{teamBName}}</text>
-          <view class="team-actions right">
+          <text class="team-title {{hasOperationAuthority ? 'align-left' : 'observer-center'}}">{{teamBName}}</text>
+          <view wx:if="{{hasOperationAuthority}}" class="team-actions right">
             <view class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
@@ -153,7 +183,7 @@
           </view>
         </block>
         <block wx:else>
-          <view class="team-actions left">
+          <view wx:if="{{hasOperationAuthority}}" class="team-actions left">
             <view class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
@@ -166,7 +196,7 @@
               <text class="timeout-count">{{teamBTimeoutCount}}</text>
             </view>
           </view>
-          <text class="team-title align-right">{{teamBName}}</text>
+          <text class="team-title {{hasOperationAuthority ? 'align-right' : 'observer-center'}}">{{teamBName}}</text>
         </block>
       </view>
       <view class="lineup-grid reverse {{isSwapped ? 'swap-layout' : ''}}">
@@ -252,7 +282,7 @@
         <text class="set-end-winner" wx:if="{{setEndMatchFinished}}">比赛结束 {{setEndWinnerName}}队胜</text>
       </view>
 
-      <view class="set-end-actions">
+      <view class="set-end-actions" wx:if="{{hasOperationAuthority}}">
         <block wx:if="{{setEndWaiting}}">
           <view class="set-end-btn-home waiting waiting-main">
             <view class="set-end-btn-content waiting-content">

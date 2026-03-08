@@ -4,8 +4,13 @@
   bindtap="onAdjustBlankTap"
 >
   <view class="match-nav">
-    <view class="match-nav-space"></view>
-    <view class="match-nav-title">裁判团队编号 {{roomId}}</view>
+    <view class="match-nav-left">
+      <view wx:if="{{!hasOperationAuthority}}" class="takeover-btn pressable" hover-class="tap-active" bindtap="onTakeoverTap">
+        <view class="takeover-btn-icon"></view>
+        <text class="takeover-btn-text">接管</text>
+      </view>
+    </view>
+    <view class="match-nav-title">裁判团队编号 {{roomId}}   <text class="conn-inline {{connStatusClass}}">● {{connStatusText}}</text></view>
     <view class="match-nav-space"></view>
   </view>
 
@@ -24,7 +29,7 @@
                 <view class="rotate-icon"></view>
               </view>
               <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="A" bindtap="onToggleServeTeam">
-                <view class="serve-toggle-icon"></view>
+                <view class="serve-toggle-icon {{servingTeam === 'A' ? 'serve' : 'receive'}}"></view>
                 <text class="team-toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
               </view>
               <view class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
@@ -41,7 +46,7 @@
                 <view class="rotate-icon"></view>
               </view>
               <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="A" bindtap="onToggleServeTeam">
-                <view class="serve-toggle-icon"></view>
+                <view class="serve-toggle-icon {{servingTeam === 'A' ? 'serve' : 'receive'}}"></view>
                 <text class="team-toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
               </view>
               <view class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
@@ -151,7 +156,7 @@
                 <view class="rotate-icon"></view>
               </view>
               <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="B" bindtap="onToggleServeTeam">
-                <view class="serve-toggle-icon"></view>
+                <view class="serve-toggle-icon {{servingTeam === 'B' ? 'serve' : 'receive'}}"></view>
                 <text class="team-toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
               </view>
               <view class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
@@ -166,7 +171,7 @@
                 <view class="rotate-icon"></view>
               </view>
               <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="B" bindtap="onToggleServeTeam">
-                <view class="serve-toggle-icon"></view>
+                <view class="serve-toggle-icon {{servingTeam === 'B' ? 'serve' : 'receive'}}"></view>
                 <text class="team-toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
               </view>
               <view class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
