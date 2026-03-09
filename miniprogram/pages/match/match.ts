@@ -638,7 +638,7 @@ Page({
   takeoverInFlight: false as boolean,
   rotateConfirming: false as boolean,
   switchConfirming: false as boolean,
-  actionQueue: Promise.resolve() as Promise<void>,
+  actionQueue: null as Promise<void> | null,
   rotateMotionInFlightCount: 0 as number,
   pendingLowerParticipantCount: 0 as number,
   pendingLowerParticipantHit: 0 as number,
@@ -855,7 +855,8 @@ Page({
   },
 
   enqueueAction(task: () => Promise<void>) {
-    this.actionQueue = this.actionQueue
+    const baseQueue = this.actionQueue || Promise.resolve();
+    this.actionQueue = baseQueue
       .catch(() => {})
       .then(async () => {
         await task();
@@ -864,6 +865,7 @@ Page({
   },
 
   onLoad(query: Record<string, string>) {
+    this.actionQueue = Promise.resolve();
     this.applyNavigationTheme();
     if (!this.themeOff) {
       this.themeOff = bindThemeChange(() => {
@@ -2079,10 +2081,7 @@ Page({
     return observerSide === "B" ? !rawRoomSwapped : !!rawRoomSwapped;
   },
 
-  applyLocalLineupFromRoom(
-    room: any,
-    options?: { observerSide?: "A" | "B"; hasOperationAuthority?: boolean; preHideTeams?: TeamCode[] }
-  ) {
+  applyLocalLineupFromRoom(room: any, options?: { observerSide?: "A" | "B"; hasOperationAuthority?: boolean }) {
     if (!room || !room.teamA || !room.teamB || !room.match) {
       return;
     }
@@ -2099,9 +2098,6 @@ Page({
     const currentTeamBCaptain = normalizeNumberInput(
       String((room.match as any).teamBCurrentCaptainNo || (room.teamB as any).captainNo || "")
     );
-    const preHideTeams = (options && Array.isArray(options.preHideTeams) ? options.preHideTeams : []) as TeamCode[];
-    const preHideA = preHideTeams.indexOf("A") >= 0;
-    const preHideB = preHideTeams.indexOf("B") >= 0;
     this.setData({
       isSwapped: nextSwapped,
       servingTeam: room.match.servingTeam === "B" ? "B" : "A",
@@ -2113,8 +2109,6 @@ Page({
       teamAMainGrid: buildMainGridByOrder(teamAPlayers, getMainOrderForTeam("A", teamASide)),
       teamBLibero: bRows.libero,
       teamBMainGrid: buildMainGridByOrder(teamBPlayers, getMainOrderForTeam("B", teamASide)),
-      hideTeamAMainNumbers: preHideA,
-      hideTeamBMainNumbers: preHideB,
     });
   },
 
@@ -2227,8 +2221,7 @@ Page({
       }
       await this.nextTickAsync();
       await this.delayAsync(10);
-      let afterRects = await this.measureTeamMainPosRectsStable(team, 1200);
-      afterRects = this.completeTeamRectMapByGrid(team, afterRects || {}, mergedBeforeRects || {});
+      const afterRects = mergedBeforeRects;
       const afterNoMap = this.getTeamMainNumberMap(team);
       const endItems: RotateFlyItem[] = [];
       const usedTargets = new Set<MainPosition>();
@@ -2296,7 +2289,7 @@ Page({
         this.scheduleRectCacheWarmup(80);
         return;
       }
-      this.setCachedTeamRectMap(team, afterRects);
+      this.setCachedTeamRectMap(team, mergedBeforeRects);
       await this.nextTickAsync();
       await this.delayAsync(16);
       if (team === "A") {
@@ -2685,14 +2678,12 @@ Page({
             measuredBeforeRects1 || {},
             this.getCachedTeamRectMap(step.team)
           );
-          const canAnimateStep1 = this.countRectMap(beforeRects1 || {}) > 0;
           const beforeNoMap1 = this.getTeamMainNumberMap(step.team);
           const beforeCaptain1 = step.team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
 
           let beforeRects2: TeamRectMap | null = null;
           let beforeNoMap2: TeamMainNoMap | null = null;
           let beforeCaptain2 = "";
-          let canAnimateStep2 = false;
           if (canParallel && nextStep) {
             const measuredBeforeRects2 = await this.measureTeamMainPosRectsStable(nextStep.team, 1200);
             beforeRects2 = this.completeTeamRectMapByGrid(
@@ -2700,7 +2691,6 @@ Page({
               measuredBeforeRects2 || {},
               this.getCachedTeamRectMap(nextStep.team)
             );
-            canAnimateStep2 = this.countRectMap(beforeRects2 || {}) > 0;
             beforeNoMap2 = this.getTeamMainNumberMap(nextStep.team);
             beforeCaptain2 = nextStep.team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
           }
@@ -2720,10 +2710,6 @@ Page({
 
           const tempARows = buildTeamRows(tempAPlayers);
           const tempBRows = buildTeamRows(tempBPlayers);
-          const preHideA =
-            (step.team === "A" && canAnimateStep1) || !!(canParallel && nextStep && nextStep.team === "A" && canAnimateStep2);
-          const preHideB =
-            (step.team === "B" && canAnimateStep1) || !!(canParallel && nextStep && nextStep.team === "B" && canAnimateStep2);
           this.setData({
             teamAPlayers: tempAPlayers,
             teamBPlayers: tempBPlayers,
@@ -2731,8 +2717,6 @@ Page({
             teamAMainGrid: buildMainGridByOrder(tempAPlayers, getMainOrderForTeam("A", teamASide)),
             teamBLibero: tempBRows.libero,
             teamBMainGrid: buildMainGridByOrder(tempBPlayers, getMainOrderForTeam("B", teamASide)),
-            hideTeamAMainNumbers: preHideA,
-            hideTeamBMainNumbers: preHideB,
           });
 
           if (canParallel && nextStep && beforeRects2 && beforeNoMap2) {
@@ -3104,8 +3088,7 @@ Page({
 
       if (beforeRotateRects && beforeRotateNoMap) {
         this.applyLocalScoreFromRoom(next);
-        this.applyLocalLineupFromRoom(next, { preHideTeams: [rotatedTeam] });
-        await this.nextTickAsync();
+        this.applyLocalLineupFromRoom(next);
         await this.playTeamRotateMotion(rotatedTeam, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain, "forward");
       }
       releaseRotateLock();
@@ -3449,7 +3432,6 @@ Page({
           try {
             const beforeRotateRects = await this.measureTeamMainPosRectsStable(team, 1000);
             const beforeRotateNoMap = this.getTeamMainNumberMap(team);
-            const canAnimateTeam = this.countRectMap(beforeRotateRects || {}) > 0;
             const beforeRotateCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
             const next = await updateRoomAsync(roomId, (room) => {
               const opId = createLogId();
@@ -3462,8 +3444,7 @@ Page({
             if (!next) {
               return;
             }
-            this.applyLocalLineupFromRoom(next, { preHideTeams: canAnimateTeam ? [team] : [] });
-            await this.nextTickAsync();
+            this.applyLocalLineupFromRoom(next);
             await this.playTeamRotateMotion(team, beforeRotateRects, beforeRotateNoMap, beforeRotateCaptain, "forward");
             needReload = true;
           } finally {
@@ -3530,8 +3511,6 @@ Page({
       const beforeBRects = await this.measureTeamMainPosRectsStable("B", 1000);
       const beforeANoMap = this.getTeamMainNumberMap("A");
       const beforeBNoMap = this.getTeamMainNumberMap("B");
-      const canAnimateA = this.countRectMap(beforeARects || {}) > 0;
-      const canAnimateB = this.countRectMap(beforeBRects || {}) > 0;
       const beforeACaptain = this.data.teamACaptainNo;
       const beforeBCaptain = this.data.teamBCaptainNo;
       const next = await updateRoomAsync(roomId, (room) => {
@@ -3674,25 +3653,14 @@ Page({
         this.setData({ switchingOut: true, switchingIn: false });
         await this.delayAsync(120);
         this.applyLocalScoreFromRoom(next);
-        this.applyLocalLineupFromRoom(next, {
-          preHideTeams: [
-            ...(undoRotateA && canAnimateA ? (["A"] as TeamCode[]) : []),
-            ...(undoRotateB && canAnimateB ? (["B"] as TeamCode[]) : []),
-          ],
-        });
+        this.applyLocalLineupFromRoom(next);
         this.setData({ switchingOut: false, switchingIn: true });
         await this.delayAsync(220);
         this.setData({ switchingIn: false });
       } else {
         this.applyLocalScoreFromRoom(next);
-        this.applyLocalLineupFromRoom(next, {
-          preHideTeams: [
-            ...(undoRotateA && canAnimateA ? (["A"] as TeamCode[]) : []),
-            ...(undoRotateB && canAnimateB ? (["B"] as TeamCode[]) : []),
-          ],
-        });
+        this.applyLocalLineupFromRoom(next);
       }
-      await this.nextTickAsync();
       if (undoRotateA) {
         await this.playTeamRotateMotion("A", beforeARects, beforeANoMap, beforeACaptain, undoDirectionA);
       }

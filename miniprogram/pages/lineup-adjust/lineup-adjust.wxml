@@ -13,7 +13,6 @@
     <view class="match-nav-title">裁判团队编号 {{roomId}}   <text class="conn-inline {{connStatusClass}}">● {{connStatusText}}</text></view>
     <view class="match-nav-space"></view>
   </view>
-
   <view class="adjust-head-block">
     <text class="adjust-head-title">{{adjustHeadTitle}}</text>
     <text class="adjust-head-hint">{{adjustHeadHint}}</text>

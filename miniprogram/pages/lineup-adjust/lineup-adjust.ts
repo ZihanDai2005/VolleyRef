@@ -320,9 +320,9 @@ Page({
   leavingPage: false as boolean,
   sideSwitchInFlight: false as boolean,
   sideSwitchPendingCount: 0 as number,
-  sideSwitchActionQueue: Promise.resolve() as Promise<void>,
-  rotateActionQueueA: Promise.resolve() as Promise<void>,
-  rotateActionQueueB: Promise.resolve() as Promise<void>,
+  sideSwitchActionQueue: null as Promise<void> | null,
+  rotateActionQueueA: null as Promise<void> | null,
+  rotateActionQueueB: null as Promise<void> | null,
   rotateActionInFlight: false as boolean,
   rotateLoadPending: false as boolean,
   lastTeamARects: {} as TeamRectMap,
@@ -556,6 +556,9 @@ Page({
   },
 
   onLoad(options: Record<string, string>) {
+    this.sideSwitchActionQueue = Promise.resolve();
+    this.rotateActionQueueA = Promise.resolve();
+    this.rotateActionQueueB = Promise.resolve();
     const roomId = String((options && options.roomId) || "");
     const entry = String((options && options.entry) || "");
     this.isReconfigureEntry = entry === "reconfigure";
@@ -744,7 +747,8 @@ Page({
 
   enqueueRotateAction(team: TeamCode, task: () => Promise<void>) {
     const key = team === "A" ? "rotateActionQueueA" : "rotateActionQueueB";
-    (this as any)[key] = (this as any)[key]
+    const baseQueue = ((this as any)[key] as Promise<void> | null) || Promise.resolve();
+    (this as any)[key] = baseQueue
       .catch(() => {})
       .then(async () => {
         await task();
@@ -753,7 +757,8 @@ Page({
   },
 
   enqueueSideSwitchAction(task: () => Promise<void>) {
-    this.sideSwitchActionQueue = this.sideSwitchActionQueue
+    const baseQueue = this.sideSwitchActionQueue || Promise.resolve();
+    this.sideSwitchActionQueue = baseQueue
       .catch(() => {})
       .then(async () => {
         await task();
@@ -1477,19 +1482,12 @@ Page({
       try {
         const beforeRects = await this.measureTeamMainPosRectsStable(team, 1000);
         const beforeNoMap = this.getTeamMainNumberMap(team);
-        const canAnimateTeam = this.countRectMap(beforeRects || {}) > 0;
         if (team === "A") {
-          if (canAnimateTeam) {
-            this.setData({ hideTeamAMainNumbers: true });
-          }
           const rotated = rotateTeamByRule(this.data.teamAPlayers);
           this.applyDisplay(rotated, this.data.teamBPlayers, this.data.isSwapped);
           this.schedulePersistLineupDraft();
           await this.playTeamRotateMotion("A", beforeRects, beforeNoMap, this.data.teamACaptainNo, "forward");
         } else {
-          if (canAnimateTeam) {
-            this.setData({ hideTeamBMainNumbers: true });
-          }
           const rotated = rotateTeamByRule(this.data.teamBPlayers);
           this.applyDisplay(this.data.teamAPlayers, rotated, this.data.isSwapped);
           this.schedulePersistLineupDraft();
@@ -1829,9 +1827,15 @@ Page({
         this.setData({ hideTeamBMainNumbers: false, rotateFlyItemsB: [] });
       }
     };
-    if (!beforeRects || MAIN_POSITIONS.every((pos) => !beforeRects[pos])) {
-      clearTeamMotion();
-      return;
+    const cachedRects = this.getCachedTeamRectMap(team);
+    let mergedBeforeRects = this.completeTeamRectMapByGrid(team, beforeRects || {}, cachedRects || {});
+    if (!mergedBeforeRects || MAIN_POSITIONS.every((pos) => !mergedBeforeRects[pos])) {
+      const retryBeforeRects = await this.measureTeamMainPosRectsStable(team, 360);
+      mergedBeforeRects = this.completeTeamRectMapByGrid(team, retryBeforeRects || {}, this.getCachedTeamRectMap(team) || {});
+      if (!mergedBeforeRects || MAIN_POSITIONS.every((pos) => !mergedBeforeRects[pos])) {
+        clearTeamMotion();
+        return;
+      }
     }
     const startSeeds: Array<{
       sourcePos: MainPosition;
@@ -1842,7 +1846,7 @@ Page({
       baseStyle: string;
     }> = [];
     MAIN_POSITIONS.forEach((sourcePos) => {
-      const fromRect = beforeRects[sourcePos];
+      const fromRect = mergedBeforeRects[sourcePos];
       if (!fromRect) {
         return;
       }
@@ -1885,8 +1889,7 @@ Page({
     }
     await this.nextTickAsync();
     await this.delayAsync(10);
-    const measuredAfterRects = await this.measureTeamMainPosRectsStable(team, 1000);
-    const afterRects = this.completeTeamRectMapByGrid(team, measuredAfterRects || {}, beforeRects || {});
+    const afterRects = mergedBeforeRects;
     const afterNoMap = this.getTeamMainNumberMap(team);
     const endItems: RotateFlyItem[] = [];
     const usedTargets = new Set<MainPosition>();
@@ -1953,6 +1956,7 @@ Page({
       clearTeamMotion();
       return;
     }
+    this.setCachedTeamRectMap(team, mergedBeforeRects);
     await this.nextTickAsync();
     await this.delayAsync(16);
     if (team === "A") {
