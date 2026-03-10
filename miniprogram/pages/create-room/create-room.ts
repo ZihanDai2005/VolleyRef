@@ -4,6 +4,7 @@ import {
   updateRoomAsync,
   heartbeatRoomAsync,
   leaveRoomAsync,
+  hasRoomLockAsync,
   releaseRoomIdAsync,
   subscribeRoomWatch,
   TEAM_COLOR_OPTIONS,
@@ -41,6 +42,7 @@ const PLAYER_INDEX_BY_POS: Record<Position, number> = {
   L2: 7,
 };
 const PASSWORD_FOCUS_KEY = "__password__";
+const ROOM_MATCH_TTL_MS = 6 * 60 * 60 * 1000;
 
 function createInitialPlayers(): PlayerSlot[] {
   return [
@@ -258,6 +260,20 @@ Page({
   captainPickerResolver: null as null | ((value: string | null) => void),
   saveInFlight: false as boolean,
   copyInviteInFlight: false as boolean,
+
+  enterMatchPage(roomId: string) {
+    const id = String(roomId || "");
+    if (!id) {
+      return;
+    }
+    const url = "/pages/match/match?roomId=" + id;
+    wx.redirectTo({
+      url: url,
+      fail: () => {
+        wx.reLaunch({ url: url });
+      },
+    });
+  },
 
   onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
@@ -1071,6 +1087,25 @@ Page({
     let showCreatingLoading = false;
     try {
     this.dismissKeyboardForSave();
+    const roomId = String(this.data.roomId || "");
+    const editMode = !!this.data.editMode;
+    const createMode = !!this.data.createMode;
+    if (createMode) {
+      const clientId = String(getApp<IAppOption>().globalData.clientId || "");
+      const lockValid = await hasRoomLockAsync(roomId, clientId);
+      if (!lockValid) {
+        wx.showModal({
+          title: "房间号已回收",
+          content: "该房间号保留已超时，请返回首页重新创建房间。",
+          showCancel: false,
+          confirmText: "返回首页",
+          success: () => {
+            wx.reLaunch({ url: "/pages/home/home" });
+          },
+        });
+        return;
+      }
+    }
     const teamAName = this.data.teamAName.trim() || "甲";
     const teamBName = this.data.teamBName.trim() || "乙";
     const roomPassword = this.data.roomPassword.trim();
@@ -1119,10 +1154,6 @@ Page({
       return;
     }
 
-    const roomId = this.data.roomId;
-    const editMode = this.data.editMode;
-    const createMode = this.data.createMode;
-
     if (!editMode) {
       const captainResolved = await this.ensureOnCourtCaptains(this.data.teamAPlayers, this.data.teamBPlayers);
       if (!captainResolved) {
@@ -1169,7 +1200,15 @@ Page({
         return;
       }
       const nextCreated = await updateRoomAsync(created.roomId, (room) => {
+        const nowTs = Date.now();
+        if (room.status !== "match") {
+          room.expiresAt = nowTs + ROOM_MATCH_TTL_MS;
+          room.extraTimeGranted = false;
+        }
         room.status = "match";
+        if (!(room as any).matchEnteredAt) {
+          (room as any).matchEnteredAt = nowTs;
+        }
         (room.match as any).teamACurrentCaptainNo = onCourtTeamACaptainNo;
         (room.match as any).teamBCurrentCaptainNo = onCourtTeamBCaptainNo;
         room.match.servingTeam = this.data.servingTeam;
@@ -1184,11 +1223,21 @@ Page({
       await releaseRoomIdAsync(created.roomId, clientId);
       this.setData({ createCommitted: true });
       await heartbeatRoomAsync(created.roomId, clientId);
-      wx.navigateTo({ url: "/pages/match/match?roomId=" + created.roomId });
+      this.enterMatchPage(created.roomId);
       return;
     }
     const next = await updateRoomAsync(roomId, (room) => {
-      room.status = editMode ? room.status : "match";
+      if (!editMode) {
+        const nowTs = Date.now();
+        if (room.status !== "match") {
+          room.expiresAt = nowTs + ROOM_MATCH_TTL_MS;
+          room.extraTimeGranted = false;
+        }
+        room.status = "match";
+        if (!(room as any).matchEnteredAt) {
+          (room as any).matchEnteredAt = nowTs;
+        }
+      }
       room.password = roomPassword;
       room.settings = {
         sets: mode.sets,
@@ -1224,7 +1273,7 @@ Page({
       wx.navigateBack({ delta: 1 });
       return;
     }
-    wx.navigateTo({ url: "/pages/match/match?roomId=" + roomId });
+    this.enterMatchPage(roomId);
     } finally {
       if (showCreatingLoading) {
         wx.hideLoading();

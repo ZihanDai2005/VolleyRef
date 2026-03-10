@@ -574,18 +574,6 @@
   border: none;
 }
 
-.create-head-lineup-grid.team-a .player-card.libero .num-text,
-.create-head-lineup-grid.team-a .player-card.libero .player-qmark {
-  color: var(--team-a-color, #8a87d0);
-  -webkit-text-stroke: 1.2px var(--page-bg);
-}
-
-.create-head-lineup-grid.team-b .player-card.libero .num-text,
-.create-head-lineup-grid.team-b .player-card.libero .player-qmark {
-  color: var(--team-b-color, #8dc8a5);
-  -webkit-text-stroke: 1.2px var(--page-bg);
-}
-
 @keyframes createSideSwitch {
   0% {
     opacity: 0.56;
@@ -948,16 +936,24 @@
   border: none;
 }
 
-.team-a .player-card.libero .num-text,
-.team-a .player-card.libero .player-qmark {
-  color: var(--team-a-color, #8a87d0);
-  -webkit-text-stroke: 1.2px var(--page-bg);
+.create-head-lineup-grid .player-card.libero .num-text,
+.lineup-grid .player-card.libero .num-text {
+  display: inline-block;
+  position: relative;
+  line-height: 1;
 }
 
-.team-b .player-card.libero .num-text,
-.team-b .player-card.libero .player-qmark {
-  color: var(--team-b-color, #81c79e);
-  -webkit-text-stroke: 1.2px var(--page-bg);
+.create-head-lineup-grid .player-card.libero .num-text::after,
+.lineup-grid .player-card.libero .num-text::after {
+  content: "";
+  position: absolute;
+  left: 50%;
+  top: -10rpx;
+  transform: translateX(-50%);
+  width: 8rpx;
+  height: 8rpx;
+  border-radius: 999rpx;
+  background: currentColor;
 }
 
 .player-input {
@@ -1333,7 +1329,7 @@
     --page-bg-rgb: 19, 20, 22;
     background-image: linear-gradient(
       180deg,
-      rgba(var(--theme-accent-rgb), 0.1) 0%,
+      rgba(var(--theme-accent-rgb), 0.14) 0%,
       rgba(var(--theme-accent-rgb), 0) 100%
     );
   }

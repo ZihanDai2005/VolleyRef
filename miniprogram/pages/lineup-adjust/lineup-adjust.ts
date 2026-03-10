@@ -16,8 +16,16 @@ import { computeLandscapeSafePad } from "../../utils/safe-pad";
 
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
-type DisplayPlayerSlot = PlayerSlot & { index: number; inputKey: string };
+type DisplayPlayerSlot = PlayerSlot & { index: number; inputKey: string; isLibero?: boolean };
 type TeamRows = { libero: DisplayPlayerSlot[] };
+type MatchLogLike = {
+  action?: string;
+  team?: TeamCode | "";
+  note?: string;
+  setNo?: number;
+  opId?: string;
+  revertedOpId?: string;
+};
 type TeamPosRect = { left: number; top: number; width: number; height: number };
 type TeamRectMap = Partial<Record<MainPosition, TeamPosRect>>;
 type TeamMainNoMap = Partial<Record<MainPosition, string>>;
@@ -27,6 +35,7 @@ type RotateFlyItem = {
   team: TeamCode;
   number: string;
   isCaptain: boolean;
+  isLibero: boolean;
   style: string;
 };
 type ConnState = "online" | "reconnecting" | "offline";
@@ -56,6 +65,9 @@ const NUMBER_SOURCE_MAP: Record<Position, Position> = {
   L1: "L1",
   L2: "L2",
 };
+const CONN_RECONNECT_FAILS_ONLINE = 3;
+const CONN_OFFLINE_FAILS_ONLINE = 5;
+const CONN_OFFLINE_FAILS_NONONLINE = 4;
 
 const PLAYER_INDEX_BY_POS: Record<Position, number> = {
   I: 0,
@@ -68,12 +80,215 @@ const PLAYER_INDEX_BY_POS: Record<Position, number> = {
   L2: 7,
 };
 
+type SpecialBanState = {
+  setBanNos: Set<string>;
+  matchBanNos: Set<string>;
+};
+
 function normalizeNumberInput(value: string): string {
   const digits = String(value || "").replace(/\D/g, "").slice(0, 2);
   if (!digits) {
     return "";
   }
   return String(Number(digits));
+}
+
+function normalizeSubstituteNumber(value: string): string {
+  return normalizeNumberInput(value);
+}
+
+function extractSetNoFromNote(note: string): number | null {
+  const m = String(note || "").match(/第\s*(\d+)\s*局/);
+  if (!m) {
+    return null;
+  }
+  return Math.max(1, Number(m[1]) || 1);
+}
+
+function normalizeSwapSymbolText(text: string): string {
+  return String(text || "")
+    .replace(/\uFE0F/g, "")
+    .replace(/\u2194\uFE0F/g, "\u2194")
+    .replace(/自由人替换/g, "自由人常规换人")
+    .replace(/特殊自由人换人/g, "自由人特殊换人");
+}
+
+function parseGenericSubRecordText(noteRaw: string): { downNo: string } | null {
+  const note = normalizeSwapSymbolText(noteRaw);
+  const direct = note.match(/↑\s*(\d{1,2})\s*↓\s*(\d{1,2})\s*(（自）)?/);
+  if (!direct) {
+    return null;
+  }
+  const downNo = normalizeSubstituteNumber(direct[2]);
+  if (!downNo) {
+    return null;
+  }
+  return { downNo };
+}
+
+function parseSpecialLiberoRecordText(noteRaw: string): { downNo: string } | null {
+  const note = normalizeSwapSymbolText(noteRaw);
+  const direct = note.match(/↑\s*(\d{1,2})\s*(（自）)?\s*↓\s*(\d{1,2})\s*(（自）)?/);
+  if (!direct) {
+    return null;
+  }
+  const downNo = normalizeSubstituteNumber(direct[3]);
+  if (!downNo) {
+    return null;
+  }
+  return { downNo };
+}
+
+function isSpecialLiberoSubAction(actionRaw: string): boolean {
+  const action = String(actionRaw || "");
+  return (
+    action === "sub_special_libero" ||
+    action === "sub_special_libero_injury" ||
+    action === "sub_special_libero_penalty_set" ||
+    action === "sub_special_libero_penalty_match" ||
+    action === "sub_special_libero_other"
+  );
+}
+
+function isSpecialLiberoSubNote(noteRaw: string): boolean {
+  const note = normalizeSwapSymbolText(noteRaw);
+  return note.indexOf("自由人特殊换人") >= 0 || note.indexOf("特殊自由人换人") >= 0;
+}
+
+function normalizeSubLogsBySet(logs: MatchLogLike[]): MatchLogLike[] {
+  let cursorSetNo = 1;
+  return (logs || []).map((item) => {
+    const action = String(item && item.action ? item.action : "");
+    const note = normalizeSwapSymbolText(String(item && item.note ? item.note : ""));
+    const explicitSetNo = Number(item && item.setNo) || 0;
+    const noteSetNo = extractSetNoFromNote(note);
+    let resolvedSetNo = explicitSetNo > 0 ? Math.max(1, explicitSetNo) : 0;
+    if (!resolvedSetNo) {
+      if (action === "next_set" && noteSetNo) {
+        resolvedSetNo = Math.max(1, noteSetNo - 1);
+      } else if (noteSetNo) {
+        resolvedSetNo = Math.max(1, noteSetNo);
+      } else {
+        resolvedSetNo = cursorSetNo;
+      }
+    }
+    if (action === "next_set" && noteSetNo) {
+      cursorSetNo = Math.max(cursorSetNo, noteSetNo);
+    } else {
+      cursorSetNo = Math.max(cursorSetNo, resolvedSetNo);
+    }
+    return {
+      action: action,
+      team: item && (item.team === "A" || item.team === "B") ? item.team : "",
+      note: note,
+      setNo: resolvedSetNo,
+      opId: String((item as any).opId || ""),
+      revertedOpId: String((item as any).revertedOpId || ""),
+    };
+  });
+}
+
+function buildRevertedOpIdSet(logs: MatchLogLike[]): Set<string> {
+  const hiddenOpIds = new Set<string>();
+  (logs || []).forEach((item) => {
+    const action = String(item && item.action ? item.action : "");
+    const revertedOpId = String((item as any).revertedOpId || "");
+    if (action === "score_undo" && revertedOpId) {
+      hiddenOpIds.add(revertedOpId);
+    }
+  });
+  return hiddenOpIds;
+}
+
+function buildSpecialBanStateBySet(logs: MatchLogLike[], setNo: number, team: TeamCode): SpecialBanState {
+  const targetSet = Math.max(1, Number(setNo || 1));
+  const hiddenOpIds = buildRevertedOpIdSet(logs);
+  const setBanNos = new Set<string>();
+  const matchBanNos = new Set<string>();
+
+  (logs || []).forEach((item) => {
+    if (!item || item.team !== team) {
+      return;
+    }
+    const opId = String((item as any).opId || "");
+    if (opId && hiddenOpIds.has(opId)) {
+      return;
+    }
+    const action = String(item.action || "");
+    const note = String(item.note || "");
+    const isSpecialLiberoSub = isSpecialLiberoSubAction(action) || isSpecialLiberoSubNote(note);
+    const parsed = isSpecialLiberoSub ? parseSpecialLiberoRecordText(note) : parseGenericSubRecordText(note);
+    const downNo = normalizeSubstituteNumber(parsed && parsed.downNo ? parsed.downNo : "");
+    if (!downNo) {
+      return;
+    }
+
+    const itemSetNo = Math.max(1, Number(item.setNo || extractSetNoFromNote(note) || 1));
+    if (
+      action === "sub_special_penalty_set" ||
+      action === "sub_special_libero_penalty_set" ||
+      note.indexOf("本局禁赛") >= 0
+    ) {
+      if (itemSetNo === targetSet) {
+        setBanNos.add(downNo);
+      }
+      return;
+    }
+    if (
+      action === "sub_special_injury" ||
+      action === "sub_special_penalty_match" ||
+      action === "sub_special_libero" ||
+      action === "sub_special_libero_injury" ||
+      action === "sub_special_libero_penalty_match" ||
+      note.indexOf("全场禁赛") >= 0
+    ) {
+      matchBanNos.add(downNo);
+    }
+  });
+
+  return {
+    setBanNos,
+    matchBanNos,
+  };
+}
+
+function getLineupBanBlockMessage(
+  logs: MatchLogLike[],
+  setNo: number,
+  team: TeamCode,
+  players: PlayerSlot[],
+  teamNameRaw: string
+): string {
+  const teamName = String(teamNameRaw || (team === "A" ? "甲" : "乙")).trim() || (team === "A" ? "甲" : "乙");
+  const banState = buildSpecialBanStateBySet(logs, setNo, team);
+  const seen = new Set<string>();
+  for (let i = 0; i < (players || []).length; i += 1) {
+    const no = normalizeSubstituteNumber(String((players[i] && players[i].number) || ""));
+    if (!no || seen.has(no)) {
+      continue;
+    }
+    seen.add(no);
+    if (banState.matchBanNos.has(no)) {
+      return teamName + "队 " + no + "号已被全场禁赛，不能进入本局名单";
+    }
+    if (banState.setBanNos.has(no)) {
+      return teamName + "队 " + no + "号本局禁赛，不能进入本局名单";
+    }
+  }
+  return "";
+}
+
+function getLiberoRosterFromPlayers(players: PlayerSlot[]): string[] {
+  const l1 = normalizeNumberInput(String(((players || []).find((p) => p.pos === "L1") || { number: "" }).number || ""));
+  const l2 = normalizeNumberInput(String(((players || []).find((p) => p.pos === "L2") || { number: "" }).number || ""));
+  const out: string[] = [];
+  if (l1) {
+    out.push(l1);
+  }
+  if (l2 && out.indexOf(l2) < 0) {
+    out.push(l2);
+  }
+  return out;
 }
 
 function normalizeLiberoSlots(players: PlayerSlot[]): PlayerSlot[] {
@@ -179,16 +394,19 @@ function clonePlayers(players: any[]): PlayerSlot[] {
 
 function buildMainGridByOrder(players: PlayerSlot[], order: MainPosition[], team: TeamCode): DisplayPlayerSlot[][] {
   const byPos: Record<string, PlayerSlot> = {};
+  const liberoSet = new Set(getLiberoRosterFromPlayers(players || []));
   players.forEach(function (p) {
     byPos[p.pos] = p;
   });
   const ordered = order.map(function (pos) {
     const slot = byPos[pos] || { pos: pos, number: "?" };
+    const no = normalizeNumberInput(slot.number);
     return {
       pos: slot.pos,
       number: slot.number,
       index: PLAYER_INDEX_BY_POS[pos],
       inputKey: team + "-" + String(PLAYER_INDEX_BY_POS[pos]),
+      isLibero: !!no && liberoSet.has(no),
     };
   });
   return [ordered.slice(0, 2), ordered.slice(2, 4), ordered.slice(4, 6)];
@@ -196,17 +414,20 @@ function buildMainGridByOrder(players: PlayerSlot[], order: MainPosition[], team
 
 function buildTeamRows(players: PlayerSlot[], team: TeamCode): TeamRows {
   const byPos: Record<string, PlayerSlot> = {};
+  const liberoSet = new Set(getLiberoRosterFromPlayers(players || []));
   players.forEach(function (p) {
     byPos[p.pos] = p;
   });
   return {
     libero: (["L1", "L2"] as Position[]).map(function (pos) {
       const slot = byPos[pos] || { pos: pos, number: "?" };
+      const no = normalizeNumberInput(slot.number);
       return {
         pos: slot.pos,
         number: slot.number,
         index: PLAYER_INDEX_BY_POS[pos],
         inputKey: team + "-" + String(PLAYER_INDEX_BY_POS[pos]),
+        isLibero: !!no && liberoSet.has(no),
       };
     }),
   };
@@ -233,13 +454,37 @@ function getPresetLineupFromPreviousSet(room: any): {
 } {
   const currentSetNo = Math.max(1, Number(room && room.match && room.match.setNo) || 1);
   const previousSetNo = Math.max(1, currentSetNo - 1);
+  const setStartLineupsBySet =
+    room && room.match && room.match.setStartLineupsBySet && typeof room.match.setStartLineupsBySet === "object"
+      ? (room.match.setStartLineupsBySet as Record<string, any>)
+      : {};
+  const previousStartSnapshot = setStartLineupsBySet[String(previousSetNo)];
+  const hasPreviousStartSnapshot =
+    !!previousStartSnapshot &&
+    Array.isArray(previousStartSnapshot.teamAPlayers) &&
+    Array.isArray(previousStartSnapshot.teamBPlayers);
+
+  if (hasPreviousStartSnapshot) {
+    const prevSetServingTeam: TeamCode = previousStartSnapshot.servingTeam === "B" ? "B" : "A";
+    const endIsSwapped =
+      typeof previousStartSnapshot.endIsSwapped === "boolean"
+        ? !!previousStartSnapshot.endIsSwapped
+        : !!previousStartSnapshot.startIsSwapped;
+    return {
+      teamAPlayers: clonePlayers(previousStartSnapshot.teamAPlayers || []),
+      teamBPlayers: clonePlayers(previousStartSnapshot.teamBPlayers || []),
+      isSwapped: !endIsSwapped,
+      servingTeam: prevSetServingTeam === "A" ? "B" : "A",
+    };
+  }
+
   const undoStack = Array.isArray(room && room.match && room.match.undoStack) ? room.match.undoStack : [];
   const prevSetSnapshots = undoStack.filter(function (item: any) {
     return Math.max(1, Number(item && item.setNo) || 1) === previousSetNo;
   });
 
-  let teamAPlayers: PlayerSlot[];
-  let teamBPlayers: PlayerSlot[];
+  let teamAPlayers: PlayerSlot[] = clonePlayers((room && room.teamA && room.teamA.players) || []);
+  let teamBPlayers: PlayerSlot[] = clonePlayers((room && room.teamB && room.teamB.players) || []);
   let endIsSwapped = !!(room && room.match && room.match.isSwapped);
   let nextServingTeam: TeamCode = room && room.match && room.match.servingTeam === "B" ? "A" : "B";
 
@@ -253,14 +498,11 @@ function getPresetLineupFromPreviousSet(room: any): {
     if (typeof lastSnapshot.isSwapped === "boolean") {
       endIsSwapped = !!lastSnapshot.isSwapped;
     }
-  } else {
-    teamAPlayers = clonePlayers((room && room.teamA && room.teamA.players) || []);
-    teamBPlayers = clonePlayers((room && room.teamB && room.teamB.players) || []);
   }
 
   return {
-    teamAPlayers,
-    teamBPlayers,
+    teamAPlayers: teamAPlayers,
+    teamBPlayers: teamBPlayers,
     isSwapped: !endIsSwapped,
     servingTeam: nextServingTeam,
   };
@@ -313,6 +555,7 @@ Page({
   isReconfigureEntry: false as boolean,
   clientId: "" as string,
   draftSaveTimer: 0 as number,
+  continueRouteTimer: 0 as number,
   inputEditing: false as boolean,
   inputEditingReleaseTimer: 0 as number,
   roomWatchOff: null as null | (() => void),
@@ -334,10 +577,12 @@ Page({
   heartbeatTimer: 0 as number,
   roomMissingRetryTimer: 0 as number,
   roomMissingToastAt: 0 as number,
+  roomMissingLoadingVisible: false as boolean,
   roomMissingVerifyAt: 0 as number,
   roomMissingVerifyInFlight: false as boolean,
   roomClosedHandled: false as boolean,
   lastRoomSnapshot: null as any,
+  pageActive: false as boolean,
   networkOnline: true as boolean,
   networkStatusHandler: null as null | ((res: { isConnected?: boolean }) => void),
   data: {
@@ -397,8 +642,8 @@ Page({
     captainPickerMainGrid: [] as DisplayPlayerSlot[][],
     captainPickerLibero: [] as DisplayPlayerSlot[],
     captainPickerSelectedNo: "",
-    connStatusText: "连接中",
-    connStatusClass: "status-reconnecting",
+    connStatusText: "信号正常",
+    connStatusClass: "status-online",
     roomOwnerClientId: "",
     roomOperatorClientId: "",
     controlRole: "operator" as "operator" | "observer",
@@ -406,7 +651,7 @@ Page({
   },
 
   setConnState(state: ConnState, options?: { force?: boolean }) {
-    const nextText = state === "online" ? "已连接" : state === "offline" ? "已离线" : "连接中";
+    const nextText = state === "online" ? "信号正常" : state === "offline" ? "信号断联" : "正在重连";
     const nextClass = state === "online" ? "status-online" : state === "offline" ? "status-offline" : "status-reconnecting";
     if (this.data.connStatusText === nextText && this.data.connStatusClass === nextClass) {
       return;
@@ -457,16 +702,16 @@ Page({
     this.connFailCount += 1;
     const current = this.getConnState();
     if (current === "online") {
-      if (this.connFailCount >= 3) {
+      if (this.connFailCount >= CONN_OFFLINE_FAILS_ONLINE) {
         this.setConnState("offline");
         return;
       }
-      if (this.connFailCount >= 2) {
+      if (this.connFailCount >= CONN_RECONNECT_FAILS_ONLINE) {
         this.setConnState("reconnecting");
       }
       return;
     }
-    if (this.connFailCount >= 2) {
+    if (this.connFailCount >= CONN_OFFLINE_FAILS_NONONLINE) {
       this.setConnState("offline");
       return;
     }
@@ -556,6 +801,7 @@ Page({
   },
 
   onLoad(options: Record<string, string>) {
+    this.pageActive = true;
     this.sideSwitchActionQueue = Promise.resolve();
     this.rotateActionQueueA = Promise.resolve();
     this.rotateActionQueueB = Promise.resolve();
@@ -568,7 +814,6 @@ Page({
     }
     this.clientId = ensureClientId();
     this.setData({ roomId: roomId });
-    this.setConnState("reconnecting");
     this.syncSafePadding();
     if ((wx as any).onWindowResize) {
       (wx as any).onWindowResize(this.onWindowResize);
@@ -582,8 +827,8 @@ Page({
   },
 
   onShow() {
+    this.pageActive = true;
     this.leavingPage = false;
-    this.setConnState("reconnecting", { force: true });
     setKeepScreenOnSafe(true);
     this.syncSafePadding();
     setTimeout(() => {
@@ -599,13 +844,21 @@ Page({
   },
 
   onUnload() {
+    this.pageActive = false;
     this.persistLineupDraftNow().catch(() => {});
+    this.clearContinueRouteTimer();
     this.clearDraftSaveTimer();
     if (this.inputEditingReleaseTimer) {
       clearTimeout(this.inputEditingReleaseTimer);
       this.inputEditingReleaseTimer = 0;
     }
     setKeepScreenOnSafe(false);
+    if (this.roomMissingLoadingVisible) {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.roomMissingLoadingVisible = false;
+    }
     this.clearRoomMissingRetry();
     if ((wx as any).offWindowResize) {
       (wx as any).offWindowResize(this.onWindowResize);
@@ -616,13 +869,21 @@ Page({
   },
 
   onHide() {
+    this.pageActive = false;
     this.persistLineupDraftNow().catch(() => {});
+    this.clearContinueRouteTimer();
     this.inputEditing = false;
     if (this.inputEditingReleaseTimer) {
       clearTimeout(this.inputEditingReleaseTimer);
       this.inputEditingReleaseTimer = 0;
     }
     setKeepScreenOnSafe(false);
+    if (this.roomMissingLoadingVisible) {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.roomMissingLoadingVisible = false;
+    }
     this.clearRoomMissingRetry();
     this.stopHeartbeatProbe();
     this.stopRoomWatch();
@@ -678,9 +939,12 @@ Page({
     }
     this.roomClosedHandled = true;
     this.clearRoomMissingRetry();
-    wx.hideToast({
-      fail: () => {},
-    });
+    if (this.roomMissingLoadingVisible) {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.roomMissingLoadingVisible = false;
+    }
     wx.showModal({
       title: "房间已失效",
       content: "该裁判团队不存在或已过期，请重新创建或加入。",
@@ -734,12 +998,12 @@ Page({
       return;
     }
     this.roomMissingToastAt = nowTs;
-    wx.showToast({
+    this.roomMissingLoadingVisible = true;
+    wx.showLoading({
       title: "连接中，正在重试",
-      icon: "loading",
-      duration: 1200,
       mask: false,
       fail: () => {
+        this.roomMissingLoadingVisible = false;
         showToastHint("连接中，正在重试");
       },
     });
@@ -801,12 +1065,27 @@ Page({
     this.syncSafePadding();
   },
 
+  isLineupPageTop(): boolean {
+    const pages = getCurrentPages();
+    const top = pages.length ? pages[pages.length - 1] : null;
+    const route = String((top && (top as any).route) || "");
+    return route === "pages/lineup-adjust/lineup-adjust";
+  },
+
   clearDraftSaveTimer() {
     if (!this.draftSaveTimer) {
       return;
     }
     clearTimeout(this.draftSaveTimer);
     this.draftSaveTimer = 0;
+  },
+
+  clearContinueRouteTimer() {
+    if (!this.continueRouteTimer) {
+      return;
+    }
+    clearTimeout(this.continueRouteTimer);
+    this.continueRouteTimer = 0;
   },
 
   buildLineupDraft(): LineupAdjustDraft {
@@ -1008,9 +1287,12 @@ Page({
     } else {
       this.roomClosedHandled = false;
       this.clearRoomMissingRetry();
-      wx.hideToast({
-        fail: () => {},
-      });
+      if (this.roomMissingLoadingVisible) {
+        wx.hideLoading({
+          fail: () => {},
+        });
+        this.roomMissingLoadingVisible = false;
+      }
       this.lastRoomSnapshot = room;
       this.writeCachedRoomSnapshot(room);
     }
@@ -1024,7 +1306,20 @@ Page({
     const roomOperatorClientId = getRoomOperatorClientId(room);
     const controlRole = getRoomControlRole(room, currentClientId);
     if (!setEndActive || setEndPhase !== "lineup" || setEndOwnerClientId !== currentClientId) {
-      wx.redirectTo({ url: "/pages/match/match?roomId=" + roomId });
+      if (!this.pageActive || !this.isLineupPageTop()) {
+        return;
+      }
+      if (!this.leavingPage) {
+        this.leavingPage = true;
+        this.stopRoomWatch();
+        wx.redirectTo({
+          url: "/pages/match/match?roomId=" + roomId,
+          fail: () => {
+            this.leavingPage = false;
+            this.startRoomWatch();
+          },
+        });
+      }
       return;
     }
 
@@ -1335,6 +1630,42 @@ Page({
     });
   },
 
+  returnToMatchPage(roomId: string) {
+    if (!this.pageActive || !this.isLineupPageTop()) {
+      return;
+    }
+    const id = String(roomId || "");
+    if (!id) {
+      wx.reLaunch({ url: "/pages/home/home" });
+      return;
+    }
+    const url = "/pages/match/match?roomId=" + id;
+    const pages = getCurrentPages();
+    const prev = pages.length > 1 ? pages[pages.length - 2] : null;
+    const prevRoute = String((prev && (prev as any).route) || "");
+    const prevRoomId = String((prev && (prev as any).data && (prev as any).data.roomId) || "");
+    if (prevRoute === "pages/match/match" && (!prevRoomId || prevRoomId === id)) {
+      wx.navigateBack({
+        delta: 1,
+        fail: () => {
+          wx.redirectTo({
+            url: url,
+            fail: () => {
+              wx.reLaunch({ url: url });
+            },
+          });
+        },
+      });
+      return;
+    }
+    wx.redirectTo({
+      url: url,
+      fail: () => {
+        wx.reLaunch({ url: url });
+      },
+    });
+  },
+
   async onContinueTap() {
     if (this.continueInFlight) {
       return;
@@ -1375,56 +1706,97 @@ Page({
     this.clearDraftSaveTimer();
     this.setData({ continueBtnFx: true });
     const roomId = String(this.data.roomId || "");
+    let continueBlockReason = "";
     try {
       if (roomId) {
         await updateRoomAsync(roomId, (room) => {
-        room.teamA.players = this.data.teamAPlayers.slice();
-        room.teamB.players = this.data.teamBPlayers.slice();
-        (room.match as any).teamACurrentCaptainNo = this.data.teamACaptainNo;
-        (room.match as any).teamBCurrentCaptainNo = this.data.teamBCaptainNo;
-        // 返回比赛页后保持“未开始比赛”状态：本局计时等待用户在比赛页点“开始比赛”再启动。
-        if (
-          room.match &&
-          !room.match.isFinished &&
-          Number(room.match.aScore || 0) === 0 &&
-          Number(room.match.bScore || 0) === 0
-        ) {
-          (room.match as any).setTimerStartAt = 0;
-          (room.match as any).setTimerElapsedMs = 0;
-          // 新一局正式开始时再清零暂停次数，确保局末弹窗撤回不会丢失本局暂停计数。
-          (room.match as any).teamATimeoutCount = 0;
-          (room.match as any).teamBTimeoutCount = 0;
-          (room.match as any).timeoutActive = false;
-          (room.match as any).timeoutTeam = "";
-          (room.match as any).timeoutEndAt = 0;
-        }
-        room.match.isSwapped = this.data.isSwapped;
-        room.match.servingTeam = this.data.servingTeam;
-        (room.match as any).lineupAdjustLastCommitted = {
-          setNo: Math.max(1, Number(room.match.setNo || 1)),
-          isSwapped: this.data.isSwapped,
-          servingTeam: this.data.servingTeam === "B" ? "B" : "A",
-          teamAPlayers: clonePlayers(this.data.teamAPlayers),
-          teamBPlayers: clonePlayers(this.data.teamBPlayers),
-          teamACaptainNo: String(this.data.teamACaptainNo || ""),
-          teamBCaptainNo: String(this.data.teamBCaptainNo || ""),
-          teamAManualCaptainChosen: !!this.data.teamAManualCaptainChosen,
-          teamBManualCaptainChosen: !!this.data.teamBManualCaptainChosen,
-          savedAt: Date.now(),
-        };
-        delete (room.match as any).setEndState;
-        delete (room.match as any).lineupAdjustDraft;
-        return room;
+          if (!room || !room.match || !room.teamA || !room.teamB) {
+            continueBlockReason = "房间状态异常，请稍后重试";
+            return room;
+          }
+          const roomSetNo = Math.max(1, Number(room.match.setNo || 1));
+          const roomLogs = normalizeSubLogsBySet(
+            Array.isArray((room.match as any).logs) ? (((room.match as any).logs || []) as MatchLogLike[]) : []
+          );
+          const banErrA = getLineupBanBlockMessage(roomLogs, roomSetNo, "A", this.data.teamAPlayers, String(room.teamA.name || "甲"));
+          if (banErrA) {
+            continueBlockReason = banErrA;
+            return room;
+          }
+          const banErrB = getLineupBanBlockMessage(roomLogs, roomSetNo, "B", this.data.teamBPlayers, String(room.teamB.name || "乙"));
+          if (banErrB) {
+            continueBlockReason = banErrB;
+            return room;
+          }
+
+          room.teamA.players = this.data.teamAPlayers.slice();
+          room.teamB.players = this.data.teamBPlayers.slice();
+          (room.match as any).teamACurrentCaptainNo = this.data.teamACaptainNo;
+          (room.match as any).teamBCurrentCaptainNo = this.data.teamBCaptainNo;
+          // 返回比赛页后保持“未开始比赛”状态：本局计时等待用户在比赛页点“开始比赛”再启动。
+          if (
+            room.match &&
+            !room.match.isFinished &&
+            Number(room.match.aScore || 0) === 0 &&
+            Number(room.match.bScore || 0) === 0
+          ) {
+            (room.match as any).setTimerStartAt = 0;
+            (room.match as any).setTimerElapsedMs = 0;
+            // 新一局正式开始时再清零暂停次数，确保局末弹窗撤回不会丢失本局暂停计数。
+            (room.match as any).teamATimeoutCount = 0;
+            (room.match as any).teamBTimeoutCount = 0;
+            (room.match as any).timeoutActive = false;
+            (room.match as any).timeoutTeam = "";
+            (room.match as any).timeoutEndAt = 0;
+          }
+          room.match.isSwapped = this.data.isSwapped;
+          room.match.servingTeam = this.data.servingTeam;
+          (room.match as any).lineupAdjustLastCommitted = {
+            setNo: Math.max(1, Number(room.match.setNo || 1)),
+            isSwapped: this.data.isSwapped,
+            servingTeam: this.data.servingTeam === "B" ? "B" : "A",
+            teamAPlayers: clonePlayers(this.data.teamAPlayers),
+            teamBPlayers: clonePlayers(this.data.teamBPlayers),
+            teamACaptainNo: String(this.data.teamACaptainNo || ""),
+            teamBCaptainNo: String(this.data.teamBCaptainNo || ""),
+            teamAManualCaptainChosen: !!this.data.teamAManualCaptainChosen,
+            teamBManualCaptainChosen: !!this.data.teamBManualCaptainChosen,
+            savedAt: Date.now(),
+          };
+          delete (room.match as any).setEndState;
+          delete (room.match as any).lineupAdjustDraft;
+          return room;
         });
       }
-      setTimeout(() => {
-      this.setData({ continueBtnFx: false });
-      if (roomId) {
-        wx.redirectTo({ url: "/pages/match/match?roomId=" + roomId });
+      if (continueBlockReason) {
+        this.continueInFlight = false;
+        this.leavingPage = false;
+        this.setData({ continueBtnFx: false });
+        showToastHint(continueBlockReason);
+        setTimeout(() => {
+          wx.showModal({
+            title: "无法继续",
+            content: continueBlockReason,
+            showCancel: false,
+            confirmText: "知道了",
+          });
+        }, 40);
+        this.startRoomWatch();
         return;
       }
-      wx.reLaunch({ url: "/pages/home/home" });
-    }, 150);
+      this.clearContinueRouteTimer();
+      this.continueRouteTimer = setTimeout(() => {
+        this.continueRouteTimer = 0;
+        this.setData({ continueBtnFx: false });
+        if (!this.pageActive || !this.isLineupPageTop()) {
+          return;
+        }
+        if (roomId) {
+          this.returnToMatchPage(roomId);
+          return;
+        }
+        wx.reLaunch({ url: "/pages/home/home" });
+      }, 120) as unknown as number;
     } catch (_e) {
       this.continueInFlight = false;
       this.leavingPage = false;
@@ -1828,6 +2200,9 @@ Page({
       }
     };
     const cachedRects = this.getCachedTeamRectMap(team);
+    const teamLiberoSet = new Set(
+      getLiberoRosterFromPlayers(team === "A" ? this.data.teamAPlayers || [] : this.data.teamBPlayers || [])
+    );
     let mergedBeforeRects = this.completeTeamRectMapByGrid(team, beforeRects || {}, cachedRects || {});
     if (!mergedBeforeRects || MAIN_POSITIONS.every((pos) => !mergedBeforeRects[pos])) {
       const retryBeforeRects = await this.measureTeamMainPosRectsStable(team, 360);
@@ -1842,6 +2217,7 @@ Page({
       fromRect: TeamPosRect;
       number: string;
       isCaptain: boolean;
+      isLibero: boolean;
       id: string;
       baseStyle: string;
     }> = [];
@@ -1852,6 +2228,7 @@ Page({
       }
       const number = beforeNoMap[sourcePos] || "?";
       const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
+      const isLibero = normalizeNumberInput(number) !== "" && teamLiberoSet.has(normalizeNumberInput(number));
       const baseStyle =
         "left:" +
         String(fromRect.left) +
@@ -1867,6 +2244,7 @@ Page({
         fromRect,
         number,
         isCaptain,
+        isLibero,
         id: team + "-" + sourcePos + "-" + String(Date.now()) + "-" + String(startSeeds.length),
         baseStyle,
       });
@@ -1880,6 +2258,7 @@ Page({
       team,
       number: seed.number,
       isCaptain: seed.isCaptain,
+      isLibero: seed.isLibero,
       style: seed.baseStyle + "transform:translate(0,0);transition:none;",
     }));
     if (team === "A") {
@@ -1943,6 +2322,7 @@ Page({
         team,
         number: seed.number,
         isCaptain: seed.isCaptain,
+        isLibero: seed.isLibero,
         style:
           seed.baseStyle +
           "transform:translate(" +

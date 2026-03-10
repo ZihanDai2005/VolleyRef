@@ -7,11 +7,13 @@ const roomsCol = db.collection("rooms");
 const locksCol = db.collection("room_locks");
 const _ = db.command;
 
-const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
+const ROOM_LOCK_TTL_MS = 3 * 60 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 40 * 1000;
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const ROOM_EXTRA_TTL_MS = 3 * 60 * 60 * 1000;
 const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
+const AUTHORITY_PRESENCE_TTL_MS = 5 * 60 * 1000;
+const AUTO_OPERATOR_CLAIM_PROBATION_MS = 10 * 60 * 1000;
 const GLOBAL_CLEANUP_COOLDOWN_MS = 60 * 1000;
 const GLOBAL_CLEANUP_LOCK_MS = 15 * 1000;
 const GLOBAL_CLEANUP_META_ID = "__cleanup_meta__";
@@ -35,13 +37,19 @@ async function getRoomDoc(roomId) {
     const room = res.data;
     const ts = now();
     let changed = false;
+    ensureCollaboration(room);
 
     if (!room.expiresAt) {
       room.expiresAt = Number(room.createdAt || ts) + ROOM_TTL_MS;
       changed = true;
     }
+    room.matchEnteredAt = Math.max(0, Number(room.matchEnteredAt || 0));
     room.matchStartedAt = Math.max(0, Number(room.matchStartedAt || 0));
     room.extraTimeGranted = !!room.extraTimeGranted;
+    if (room.status === "match" && room.matchEnteredAt <= 0) {
+      room.matchEnteredAt = Math.max(room.matchStartedAt || 0, Number(room.updatedAt || 0), Number(room.createdAt || 0), ts);
+      changed = true;
+    }
 
     if (room.status === "result") {
       if (!room.resultLockedAt) {
@@ -63,17 +71,16 @@ async function getRoomDoc(roomId) {
       return room;
     }
 
-    if (!room.matchStartedAt && ts > Number(room.expiresAt || 0)) {
+    const hasStartedMatch = room.matchStartedAt > 0;
+    if (!hasStartedMatch && ts > Number(room.expiresAt || 0)) {
       await roomsCol.doc(roomId).remove();
       return null;
     }
 
     if (
-      room.matchStartedAt > 0 &&
+      hasStartedMatch &&
       ts > Number(room.expiresAt || 0) &&
-      !room.extraTimeGranted &&
-      room.status === "match" &&
-      !(room.match && room.match.isFinished)
+      !room.extraTimeGranted
     ) {
       room.expiresAt = Number(room.expiresAt || ts) + ROOM_EXTRA_TTL_MS;
       room.extraTimeGranted = true;
@@ -207,8 +214,18 @@ async function putRoomDoc(room) {
   if (!normalized.expiresAt) {
     normalized.expiresAt = Number(normalized.createdAt || ts) + ROOM_TTL_MS;
   }
+  normalized.matchEnteredAt = Math.max(0, Number(normalized.matchEnteredAt || 0));
   normalized.matchStartedAt = Math.max(0, Number(normalized.matchStartedAt || 0));
   normalized.extraTimeGranted = !!normalized.extraTimeGranted;
+  ensureCollaboration(normalized);
+  if (normalized.status === "match" && normalized.matchEnteredAt <= 0) {
+    normalized.matchEnteredAt = Math.max(
+      normalized.matchStartedAt || 0,
+      Number(normalized.updatedAt || 0),
+      Number(normalized.createdAt || 0),
+      ts
+    );
+  }
   if (normalized.status === "result") {
     if (!normalized.resultLockedAt) {
       normalized.resultLockedAt = ts;
@@ -300,6 +317,28 @@ async function reserveRoomId(roomId, ownerId) {
   return true;
 }
 
+async function hasRoomLock(roomId, ownerId) {
+  const id = String(roomId || "");
+  const owner = String(ownerId || "");
+  if (!id || !owner) {
+    return false;
+  }
+  try {
+    const lock = await locksCol.doc(id).get();
+    if (!lock || !lock.data) {
+      return false;
+    }
+    const ts = Number(lock.data.ts || 0);
+    if (now() - ts > ROOM_LOCK_TTL_MS) {
+      await locksCol.doc(id).remove();
+      return false;
+    }
+    return String(lock.data.ownerId || "") === owner;
+  } catch (e) {
+    return false;
+  }
+}
+
 async function releaseRoomId(roomId, ownerId) {
   const id = String(roomId || "");
   const owner = String(ownerId || "");
@@ -328,6 +367,196 @@ function cleanupParticipants(participants) {
     }
   });
   return next;
+}
+
+function ensureCollaboration(room) {
+  if (!room || typeof room !== "object") {
+    return;
+  }
+  if (!room.collaboration || typeof room.collaboration !== "object") {
+    room.collaboration = {};
+  }
+  room.collaboration.ownerClientId = String(room.collaboration.ownerClientId || room.ownerClientId || "").trim();
+  room.collaboration.operatorClientId = String(
+    room.collaboration.operatorClientId || room.operatorClientId || room.collaboration.ownerClientId || ""
+  ).trim();
+  room.collaboration.operatorUpdatedAt = Math.max(0, Number(room.collaboration.operatorUpdatedAt || 0));
+  room.collaboration.observerSideMap =
+    room.collaboration.observerSideMap && typeof room.collaboration.observerSideMap === "object"
+      ? room.collaboration.observerSideMap
+      : {};
+  room.collaboration.presenceSeenAtMap =
+    room.collaboration.presenceSeenAtMap && typeof room.collaboration.presenceSeenAtMap === "object"
+      ? room.collaboration.presenceSeenAtMap
+      : {};
+  room.collaboration.presenceUidMap =
+    room.collaboration.presenceUidMap && typeof room.collaboration.presenceUidMap === "object"
+      ? room.collaboration.presenceUidMap
+      : {};
+  room.collaboration.autoClaimBy = String(room.collaboration.autoClaimBy || "").trim();
+  room.collaboration.autoClaimAt = Math.max(0, Number(room.collaboration.autoClaimAt || 0));
+  room.collaboration.autoClaimPrevOperatorId = String(room.collaboration.autoClaimPrevOperatorId || "").trim();
+  if (!room.collaboration.ownerClientId && room.collaboration.operatorClientId) {
+    room.collaboration.ownerClientId = room.collaboration.operatorClientId;
+  }
+  if (!room.collaboration.operatorClientId && room.collaboration.ownerClientId) {
+    room.collaboration.operatorClientId = room.collaboration.ownerClientId;
+  }
+  if (
+    room.collaboration.autoClaimBy &&
+    room.collaboration.autoClaimBy !== room.collaboration.operatorClientId
+  ) {
+    room.collaboration.autoClaimBy = "";
+    room.collaboration.autoClaimAt = 0;
+    room.collaboration.autoClaimPrevOperatorId = "";
+  }
+}
+
+function getRoomOperatorClientId(room) {
+  ensureCollaboration(room);
+  const direct = String(room && room.collaboration && room.collaboration.operatorClientId ? room.collaboration.operatorClientId : "").trim();
+  if (direct) {
+    return direct;
+  }
+  return String(room && room.collaboration && room.collaboration.ownerClientId ? room.collaboration.ownerClientId : "").trim();
+}
+
+function getRoomOwnerClientId(room) {
+  ensureCollaboration(room);
+  return String(room && room.collaboration && room.collaboration.ownerClientId ? room.collaboration.ownerClientId : "").trim();
+}
+
+function clearAutoOperatorClaimMeta(room) {
+  ensureCollaboration(room);
+  let changed = false;
+  if (String(room.collaboration.autoClaimBy || "")) {
+    room.collaboration.autoClaimBy = "";
+    changed = true;
+  }
+  if (Number(room.collaboration.autoClaimAt || 0) > 0) {
+    room.collaboration.autoClaimAt = 0;
+    changed = true;
+  }
+  if (String(room.collaboration.autoClaimPrevOperatorId || "")) {
+    room.collaboration.autoClaimPrevOperatorId = "";
+    changed = true;
+  }
+  return changed;
+}
+
+function ensureOperatorByParticipants(room, clientId, participants, ts) {
+  const cid = String(clientId || "").trim();
+  if (!cid) {
+    return false;
+  }
+  ensureCollaboration(room);
+  const activeMap = participants && typeof participants === "object" ? participants : {};
+  const seenMap = room.collaboration.presenceSeenAtMap || {};
+  Object.keys(seenMap).forEach((id) => {
+    if (ts - Number(seenMap[id] || 0) > AUTHORITY_PRESENCE_TTL_MS) {
+      delete seenMap[id];
+    }
+  });
+  seenMap[cid] = ts;
+  room.collaboration.presenceSeenAtMap = seenMap;
+  const activeIds = Object.keys(seenMap);
+  const currentOperator = getRoomOperatorClientId(room);
+  const currentOwner = getRoomOwnerClientId(room);
+  const autoClaimBy = String(room.collaboration.autoClaimBy || "").trim();
+  const autoClaimAt = Math.max(0, Number(room.collaboration.autoClaimAt || 0));
+  const autoClaimPrev = String(room.collaboration.autoClaimPrevOperatorId || "").trim();
+  const hasOtherActive = activeIds.some((id) => id !== cid);
+  const isOperatorActive = !!(currentOperator && seenMap[currentOperator]);
+  let changed = false;
+
+  if (autoClaimBy && currentOperator === autoClaimBy) {
+    const autoClaimFresh = ts - autoClaimAt <= AUTO_OPERATOR_CLAIM_PROBATION_MS;
+    if (autoClaimFresh) {
+      if (autoClaimPrev && autoClaimPrev !== autoClaimBy && !!seenMap[autoClaimPrev]) {
+        room.collaboration.operatorClientId = autoClaimPrev;
+        room.collaboration.operatorUpdatedAt = ts;
+        changed = true;
+        changed = clearAutoOperatorClaimMeta(room) || changed;
+        return changed;
+      }
+      if (currentOwner && currentOwner !== autoClaimBy && !!seenMap[currentOwner]) {
+        room.collaboration.operatorClientId = currentOwner;
+        room.collaboration.operatorUpdatedAt = ts;
+        changed = true;
+        changed = clearAutoOperatorClaimMeta(room) || changed;
+        return changed;
+      }
+      const fallbackOther = activeIds.find((id) => id !== autoClaimBy);
+      if (fallbackOther) {
+        room.collaboration.operatorClientId = fallbackOther;
+        room.collaboration.operatorUpdatedAt = ts;
+        changed = true;
+        changed = clearAutoOperatorClaimMeta(room) || changed;
+        return changed;
+      }
+    } else {
+      changed = clearAutoOperatorClaimMeta(room) || changed;
+    }
+  }
+
+  if (hasOtherActive || isOperatorActive) {
+    if (autoClaimBy && currentOperator !== autoClaimBy) {
+      changed = clearAutoOperatorClaimMeta(room) || changed;
+    }
+    return changed;
+  }
+
+  if (currentOperator === cid) {
+    return changed;
+  }
+
+  room.collaboration.operatorClientId = cid;
+  room.collaboration.operatorUpdatedAt = ts;
+  if (!room.collaboration.ownerClientId) {
+    room.collaboration.ownerClientId = currentOperator || cid;
+  }
+  room.collaboration.autoClaimBy = cid;
+  room.collaboration.autoClaimAt = ts;
+  room.collaboration.autoClaimPrevOperatorId = currentOperator || "";
+  return true;
+}
+
+function dedupeParticipantsByUid(room, participants, clientId, uid, ts) {
+  const cid = String(clientId || "").trim();
+  const userUid = String(uid || "").trim();
+  if (!cid || !userUid) {
+    return false;
+  }
+  ensureCollaboration(room);
+  const collab = room.collaboration;
+  const uidMap = collab.presenceUidMap || {};
+  let changed = false;
+  Object.keys(uidMap).forEach((id) => {
+    if (!participants[id]) {
+      delete uidMap[id];
+      if (collab.presenceSeenAtMap && collab.presenceSeenAtMap[id]) {
+        delete collab.presenceSeenAtMap[id];
+      }
+      changed = true;
+    }
+  });
+  Object.keys(participants).forEach((id) => {
+    const mappedUid = String(uidMap[id] || "").trim();
+    if (id !== cid && mappedUid && mappedUid === userUid) {
+      delete participants[id];
+      delete uidMap[id];
+      if (collab.presenceSeenAtMap && collab.presenceSeenAtMap[id]) {
+        delete collab.presenceSeenAtMap[id];
+      }
+      changed = true;
+    }
+  });
+  if (uidMap[cid] !== userUid) {
+    uidMap[cid] = userUid;
+    changed = true;
+  }
+  collab.presenceUidMap = uidMap;
+  return changed;
 }
 
 exports.main = async (event) => {
@@ -387,6 +616,11 @@ exports.main = async (event) => {
       return { ok: true, reserved: reserved };
     }
 
+    if (action === "hasRoomLock") {
+      const locked = await hasRoomLock(event.roomId, event.ownerId);
+      return { ok: true, locked: locked };
+    }
+
     if (action === "releaseRoomId") {
       await releaseRoomId(event.roomId, event.ownerId);
       return { ok: true };
@@ -418,13 +652,21 @@ exports.main = async (event) => {
       if (!room) {
         return { ok: true, room: null, participantCount: 0 };
       }
+      const wxContext = cloud.getWXContext ? cloud.getWXContext() : {};
+      const openid = String((wxContext && wxContext.OPENID) || "");
       const participants = cleanupParticipants(room.participants);
       participants[clientId] = now();
+      const ts = now();
+      let changed = dedupeParticipantsByUid(room, participants, clientId, openid, ts);
+      changed = ensureOperatorByParticipants(room, clientId, participants, ts) || changed;
       const next = {
         ...room,
         participants: participants,
-        updatedAt: now(),
+        updatedAt: ts,
       };
+      if (changed) {
+        next.collaboration = room.collaboration;
+      }
       await roomsCol.doc(roomId).set({ data: next });
       return { ok: true, room: next, participantCount: Object.keys(participants).length };
     }
@@ -443,6 +685,17 @@ exports.main = async (event) => {
       if (participants[clientId]) {
         delete participants[clientId];
       }
+      ensureCollaboration(room);
+      const seenMap = room.collaboration.presenceSeenAtMap || {};
+      if (seenMap[clientId]) {
+        delete seenMap[clientId];
+      }
+      room.collaboration.presenceSeenAtMap = seenMap;
+      const uidMap = room.collaboration.presenceUidMap || {};
+      if (uidMap[clientId]) {
+        delete uidMap[clientId];
+      }
+      room.collaboration.presenceUidMap = uidMap;
       const next = {
         ...room,
         participants: participants,

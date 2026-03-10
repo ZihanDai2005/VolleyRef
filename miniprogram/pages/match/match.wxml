@@ -17,7 +17,13 @@
         <text class="takeover-btn-text">接管</text>
       </view>
     </view>
-    <view class="match-nav-title">裁判团队编号 {{roomId}}   <text class="conn-inline {{connStatusClass}}">● {{connStatusText}}</text></view>
+    <view class="match-nav-title">
+      <text>裁判团队编号 {{roomId}}</text>
+      <view class="conn-inline {{connStatusClass}}">
+        <view class="conn-inline-icon"></view>
+        <text class="conn-inline-text">{{connStatusText}}</text>
+      </view>
+    </view>
     <view class="match-nav-space"></view>
   </view>
   <view class="top-control-row">
@@ -114,17 +120,27 @@
             <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
-            <view class="timeout-btn timeout-btn-extra">
+            <view
+              wx:if="{{hasOperationAuthority}}"
+              class="timeout-btn timeout-btn-extra pressable"
+              hover-class="tap-active"
+              data-team="A"
+              bindtap="onOpenSubstitutionPanel"
+            >
               <view class="timeout-icon timeout-icon-human"></view>
-              <text class="timeout-count">0</text>
+              <text class="timeout-count">{{teamANormalSubCount}}<text class="timeout-count-den">/6</text></text>
+            </view>
+            <view wx:else class="timeout-btn timeout-btn-extra timeout-static">
+              <view class="timeout-icon timeout-icon-human"></view>
+              <text class="timeout-count">{{teamANormalSubCount}}<text class="timeout-count-den">/6</text></text>
             </view>
             <view wx:if="{{hasOperationAuthority}}" class="timeout-btn pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
               <view class="timeout-icon"></view>
-              <text class="timeout-count">{{teamATimeoutCount}}</text>
+              <text class="timeout-count">{{teamATimeoutCount}}<text class="timeout-count-den">/2</text></text>
             </view>
             <view wx:else class="timeout-btn timeout-static">
               <view class="timeout-icon"></view>
-              <text class="timeout-count">{{teamATimeoutCount}}</text>
+              <text class="timeout-count">{{teamATimeoutCount}}<text class="timeout-count-den">/2</text></text>
             </view>
           </view>
           <text class="team-title align-right">{{teamAName}}</text>
@@ -135,33 +151,67 @@
             <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
-            <view class="timeout-btn timeout-btn-extra">
+            <view
+              wx:if="{{hasOperationAuthority}}"
+              class="timeout-btn timeout-btn-extra pressable"
+              hover-class="tap-active"
+              data-team="A"
+              bindtap="onOpenSubstitutionPanel"
+            >
               <view class="timeout-icon timeout-icon-human"></view>
-              <text class="timeout-count">0</text>
+              <text class="timeout-count">{{teamANormalSubCount}}<text class="timeout-count-den">/6</text></text>
+            </view>
+            <view wx:else class="timeout-btn timeout-btn-extra timeout-static">
+              <view class="timeout-icon timeout-icon-human"></view>
+              <text class="timeout-count">{{teamANormalSubCount}}<text class="timeout-count-den">/6</text></text>
             </view>
             <view wx:if="{{hasOperationAuthority}}" class="timeout-btn pressable" hover-class="tap-active" data-team="A" bindtap="onTeamTimeoutTap">
               <view class="timeout-icon"></view>
-              <text class="timeout-count">{{teamATimeoutCount}}</text>
+              <text class="timeout-count">{{teamATimeoutCount}}<text class="timeout-count-den">/2</text></text>
             </view>
             <view wx:else class="timeout-btn timeout-static">
               <view class="timeout-icon"></view>
-              <text class="timeout-count">{{teamATimeoutCount}}</text>
+              <text class="timeout-count">{{teamATimeoutCount}}<text class="timeout-count-den">/2</text></text>
             </view>
           </view>
         </block>
       </view>
       <view class="lineup-grid {{isSwapped ? 'swap-layout' : ''}}">
         <view class="libero-col">
-          <view class="player-card libero" wx:for="{{teamALibero}}" wx:for-item="item" wx:key="pos">
-            <text class="num {{item.number === teamACaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+          <view
+            id="swap-card-A-{{item.pos}}"
+            class="player-card libero {{swapDragActive && swapDragTeam === 'A' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos !== item.pos && swapDragSourceInMain && ((item.pos === 'L1' && swapDragTargetL1) || (item.pos === 'L2' && swapDragTargetL2)) ? 'swap-drag-target' : ''}}"
+            wx:for="{{teamALibero}}"
+            wx:for-item="item"
+            wx:key="pos"
+            data-team="A"
+            data-pos="{{item.pos}}"
+            catchtouchstart="onSwapCardTouchStart"
+            catchtouchmove="onSwapCardTouchMove"
+            catchtouchend="onSwapCardTouchEnd"
+            catchtouchcancel="onSwapCardTouchEnd"
+          >
+            <text class="num {{item.number === teamACaptainNo ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
             <text class="sub-text">{{item.pos}}</text>
           </view>
         </view>
         <view class="main-col">
           <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
-            <view class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+            <view
+              id="swap-card-A-{{item.pos}}"
+              class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos !== item.pos && swapDragSourceIsLibero && ((item.pos === 'I' && swapDragTargetI) || (item.pos === 'II' && swapDragTargetII) || (item.pos === 'III' && swapDragTargetIII) || (item.pos === 'IV' && swapDragTargetIV) || (item.pos === 'V' && swapDragTargetV) || (item.pos === 'VI' && swapDragTargetVI)) ? 'swap-drag-target' : ''}}"
+              wx:for="{{row}}"
+              wx:for-item="item"
+              wx:key="pos"
+              data-team="A"
+              data-pos="{{item.pos}}"
+              catchtouchstart="onSwapCardTouchStart"
+              catchtouchmove="onSwapCardTouchMove"
+              catchtouchend="onSwapCardTouchEnd"
+              catchtouchcancel="onSwapCardTouchEnd"
+            >
               <text
-                class="num pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-num' : ''}} {{hideTeamAMainNumbers ? 'num-hidden' : ''}}"
+                class="num pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-num' : ''}} {{hideTeamAMainNumbers ? 'num-hidden' : ''}} {{item.isLibero ? 'libero-dot' : ''}}"
               >{{item.number}}</text>
               <text class="sub-text">{{item.pos}}</text>
               <text class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}">发</text>
@@ -179,17 +229,27 @@
             <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
-            <view class="timeout-btn timeout-btn-extra">
+            <view
+              wx:if="{{hasOperationAuthority}}"
+              class="timeout-btn timeout-btn-extra pressable"
+              hover-class="tap-active"
+              data-team="B"
+              bindtap="onOpenSubstitutionPanel"
+            >
               <view class="timeout-icon timeout-icon-human"></view>
-              <text class="timeout-count">0</text>
+              <text class="timeout-count">{{teamBNormalSubCount}}<text class="timeout-count-den">/6</text></text>
+            </view>
+            <view wx:else class="timeout-btn timeout-btn-extra timeout-static">
+              <view class="timeout-icon timeout-icon-human"></view>
+              <text class="timeout-count">{{teamBNormalSubCount}}<text class="timeout-count-den">/6</text></text>
             </view>
             <view wx:if="{{hasOperationAuthority}}" class="timeout-btn pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
               <view class="timeout-icon"></view>
-              <text class="timeout-count">{{teamBTimeoutCount}}</text>
+              <text class="timeout-count">{{teamBTimeoutCount}}<text class="timeout-count-den">/2</text></text>
             </view>
             <view wx:else class="timeout-btn timeout-static">
               <view class="timeout-icon"></view>
-              <text class="timeout-count">{{teamBTimeoutCount}}</text>
+              <text class="timeout-count">{{teamBTimeoutCount}}<text class="timeout-count-den">/2</text></text>
             </view>
           </view>
         </block>
@@ -198,17 +258,27 @@
             <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
-            <view class="timeout-btn timeout-btn-extra">
+            <view
+              wx:if="{{hasOperationAuthority}}"
+              class="timeout-btn timeout-btn-extra pressable"
+              hover-class="tap-active"
+              data-team="B"
+              bindtap="onOpenSubstitutionPanel"
+            >
               <view class="timeout-icon timeout-icon-human"></view>
-              <text class="timeout-count">0</text>
+              <text class="timeout-count">{{teamBNormalSubCount}}<text class="timeout-count-den">/6</text></text>
+            </view>
+            <view wx:else class="timeout-btn timeout-btn-extra timeout-static">
+              <view class="timeout-icon timeout-icon-human"></view>
+              <text class="timeout-count">{{teamBNormalSubCount}}<text class="timeout-count-den">/6</text></text>
             </view>
             <view wx:if="{{hasOperationAuthority}}" class="timeout-btn pressable" hover-class="tap-active" data-team="B" bindtap="onTeamTimeoutTap">
               <view class="timeout-icon"></view>
-              <text class="timeout-count">{{teamBTimeoutCount}}</text>
+              <text class="timeout-count">{{teamBTimeoutCount}}<text class="timeout-count-den">/2</text></text>
             </view>
             <view wx:else class="timeout-btn timeout-static">
               <view class="timeout-icon"></view>
-              <text class="timeout-count">{{teamBTimeoutCount}}</text>
+              <text class="timeout-count">{{teamBTimeoutCount}}<text class="timeout-count-den">/2</text></text>
             </view>
           </view>
           <text class="team-title align-right">{{teamBName}}</text>
@@ -217,9 +287,21 @@
       <view class="lineup-grid reverse {{isSwapped ? 'swap-layout' : ''}}">
         <view class="main-col">
           <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
-            <view class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}}" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
+            <view
+              id="swap-card-B-{{item.pos}}"
+              class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos !== item.pos && swapDragSourceIsLibero && ((item.pos === 'I' && swapDragTargetI) || (item.pos === 'II' && swapDragTargetII) || (item.pos === 'III' && swapDragTargetIII) || (item.pos === 'IV' && swapDragTargetIV) || (item.pos === 'V' && swapDragTargetV) || (item.pos === 'VI' && swapDragTargetVI)) ? 'swap-drag-target' : ''}}"
+              wx:for="{{row}}"
+              wx:for-item="item"
+              wx:key="pos"
+              data-team="B"
+              data-pos="{{item.pos}}"
+              catchtouchstart="onSwapCardTouchStart"
+              catchtouchmove="onSwapCardTouchMove"
+              catchtouchend="onSwapCardTouchEnd"
+              catchtouchcancel="onSwapCardTouchEnd"
+            >
               <text
-                class="num pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-num' : ''}} {{hideTeamBMainNumbers ? 'num-hidden' : ''}}"
+                class="num pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-num' : ''}} {{hideTeamBMainNumbers ? 'num-hidden' : ''}} {{item.isLibero ? 'libero-dot' : ''}}"
               >{{item.number}}</text>
               <text class="sub-text">{{item.pos}}</text>
               <text class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}">发</text>
@@ -227,13 +309,34 @@
           </view>
         </view>
         <view class="libero-col">
-          <view class="player-card libero" wx:for="{{teamBLibero}}" wx:for-item="item" wx:key="pos">
-            <text class="num {{item.number === teamBCaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+          <view
+            id="swap-card-B-{{item.pos}}"
+            class="player-card libero {{swapDragActive && swapDragTeam === 'B' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos !== item.pos && swapDragSourceInMain && ((item.pos === 'L1' && swapDragTargetL1) || (item.pos === 'L2' && swapDragTargetL2)) ? 'swap-drag-target' : ''}}"
+            wx:for="{{teamBLibero}}"
+            wx:for-item="item"
+            wx:key="pos"
+            data-team="B"
+            data-pos="{{item.pos}}"
+            catchtouchstart="onSwapCardTouchStart"
+            catchtouchmove="onSwapCardTouchMove"
+            catchtouchend="onSwapCardTouchEnd"
+            catchtouchcancel="onSwapCardTouchEnd"
+          >
+            <text class="num {{item.number === teamBCaptainNo ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
             <text class="sub-text">{{item.pos}}</text>
           </view>
         </view>
       </view>
     </view>
+  </view>
+
+  <view
+    wx:if="{{swapDragGhostVisible}}"
+    class="swap-drag-ghost team-{{swapDragGhostTeam === 'B' ? 'b' : 'a'}} {{swapDragSourceIsLibero ? 'libero' : ''}}"
+    style="{{swapDragGhostStyle}}"
+  >
+    <text class="num {{swapDragGhostIsCaptain ? 'captain-num' : ''}} {{swapDragGhostIsLibero ? 'libero-dot' : ''}}">{{swapDragGhostNumber}}</text>
+    <text class="sub-text">{{swapDragGhostPos}}</text>
   </view>
 
   <view class="rotate-fly-layer" wx:if="{{rotateFlyItemsA.length || rotateFlyItemsB.length}}">
@@ -244,7 +347,7 @@
       class="rotate-fly-item team-a"
       style="{{item.style}}"
     >
-      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+      <text class="num {{item.isCaptain ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
     </view>
     <view
       wx:for="{{rotateFlyItemsB}}"
@@ -253,7 +356,7 @@
       class="rotate-fly-item team-b"
       style="{{item.style}}"
     >
-      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+      <text class="num {{item.isCaptain ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
     </view>
   </view>
 
@@ -345,9 +448,9 @@
   </view>
 
   <view class="log-mask" wx:if="{{showLogPanel}}" bindtap="onCloseLogPanel">
-    <view class="log-panel" catchtap="onLogPanelTap">
+    <view class="log-panel" style="{{logPanelInlineStyle}}" catchtap="onLogPanelTap">
       <view class="log-head">
-        <text class="log-title">操作记录（开发中）</text>
+        <text class="log-title sub-panel-title">操作记录</text>
         <view class="log-head-right">
           <view class="log-set-switch" wx:if="{{logSetSwitchVisible}}">
             <text class="log-set-label">局</text>
@@ -374,4 +477,141 @@
       </scroll-view>
     </view>
   </view>
+
+  <view class="log-mask" wx:if="{{showSubstitutionPanel}}" bindtap="onCloseSubstitutionPanel">
+    <view class="log-panel substitution-panel" catchtap="onSubstitutionPanelTap">
+      <view class="log-head">
+        <view class="sub-panel-title-wrap">
+          <text class="log-title sub-panel-title">局中换人</text>
+          <text class="sub-panel-tip">自由人常规换人可直接在比赛页拖拽球员卡片到目标球员卡片完成。</text>
+        </view>
+        <view class="log-head-right">
+          <view class="sub-head-record-btn pressable" hover-class="tap-active" bindtap="onToggleSubMatchLogPopover">
+            <view class="btn-icon icon-log"></view>
+            <text class="sub-head-record-text">记录</text>
+          </view>
+          <button class="plain-btn small" size="mini" bindtap="onCloseSubstitutionPanel">关闭</button>
+        </view>
+      </view>
+
+      <view class="sub-main-layout">
+        <view class="sub-op-players">
+          <text class="sub-editor-left-title">{{subTeamName}}队球员</text>
+          <view class="lineup-grid sub-player-grid {{subTeam === 'A' ? 'team-a' : 'team-b'}} {{subUseSwapLayout ? 'swap-layout' : ''}}">
+            <view class="libero-col">
+              <view
+                class="player-card libero {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}}"
+                wx:for="{{subLibero}}"
+                wx:key="pos"
+                wx:for-item="item"
+                data-pos="{{item.pos}}"
+                bindtap="onSubSelectPlayer"
+              >
+                <text class="num {{item.number === subCaptainNo ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
+                <text class="sub-text">{{item.pos}}</text>
+              </view>
+            </view>
+            <view class="main-col">
+              <view class="player-row row-two" wx:for="{{subMainGrid}}" wx:key="index" wx:for-item="row">
+                <view
+                  class="player-card {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}}"
+                  wx:for="{{row}}"
+                  wx:key="pos"
+                  wx:for-item="item"
+                  data-pos="{{item.pos}}"
+                  bindtap="onSubSelectPlayer"
+                >
+                  <text class="num {{item.number === subCaptainNo ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
+                  <text class="sub-text">{{item.pos}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+
+        <view class="sub-op-controls">
+          <view class="sub-op-controls-fields">
+            <view class="sub-field">
+              <text class="sub-field-label">换人类型</text>
+              <view class="sub-seg">
+                <view class="sub-seg-item {{subMode === 'normal' ? 'active' : ''}}" data-mode="normal" bindtap="onSubSelectMode">普通 ({{subNormalCount}}/6)</view>
+                <view class="sub-seg-item {{subMode === 'special' ? 'active' : ''}}" data-mode="special" bindtap="onSubSelectMode">特殊 ({{subSpecialCount}}/∞)</view>
+                <view class="sub-seg-item {{subMode === 'special_libero' ? 'active' : ''}}" data-mode="special_libero" bindtap="onSubSelectMode">自由人特殊 ({{subSpecialLiberoRecords.length}}/∞)</view>
+              </view>
+            </view>
+
+            <view class="sub-field">
+              <text class="sub-field-label">换上号码</text>
+              <input
+                class="sub-no-input"
+                type="number"
+                maxlength="2"
+                value="{{subIncomingNoInput}}"
+                bindinput="onSubIncomingNoInput"
+                bindblur="onSubIncomingNoBlur"
+              />
+            </view>
+
+            <view class="sub-field sub-special-reason-field {{(subMode === 'special' || subMode === 'special_libero') ? 'visible' : 'hidden'}}">
+              <text class="sub-field-label">换人原因</text>
+              <view class="sub-seg">
+                <view class="sub-seg-item {{subReason === 'injury' ? 'active' : ''}}" data-reason="injury" bindtap="onSubSelectReason">伤病</view>
+                <view class="sub-seg-item {{subReason === 'penalty_set' ? 'active' : ''}}" data-reason="penalty_set" bindtap="onSubSelectReason">处罚 (本局禁赛)</view>
+                <view class="sub-seg-item {{subReason === 'penalty_match' ? 'active' : ''}}" data-reason="penalty_match" bindtap="onSubSelectReason">处罚 (全场禁赛)</view>
+                <view class="sub-seg-item {{subReason === 'other' ? 'active' : ''}}" data-reason="other" bindtap="onSubSelectReason">其他</view>
+              </view>
+            </view>
+
+            <view class="sub-confirm-wrap">
+              <view class="set-end-btn-home sub-confirm-btn pressable" hover-class="tap-active" bindtap="onSubConfirmTap">
+                <view class="set-end-btn-content sub-confirm-btn-content">
+                  <text class="sub-confirm-btn-text">确认换人</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+
+      <view class="sub-log-popover-mask" wx:if="{{showSubMatchLogPopover}}" bindtap="onCloseSubMatchLogPopover">
+        <view class="sub-log-popover" style="{{subLogPopoverInlineStyle}}" catchtap="onSubMatchLogPopoverTap">
+          <view class="log-head sub-log-popover-head">
+            <text class="log-title">换人记录</text>
+          </view>
+          <view class="sub-record-tabbar">
+            <view class="sub-seg" id="sub-log-tab-seg">
+              <view class="sub-seg-item {{subRecordTab === 'normal' ? 'active' : ''}}" data-tab="normal" bindtap="onSelectSubRecordTab">普通</view>
+              <view class="sub-seg-item {{subRecordTab === 'special' ? 'active' : ''}}" data-tab="special" bindtap="onSelectSubRecordTab">特殊</view>
+              <view class="sub-seg-item {{subRecordTab === 'libero' ? 'active' : ''}}" data-tab="libero" bindtap="onSelectSubRecordTab">自由人常规</view>
+              <view class="sub-seg-item {{subRecordTab === 'special_libero' ? 'active' : ''}}" data-tab="special_libero" bindtap="onSelectSubRecordTab">自由人特殊</view>
+            </view>
+          </view>
+          <scroll-view class="log-list sub-log-popover-list" scroll-y="true">
+            <view class="log-item" wx:if="{{subRecordTab === 'normal'}}" wx:for="{{subNormalRecords}}" wx:key="index" wx:for-item="item">
+              <text class="log-time">{{item.index}}</text>
+              <text class="log-note">{{item.text}}</text>
+            </view>
+            <view class="log-item" wx:if="{{subRecordTab === 'special'}}" wx:for="{{subSpecialRecords}}" wx:key="index" wx:for-item="item">
+              <text class="log-time">{{item.index}}</text>
+              <text class="log-note">{{item.text}}</text>
+            </view>
+            <view class="log-item" wx:if="{{subRecordTab === 'libero'}}" wx:for="{{subLiberoRecords}}" wx:key="index" wx:for-item="item">
+              <text class="log-time">{{item.index}}</text>
+              <text class="log-note">{{item.text}}</text>
+            </view>
+            <view class="log-item" wx:if="{{subRecordTab === 'special_libero'}}" wx:for="{{subSpecialLiberoRecords}}" wx:key="index" wx:for-item="item">
+              <text class="log-time">{{item.index}}</text>
+              <text class="log-note">{{item.text}}</text>
+            </view>
+            <view class="log-empty" wx:if="{{subRecordTab === 'normal' && !subNormalRecords.length}}">暂无普通换人记录</view>
+            <view class="log-empty" wx:if="{{subRecordTab === 'special' && !subSpecialRecords.length}}">暂无特殊换人记录</view>
+            <view class="log-empty" wx:if="{{subRecordTab === 'libero' && !subLiberoRecords.length}}">暂无自由人常规换人记录</view>
+            <view class="log-empty" wx:if="{{subRecordTab === 'special_libero' && !subSpecialLiberoRecords.length}}">暂无自由人特殊换人记录</view>
+          </scroll-view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view id="sub-panel-size-probe" class="substitution-panel sub-panel-size-probe"></view>
 </view>

@@ -24,6 +24,24 @@ export interface CollaborationState {
   operatorClientId: string;
   operatorUpdatedAt: number;
   observerSideMap: Record<string, "A" | "B">;
+  presenceSeenAtMap?: Record<string, number>;
+  presenceUidMap?: Record<string, string>;
+  autoClaimBy?: string;
+  autoClaimAt?: number;
+  autoClaimPrevOperatorId?: string;
+}
+
+export interface SetStartLineupSnapshot {
+  setNo: number;
+  teamAPlayers: PlayerSlot[];
+  teamBPlayers: PlayerSlot[];
+  servingTeam: "A" | "B";
+  startIsSwapped: boolean;
+  endIsSwapped: boolean;
+  teamACaptainNo?: string;
+  teamBCaptainNo?: string;
+  savedAt?: number;
+  endedAt?: number;
 }
 
 export interface MatchState {
@@ -38,6 +56,9 @@ export interface MatchState {
   isSwapped: boolean;
   decidingSetEightHandled: boolean;
   setNo: number;
+  liberoRosterSetNo?: number;
+  teamALiberoRoster?: string[];
+  teamBLiberoRoster?: string[];
   aSetWins: number;
   bSetWins: number;
   teamATimeoutCount: number;
@@ -102,6 +123,7 @@ export interface MatchState {
     };
   };
   lineupAdjustDraft?: any;
+  setStartLineupsBySet?: Record<string, SetStartLineupSnapshot>;
 }
 
 export interface RoomState {
@@ -110,6 +132,7 @@ export interface RoomState {
   status: "setup" | "match" | "result";
   syncVersion: number;
   expiresAt: number;
+  matchEnteredAt: number;
   matchStartedAt: number;
   extraTimeGranted: boolean;
   resultLockedAt: number;
@@ -132,7 +155,9 @@ const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const ROOM_EXTRA_TTL_MS = 3 * 60 * 60 * 1000;
 const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 40 * 1000;
-const ROOM_LOCK_TTL_MS = 10 * 60 * 1000;
+const ROOM_LOCK_TTL_MS = 3 * 60 * 60 * 1000;
+const AUTHORITY_PRESENCE_TTL_MS = 5 * 60 * 1000;
+const AUTO_OPERATOR_CLAIM_PROBATION_MS = 10 * 60 * 1000;
 const CLOUD_PULL_INTERVAL_MS = 15000;
 const ROOM_API_FUNCTION = "roomApi";
 const ROOM_API_TIMEOUT_MS = 10000;
@@ -295,6 +320,7 @@ function createDefaultRoom(roomId: string): RoomState {
     status: "setup",
     syncVersion: 1,
     expiresAt: ts + ROOM_TTL_MS,
+    matchEnteredAt: 0,
     matchStartedAt: 0,
     extraTimeGranted: false,
     resultLockedAt: 0,
@@ -322,6 +348,11 @@ function createDefaultRoom(roomId: string): RoomState {
       operatorClientId: "",
       operatorUpdatedAt: 0,
       observerSideMap: {},
+      presenceSeenAtMap: {},
+      presenceUidMap: {},
+      autoClaimBy: "",
+      autoClaimAt: 0,
+      autoClaimPrevOperatorId: "",
     },
     match: {
       aScore: 0,
@@ -335,6 +366,9 @@ function createDefaultRoom(roomId: string): RoomState {
       isSwapped: false,
       decidingSetEightHandled: false,
       setNo: 1,
+      liberoRosterSetNo: 0,
+      teamALiberoRoster: [],
+      teamBLiberoRoster: [],
       aSetWins: 0,
       bSetWins: 0,
       teamATimeoutCount: 0,
@@ -347,6 +381,7 @@ function createDefaultRoom(roomId: string): RoomState {
       logs: [],
       setEndState: undefined,
       lineupAdjustDraft: undefined,
+      setStartLineupsBySet: {},
     },
     participants: {},
     createdAt: ts,
@@ -367,6 +402,54 @@ function normalizePlayers(players: unknown): PlayerSlot[] {
     });
   });
   return result;
+}
+
+function normalizeLiberoRoster(source: unknown): string[] {
+  if (!Array.isArray(source)) {
+    return [];
+  }
+  const result: string[] = [];
+  source.forEach((raw) => {
+    const no = String(raw || "").replace(/\D/g, "").slice(0, 2);
+    if (!no) {
+      return;
+    }
+    if (result.indexOf(no) >= 0) {
+      return;
+    }
+    result.push(no);
+  });
+  return result.slice(0, 2);
+}
+
+function normalizeSetStartLineupsBySet(source: unknown): Record<string, SetStartLineupSnapshot> {
+  if (!source || typeof source !== "object") {
+    return {};
+  }
+  const input = source as Record<string, unknown>;
+  const output: Record<string, SetStartLineupSnapshot> = {};
+  Object.keys(input).forEach(function (key) {
+    const raw = input[key];
+    if (!raw || typeof raw !== "object") {
+      return;
+    }
+    const item = raw as Record<string, unknown>;
+    const setNo = Math.max(1, Number(item.setNo || key) || 1);
+    output[String(setNo)] = {
+      setNo: setNo,
+      teamAPlayers: normalizePlayers(item.teamAPlayers),
+      teamBPlayers: normalizePlayers(item.teamBPlayers),
+      servingTeam: item.servingTeam === "B" ? "B" : "A",
+      startIsSwapped: !!item.startIsSwapped,
+      endIsSwapped:
+        typeof item.endIsSwapped === "boolean" ? !!item.endIsSwapped : !!item.startIsSwapped,
+      teamACaptainNo: String(item.teamACaptainNo || ""),
+      teamBCaptainNo: String(item.teamBCaptainNo || ""),
+      savedAt: Math.max(0, Number(item.savedAt) || 0),
+      endedAt: Math.max(0, Number(item.endedAt) || 0),
+    };
+  });
+  return output;
 }
 
 function normalizeParticipants(source: unknown): Record<string, number> {
@@ -412,6 +495,7 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   base.status = input.status === "result" ? "result" : input.status === "match" ? "match" : "setup";
   base.syncVersion = Math.max(1, Number((input as any).syncVersion) || 1);
   base.expiresAt = Math.max(0, Number((input as any).expiresAt) || 0);
+  base.matchEnteredAt = Math.max(0, Number((input as any).matchEnteredAt) || 0);
   base.matchStartedAt = Math.max(0, Number((input as any).matchStartedAt) || 0);
   base.extraTimeGranted = !!(input as any).extraTimeGranted;
   base.resultLockedAt = Math.max(0, Number((input as any).resultLockedAt) || 0);
@@ -444,11 +528,37 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   ).trim();
   base.collaboration.operatorUpdatedAt = Math.max(0, Number(rawCollaboration.operatorUpdatedAt) || 0);
   base.collaboration.observerSideMap = normalizeObserverSideMap(rawCollaboration.observerSideMap);
+  base.collaboration.presenceSeenAtMap = normalizeParticipants(rawCollaboration.presenceSeenAtMap);
+  base.collaboration.presenceUidMap = {};
+  const rawPresenceUidMap =
+    rawCollaboration && rawCollaboration.presenceUidMap && typeof rawCollaboration.presenceUidMap === "object"
+      ? (rawCollaboration.presenceUidMap as Record<string, unknown>)
+      : null;
+  if (rawPresenceUidMap) {
+    Object.keys(rawPresenceUidMap).forEach((clientId) => {
+      const uid = String(rawPresenceUidMap[clientId] || "").trim();
+      const cid = String(clientId || "").trim();
+      if (cid && uid) {
+        (base.collaboration.presenceUidMap as Record<string, string>)[cid] = uid;
+      }
+    });
+  }
+  base.collaboration.autoClaimBy = String(rawCollaboration.autoClaimBy || "").trim();
+  base.collaboration.autoClaimAt = Math.max(0, Number(rawCollaboration.autoClaimAt) || 0);
+  base.collaboration.autoClaimPrevOperatorId = String(rawCollaboration.autoClaimPrevOperatorId || "").trim();
   if (!base.collaboration.ownerClientId && base.collaboration.operatorClientId) {
     base.collaboration.ownerClientId = base.collaboration.operatorClientId;
   }
   if (!base.collaboration.operatorClientId && base.collaboration.ownerClientId) {
     base.collaboration.operatorClientId = base.collaboration.ownerClientId;
+  }
+  if (
+    base.collaboration.autoClaimBy &&
+    base.collaboration.autoClaimBy !== base.collaboration.operatorClientId
+  ) {
+    base.collaboration.autoClaimBy = "";
+    base.collaboration.autoClaimAt = 0;
+    base.collaboration.autoClaimPrevOperatorId = "";
   }
 
   base.match.aScore = Math.max(0, Number(input.match && input.match.aScore) || 0);
@@ -475,6 +585,9 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   base.match.isSwapped = !!(input.match && (input.match as any).isSwapped);
   base.match.decidingSetEightHandled = !!(input.match && (input.match as any).decidingSetEightHandled);
   base.match.setNo = Math.max(1, Number(input.match && (input.match as any).setNo) || 1);
+  base.match.liberoRosterSetNo = Math.max(0, Number(input.match && (input.match as any).liberoRosterSetNo) || 0);
+  base.match.teamALiberoRoster = normalizeLiberoRoster(input.match && (input.match as any).teamALiberoRoster);
+  base.match.teamBLiberoRoster = normalizeLiberoRoster(input.match && (input.match as any).teamBLiberoRoster);
   base.match.aSetWins = Math.max(0, Number(input.match && (input.match as any).aSetWins) || 0);
   base.match.bSetWins = Math.max(0, Number(input.match && (input.match as any).bSetWins) || 0);
   base.match.teamATimeoutCount = Math.max(0, Math.min(2, Number(input.match && (input.match as any).teamATimeoutCount) || 0));
@@ -578,6 +691,9 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   } else {
     (base.match as any).lineupAdjustDraft = undefined;
   }
+  (base.match as any).setStartLineupsBySet = normalizeSetStartLineupsBySet(
+    input.match && (input.match as any).setStartLineupsBySet
+  );
 
   base.participants = normalizeParticipants((input as any).participants);
   base.createdAt = Number(input.createdAt) || base.createdAt;
@@ -588,6 +704,9 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
 
   if (!base.expiresAt) {
     base.expiresAt = base.createdAt + ROOM_TTL_MS;
+  }
+  if (base.status === "match" && base.matchEnteredAt <= 0) {
+    base.matchEnteredAt = Math.max(base.matchStartedAt || 0, base.updatedAt || 0, base.createdAt || 0, now());
   }
   if (base.status === "result") {
     if (!base.resultLockedAt) {
@@ -616,6 +735,118 @@ function cleanupRoomParticipants(room: RoomState): boolean {
   return changed;
 }
 
+function clearAutoOperatorClaimMeta(collaboration: CollaborationState): boolean {
+  let changed = false;
+  if (String(collaboration.autoClaimBy || "")) {
+    collaboration.autoClaimBy = "";
+    changed = true;
+  }
+  if (Number(collaboration.autoClaimAt || 0) > 0) {
+    collaboration.autoClaimAt = 0;
+    changed = true;
+  }
+  if (String(collaboration.autoClaimPrevOperatorId || "")) {
+    collaboration.autoClaimPrevOperatorId = "";
+    changed = true;
+  }
+  return changed;
+}
+
+function ensureOperatorByParticipants(room: RoomState, clientId: string): boolean {
+  const cid = String(clientId || "").trim();
+  if (!cid) {
+    return false;
+  }
+  if (!room.collaboration || typeof room.collaboration !== "object") {
+    (room as any).collaboration = {
+      ownerClientId: "",
+      operatorClientId: "",
+      operatorUpdatedAt: 0,
+      observerSideMap: {},
+      presenceSeenAtMap: {},
+      presenceUidMap: {},
+      autoClaimBy: "",
+      autoClaimAt: 0,
+      autoClaimPrevOperatorId: "",
+    } as CollaborationState;
+  }
+  const collaboration = room.collaboration as CollaborationState;
+  if (!collaboration.presenceSeenAtMap || typeof collaboration.presenceSeenAtMap !== "object") {
+    collaboration.presenceSeenAtMap = {};
+  }
+  if (!collaboration.presenceUidMap || typeof collaboration.presenceUidMap !== "object") {
+    collaboration.presenceUidMap = {};
+  }
+  const nowTs = now();
+  const seenMap = collaboration.presenceSeenAtMap;
+  Object.keys(seenMap).forEach((id) => {
+    if (nowTs - Number(seenMap[id] || 0) > AUTHORITY_PRESENCE_TTL_MS) {
+      delete seenMap[id];
+    }
+  });
+  seenMap[cid] = nowTs;
+  const activeIds = Object.keys(seenMap);
+  const currentOperator = String(getRoomOperatorClientId(room) || "").trim();
+  const currentOwner = String(getRoomOwnerClientId(room) || "").trim();
+  const autoClaimBy = String(collaboration.autoClaimBy || "").trim();
+  const autoClaimAt = Math.max(0, Number(collaboration.autoClaimAt) || 0);
+  const autoClaimPrev = String(collaboration.autoClaimPrevOperatorId || "").trim();
+  const hasOtherActive = activeIds.some((id) => id !== cid);
+  const isOperatorActive = !!(currentOperator && seenMap[currentOperator]);
+  let changed = false;
+
+  if (autoClaimBy && currentOperator === autoClaimBy) {
+    const autoClaimFresh = nowTs - autoClaimAt <= AUTO_OPERATOR_CLAIM_PROBATION_MS;
+    if (autoClaimFresh) {
+      if (autoClaimPrev && autoClaimPrev !== autoClaimBy && !!seenMap[autoClaimPrev]) {
+        collaboration.operatorClientId = autoClaimPrev;
+        collaboration.operatorUpdatedAt = nowTs;
+        changed = true;
+        changed = clearAutoOperatorClaimMeta(collaboration) || changed;
+        return changed;
+      }
+      if (currentOwner && currentOwner !== autoClaimBy && !!seenMap[currentOwner]) {
+        collaboration.operatorClientId = currentOwner;
+        collaboration.operatorUpdatedAt = nowTs;
+        changed = true;
+        changed = clearAutoOperatorClaimMeta(collaboration) || changed;
+        return changed;
+      }
+      const fallbackOther = activeIds.find((id) => id !== autoClaimBy);
+      if (fallbackOther) {
+        collaboration.operatorClientId = fallbackOther;
+        collaboration.operatorUpdatedAt = nowTs;
+        changed = true;
+        changed = clearAutoOperatorClaimMeta(collaboration) || changed;
+        return changed;
+      }
+    } else {
+      changed = clearAutoOperatorClaimMeta(collaboration) || changed;
+    }
+  }
+
+  if (hasOtherActive || isOperatorActive) {
+    if (autoClaimBy && currentOperator !== autoClaimBy) {
+      changed = clearAutoOperatorClaimMeta(collaboration) || changed;
+    }
+    return changed;
+  }
+
+  if (currentOperator === cid) {
+    return changed;
+  }
+
+  collaboration.operatorClientId = cid;
+  collaboration.operatorUpdatedAt = nowTs;
+  if (!collaboration.ownerClientId) {
+    collaboration.ownerClientId = currentOperator || cid;
+  }
+  collaboration.autoClaimBy = cid;
+  collaboration.autoClaimAt = nowTs;
+  collaboration.autoClaimPrevOperatorId = currentOperator || "";
+  return true;
+}
+
 function cleanupExpiredRooms(store: RoomStore): boolean {
   const ts = now();
   let changed = false;
@@ -635,19 +866,18 @@ function cleanupExpiredRooms(store: RoomStore): boolean {
       return;
     }
 
-    if (!room.matchStartedAt && room.expiresAt > 0 && ts > room.expiresAt) {
+    const hasStartedMatch = room.matchStartedAt > 0;
+    if (!hasStartedMatch && room.expiresAt > 0 && ts > room.expiresAt) {
       delete store[roomId];
       changed = true;
       return;
     }
 
     if (
-      room.matchStartedAt > 0 &&
+      hasStartedMatch &&
       room.expiresAt > 0 &&
       ts > room.expiresAt &&
-      !room.extraTimeGranted &&
-      room.status === "match" &&
-      !room.match.isFinished
+      !room.extraTimeGranted
     ) {
       room.expiresAt = room.expiresAt + ROOM_EXTRA_TTL_MS;
       room.extraTimeGranted = true;
@@ -936,6 +1166,20 @@ export function reserveRoomId(roomId: string, ownerId: string): boolean {
   return true;
 }
 
+export function hasRoomLock(roomId: string, ownerId: string): boolean {
+  const id = String(roomId || "");
+  const owner = String(ownerId || "");
+  if (!id || !owner) {
+    return false;
+  }
+  const locks = loadRoomLocks();
+  const existing = locks[id];
+  if (!existing) {
+    return false;
+  }
+  return existing.owner === owner;
+}
+
 export function releaseRoomId(roomId: string, ownerId?: string): void {
   const id = String(roomId || "");
   if (!id) {
@@ -985,6 +1229,9 @@ export function heartbeatRoom(roomId: string, clientId: string): number {
   room.participants[clientId] = now();
   room.updatedAt = now();
   cleanupRoomParticipants(room);
+  if (ensureOperatorByParticipants(room, clientId)) {
+    room.updatedAt = now();
+  }
   store[roomId] = room;
   saveStore(store);
   return Object.keys(room.participants).length;
@@ -998,10 +1245,17 @@ export function leaveRoom(roomId: string, clientId: string): void {
   }
   if (room.participants[clientId]) {
     delete room.participants[clientId];
-    room.updatedAt = now();
-    store[roomId] = room;
-    saveStore(store);
   }
+  if (
+    room.collaboration &&
+    room.collaboration.presenceSeenAtMap &&
+    room.collaboration.presenceSeenAtMap[clientId]
+  ) {
+    delete room.collaboration.presenceSeenAtMap[clientId];
+  }
+  room.updatedAt = now();
+  store[roomId] = room;
+  saveStore(store);
 }
 
 export function updateRoom(
@@ -1045,6 +1299,19 @@ export async function reserveRoomIdAsync(roomId: string, ownerId: string): Promi
     return reserved;
   } catch (e) {
     return localReserved;
+  }
+}
+
+export async function hasRoomLockAsync(roomId: string, ownerId: string): Promise<boolean> {
+  const localLocked = hasRoomLock(roomId, ownerId);
+  try {
+    const res = await callRoomApi<{ locked: boolean }>("hasRoomLock", {
+      roomId: roomId,
+      ownerId: ownerId,
+    });
+    return !!(res && (res as any).locked);
+  } catch (e) {
+    return localLocked;
   }
 }
 
@@ -1384,6 +1651,9 @@ export async function transferRoomOperatorAsync(
         room.collaboration.ownerClientId = operatorClientId || next;
       }
       room.collaboration.operatorUpdatedAt = now();
+      room.collaboration.autoClaimBy = "";
+      room.collaboration.autoClaimAt = 0;
+      room.collaboration.autoClaimPrevOperatorId = "";
       const setEndState = ((room.match as any).setEndState || null) as
         | { active?: boolean; phase?: string; ownerClientId?: string }
         | null;

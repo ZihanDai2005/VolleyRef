@@ -18,7 +18,7 @@ import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../uti
 import { computeLandscapeSafePad } from "../../utils/safe-pad";
 
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
-type PlayerSlot = { pos: Position; number: string };
+type PlayerSlot = { pos: Position; number: string; isLibero?: boolean };
 type MatchLogItem = {
   id: string;
   ts: number;
@@ -30,6 +30,36 @@ type MatchLogItem = {
   revertedOpId?: string;
 };
 type DisplayLogItem = MatchLogItem & { timeText: string };
+type SubRecordRow = { index: number; text: string };
+type SubRecordSummary = {
+  normal: SubRecordRow[];
+  special: SubRecordRow[];
+  libero: SubRecordRow[];
+  specialLibero: SubRecordRow[];
+  punishSet: SubRecordRow[];
+  punishMatch: SubRecordRow[];
+};
+type SpecialBanState = {
+  setBanNos: Set<string>;
+  matchBanNos: Set<string>;
+};
+type NormalSubPair = {
+  starterNo: string;
+  substituteNo: string;
+  closed: boolean;
+};
+type SetStartLineupSnapshot = {
+  setNo: number;
+  teamAPlayers: PlayerSlot[];
+  teamBPlayers: PlayerSlot[];
+  servingTeam: TeamCode;
+  startIsSwapped: boolean;
+  endIsSwapped: boolean;
+  teamACaptainNo: string;
+  teamBCaptainNo: string;
+  savedAt: number;
+  endedAt: number;
+};
 type TeamRows = {
   libero: PlayerSlot[];
   main: PlayerSlot[];
@@ -42,6 +72,7 @@ type RotateFlyItem = {
   team: TeamCode;
   number: string;
   isCaptain: boolean;
+  isLibero: boolean;
   style: string;
 };
 type RotateStep = {
@@ -53,6 +84,9 @@ type ConnState = "online" | "reconnecting" | "offline";
 
 const ALL_POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
 const MAIN_POSITIONS: MainPosition[] = ["I", "II", "III", "IV", "V", "VI"];
+const BACK_ROW_POSITIONS: MainPosition[] = ["I", "VI", "V"];
+const FRONT_ROW_POSITIONS: MainPosition[] = ["II", "III", "IV"];
+const LIBERO_POSITIONS: Position[] = ["L1", "L2"];
 const NUMBER_SOURCE_MAP: Record<Position, Position> = {
   I: "II",
   II: "III",
@@ -63,6 +97,221 @@ const NUMBER_SOURCE_MAP: Record<Position, Position> = {
   L1: "L1",
   L2: "L2",
 };
+const CONN_RECONNECT_FAILS_ONLINE = 3;
+const CONN_OFFLINE_FAILS_ONLINE = 5;
+const CONN_OFFLINE_FAILS_NONONLINE = 4;
+const CONN_WATCHDOG_RECONNECT_MS = 33000;
+const CONN_WATCHDOG_OFFLINE_MS = 52000;
+
+function isPosition(input: string): input is Position {
+  return ALL_POSITIONS.indexOf(input as Position) >= 0;
+}
+
+function isLiberoPosition(pos: Position): boolean {
+  return LIBERO_POSITIONS.indexOf(pos) >= 0;
+}
+
+function isBackRowPosition(pos: Position): pos is MainPosition {
+  return BACK_ROW_POSITIONS.indexOf(pos as MainPosition) >= 0;
+}
+
+function getPlayerByPos(players: PlayerSlot[], pos: Position): PlayerSlot | null {
+  const found = (players || []).find((p) => p.pos === pos);
+  return found || null;
+}
+
+function ensureTeamPlayerOrder(players: PlayerSlot[]): PlayerSlot[] {
+  const byPos: Record<string, PlayerSlot> = {};
+  (players || []).forEach((p) => {
+    byPos[p.pos] = p;
+  });
+  return ALL_POSITIONS.map((pos) => {
+    const slot = byPos[pos];
+    return {
+      pos: pos,
+      number: slot ? String(slot.number || "?") : "?",
+    };
+  });
+}
+
+function getLiberoRosterFromPlayers(players: PlayerSlot[]): string[] {
+  const l1 = normalizeNumberInput((getPlayerByPos(players, "L1") || { number: "" }).number);
+  const l2 = normalizeNumberInput((getPlayerByPos(players, "L2") || { number: "" }).number);
+  const roster: string[] = [];
+  if (l1) {
+    roster.push(l1);
+  }
+  if (l2 && roster.indexOf(l2) < 0) {
+    roster.push(l2);
+  }
+  return roster;
+}
+
+function ensureLiberoRosterForCurrentSet(room: any): void {
+  const match = (room.match || {}) as any;
+  const currentSetNo = Math.max(1, Number(match.setNo || 1));
+  const rosterSetNo = Math.max(0, Number(match.liberoRosterSetNo || 0));
+  const hasRosterA = Array.isArray(match.teamALiberoRoster);
+  const hasRosterB = Array.isArray(match.teamBLiberoRoster);
+  if (rosterSetNo === currentSetNo && hasRosterA && hasRosterB) {
+    return;
+  }
+  match.teamALiberoRoster = getLiberoRosterFromPlayers(room.teamA && room.teamA.players ? room.teamA.players : []);
+  match.teamBLiberoRoster = getLiberoRosterFromPlayers(room.teamB && room.teamB.players ? room.teamB.players : []);
+  match.liberoRosterSetNo = currentSetNo;
+}
+
+function countLiberoInMain(players: PlayerSlot[], liberoRoster: string[]): number {
+  const rosterSet = new Set((liberoRoster || []).map((n) => normalizeNumberInput(n)).filter(Boolean));
+  if (!rosterSet.size) {
+    return 0;
+  }
+  return MAIN_POSITIONS.reduce((count, pos) => {
+    const p = getPlayerByPos(players, pos as Position);
+    const no = normalizeNumberInput((p && p.number) || "");
+    return count + (no && rosterSet.has(no) ? 1 : 0);
+  }, 0);
+}
+
+function countNormalInLiberoSlots(players: PlayerSlot[], liberoRoster: string[]): number {
+  const rosterSet = new Set((liberoRoster || []).map((n) => normalizeNumberInput(n)).filter(Boolean));
+  return LIBERO_POSITIONS.reduce((count, pos) => {
+    const p = getPlayerByPos(players, pos);
+    const no = normalizeNumberInput((p && p.number) || "");
+    if (!no) {
+      return count;
+    }
+    return count + (rosterSet.has(no) ? 0 : 1);
+  }, 0);
+}
+
+function normalizeLiberoRosterNumbers(input: unknown): string[] {
+  if (!Array.isArray(input)) {
+    return [];
+  }
+  const out: string[] = [];
+  input.forEach((raw) => {
+    const no = normalizeNumberInput(String(raw || ""));
+    if (!no || out.indexOf(no) >= 0) {
+      return;
+    }
+    out.push(no);
+  });
+  return out;
+}
+
+function getLiberoRosterForTeam(room: any, team: TeamCode, fallbackRoster?: string[]): string[] {
+  const match = (room && room.match) || {};
+  const key = team === "A" ? "teamALiberoRoster" : "teamBLiberoRoster";
+  const fromState = normalizeLiberoRosterNumbers((match as any)[key]);
+  if (fromState.length > 0) {
+    return fromState;
+  }
+  const fromFallback = normalizeLiberoRosterNumbers(fallbackRoster || []);
+  if (fromFallback.length > 0) {
+    return fromFallback;
+  }
+  const players = team === "A" ? room && room.teamA && room.teamA.players : room && room.teamB && room.teamB.players;
+  return normalizeLiberoRosterNumbers(getLiberoRosterFromPlayers(players || []));
+}
+
+function markDisplayPlayersByLiberoRoster(players: PlayerSlot[], liberoRoster: string[]): PlayerSlot[] {
+  const ordered = ensureTeamPlayerOrder(players || []);
+  const roster = new Set(normalizeLiberoRosterNumbers(liberoRoster));
+  return ordered.map((p) => {
+    const no = normalizeNumberInput(String((p && p.number) || ""));
+    return {
+      pos: p.pos,
+      number: p.number,
+      isLibero: !!no && roster.has(no),
+    };
+  });
+}
+
+function buildLiberoRosterSet(input: string[]): Set<string> {
+  return new Set(normalizeLiberoRosterNumbers(input || []));
+}
+
+function validateLiberoSwapByRule(
+  players: PlayerSlot[],
+  liberoRoster: string[],
+  fromPos: Position,
+  toPos: Position
+): string {
+  const roster = normalizeLiberoRosterNumbers(liberoRoster || []);
+  if (!roster.length) {
+    return "未配置自由人号码";
+  }
+  const teamPlayers = ensureTeamPlayerOrder(players || []);
+  const fromSlot = getPlayerByPos(teamPlayers, fromPos);
+  const toSlot = getPlayerByPos(teamPlayers, toPos);
+  if (!fromSlot || !toSlot) {
+    return "球员位置异常";
+  }
+  const fromNo = normalizeNumberInput(fromSlot.number || "");
+  const toNo = normalizeNumberInput(toSlot.number || "");
+  if (!fromNo || !toNo) {
+    return "号码未填写，无法替换";
+  }
+  const fromIsLibero = isLiberoPosition(fromPos);
+  const toIsLibero = isLiberoPosition(toPos);
+  if (fromIsLibero === toIsLibero) {
+    return "自由人常规换人需在场上与自由人区之间进行";
+  }
+  const mainPos = (fromIsLibero ? toPos : fromPos) as Position;
+  if (!isBackRowPosition(mainPos)) {
+    const mainSlot = getPlayerByPos(teamPlayers, mainPos);
+    const mainNo = normalizeNumberInput(String((mainSlot && mainSlot.number) || ""));
+    if (!mainNo || roster.indexOf(mainNo) < 0) {
+      return "自由人仅可与后排球员替换";
+    }
+  }
+  if (roster.indexOf(fromNo) < 0 && roster.indexOf(toNo) < 0) {
+    return "当前操作未涉及自由人";
+  }
+  const nextPlayers = ensureTeamPlayerOrder(teamPlayers);
+  const fromIdx = nextPlayers.findIndex((p) => p.pos === fromPos);
+  const toIdx = nextPlayers.findIndex((p) => p.pos === toPos);
+  if (fromIdx < 0 || toIdx < 0) {
+    return "球员位置异常";
+  }
+  const tmpNo = nextPlayers[fromIdx].number;
+  nextPlayers[fromIdx].number = nextPlayers[toIdx].number;
+  nextPlayers[toIdx].number = tmpNo;
+  const liberoInMainCount = countLiberoInMain(nextPlayers, roster);
+  const normalInLiberoCount = countNormalInLiberoSlots(nextPlayers, roster);
+  if (liberoInMainCount > 1 || normalInLiberoCount > 1) {
+    return "同一时刻仅允许1名自由人在场";
+  }
+  return "";
+}
+
+function buildSwapTargetMainPositions(players: PlayerSlot[], liberoRoster: string[], sourcePos: Position): MainPosition[] {
+  if (!isLiberoPosition(sourcePos)) {
+    return [];
+  }
+  return MAIN_POSITIONS.filter((pos) => !validateLiberoSwapByRule(players, liberoRoster, sourcePos, pos));
+}
+
+function buildSwapTargetLiberoPositions(players: PlayerSlot[], liberoRoster: string[], sourcePos: Position): Position[] {
+  if (isLiberoPosition(sourcePos)) {
+    return [];
+  }
+  return LIBERO_POSITIONS.filter((pos) => !validateLiberoSwapByRule(players, liberoRoster, sourcePos, pos));
+}
+
+function hasFrontRowLibero(players: PlayerSlot[], liberoRoster: string[]): boolean {
+  const ordered = ensureTeamPlayerOrder(players || []);
+  const roster = buildLiberoRosterSet(liberoRoster);
+  if (!roster.size) {
+    return false;
+  }
+  return FRONT_ROW_POSITIONS.some((pos) => {
+    const slot = getPlayerByPos(ordered, pos as Position);
+    const no = normalizeNumberInput(String((slot && slot.number) || ""));
+    return !!no && roster.has(no);
+  });
+}
 
 function buildTeamRows(players: PlayerSlot[]): TeamRows {
   const byPos: Record<string, PlayerSlot> = {};
@@ -201,11 +450,19 @@ function extractSetNoFromNote(note: string): number | null {
   return Math.max(1, Number(m[1]) || 1);
 }
 
+function normalizeSwapSymbolText(text: string): string {
+  return String(text || "")
+    .replace(/\uFE0F/g, "")
+    .replace(/\u2194\uFE0F/g, "\u2194")
+    .replace(/自由人替换/g, "自由人常规换人")
+    .replace(/特殊自由人换人/g, "自由人特殊换人");
+}
+
 function normalizeLogsBySet(logs: MatchLogItem[]): MatchLogItem[] {
   let cursorSetNo = 1;
   return (logs || []).map((item, idx) => {
     const action = String(item && item.action ? item.action : "");
-    const note = String(item && item.note ? item.note : "");
+    const note = normalizeSwapSymbolText(String(item && item.note ? item.note : ""));
     const explicitSetNo = Number((item as any).setNo) || 0;
     const noteSetNo = extractSetNoFromNote(note);
     let resolvedSetNo = explicitSetNo > 0 ? Math.max(1, explicitSetNo) : 0;
@@ -237,7 +494,7 @@ function normalizeLogsBySet(logs: MatchLogItem[]): MatchLogItem[] {
 }
 
 function withTeamSuffixForDisplay(noteRaw: string, teamANameRaw: string, teamBNameRaw: string): string {
-  let note = String(noteRaw || "");
+  let note = normalizeSwapSymbolText(noteRaw);
   const names = [String(teamANameRaw || "").trim(), String(teamBNameRaw || "").trim()].filter(Boolean);
   names.forEach((name) => {
     const esc = escapeRegExp(name);
@@ -256,10 +513,474 @@ function withTeamSuffixForDisplay(noteRaw: string, teamANameRaw: string, teamBNa
   return note;
 }
 
+function normalizeSubstituteNumber(value: string): string {
+  const digits = normalizeNumberInput(value);
+  if (!digits) {
+    return "";
+  }
+  return String(Number(digits));
+}
+
+function buildSubRecordText(upNoRaw: string, downNoRaw: string): string {
+  const upNo = normalizeSubstituteNumber(upNoRaw) || "?";
+  const downNo = normalizeSubstituteNumber(downNoRaw) || "?";
+  return "↑" + upNo + " ↓" + downNo;
+}
+
+function buildLiberoSwapRecordText(normalNoRaw: string, liberoNoRaw: string): string {
+  const normalNo = normalizeSubstituteNumber(normalNoRaw) || "?";
+  const liberoNo = normalizeSubstituteNumber(liberoNoRaw) || "?";
+  return "↑" + normalNo + " ↓" + liberoNo + "（自）";
+}
+
+function buildSubRecordDetailText(upNoRaw: string, downNoRaw: string, downIsLibero = false): string {
+  const upNo = normalizeSubstituteNumber(upNoRaw) || "?";
+  const downNo = normalizeSubstituteNumber(downNoRaw) || "?";
+  return "↑" + upNo + " ↓" + downNo + (downIsLibero ? "（自）" : "");
+}
+
+function buildSpecialLiberoRecordText(upNoRaw: string, downNoRaw: string): string {
+  const upNo = normalizeSubstituteNumber(upNoRaw) || "?";
+  const downNo = normalizeSubstituteNumber(downNoRaw) || "?";
+  return "↑" + upNo + "（自） ↓" + downNo + "（自）";
+}
+
+function appendSubRecordRow(rows: string[], text: string): void {
+  const line = String(text || "").trim();
+  if (!line) {
+    return;
+  }
+  rows.push(line);
+}
+
+function parseGenericSubRecordText(noteRaw: string): { upNo: string; downNo: string; downIsLibero: boolean } | null {
+  const note = normalizeSwapSymbolText(noteRaw);
+  const direct = note.match(/↑\s*(\d{1,2})\s*↓\s*(\d{1,2})\s*(（自）)?/);
+  if (direct) {
+    return {
+      upNo: normalizeSubstituteNumber(direct[1]),
+      downNo: normalizeSubstituteNumber(direct[2]),
+      downIsLibero: !!direct[3],
+    };
+  }
+  return null;
+}
+
+function parseLiberoSwapRecordText(noteRaw: string): { normalNo: string; liberoNo: string } | null {
+  const note = normalizeSwapSymbolText(noteRaw);
+  const arrowMatch = note.match(/自由人常规换人\s*↑\s*(\d{1,2})\s*↓\s*(\d{1,2})\s*(（自）)?/);
+  if (arrowMatch) {
+    const normalNo = normalizeSubstituteNumber(arrowMatch[1]);
+    const liberoNo = normalizeSubstituteNumber(arrowMatch[2]);
+    if (normalNo && liberoNo) {
+      return { normalNo: normalNo, liberoNo: liberoNo };
+    }
+  }
+  const markerMatch = note.match(/自由人常规换人\s*(\d{1,2})\s*(（自）)?\s*↔\s*(\d{1,2})\s*(（自）)?/);
+  if (markerMatch) {
+    const leftNo = normalizeSubstituteNumber(markerMatch[1]);
+    const rightNo = normalizeSubstituteNumber(markerMatch[3]);
+    const leftIsLibero = !!markerMatch[2];
+    const rightIsLibero = !!markerMatch[4];
+    if (leftNo && rightNo) {
+      if (leftIsLibero && !rightIsLibero) {
+        return { normalNo: rightNo, liberoNo: leftNo };
+      }
+      if (!leftIsLibero && rightIsLibero) {
+        return { normalNo: leftNo, liberoNo: rightNo };
+      }
+      return { normalNo: leftNo, liberoNo: rightNo };
+    }
+  }
+  const oldStyle = note.match(
+    /自由人常规换人\s*([A-Z0-9]+)\s*↔\s*([A-Z0-9]+)\s*[（(]\s*(\d{1,2})\s*↔\s*(\d{1,2})\s*[）)]/
+  );
+  if (oldStyle) {
+    const leftPos = String(oldStyle[1] || "").toUpperCase();
+    const rightPos = String(oldStyle[2] || "").toUpperCase();
+    const leftNo = normalizeSubstituteNumber(oldStyle[3]);
+    const rightNo = normalizeSubstituteNumber(oldStyle[4]);
+    const leftIsLibero = leftPos === "L1" || leftPos === "L2";
+    const rightIsLibero = rightPos === "L1" || rightPos === "L2";
+    if (leftNo && rightNo) {
+      if (leftIsLibero && !rightIsLibero) {
+        return { normalNo: rightNo, liberoNo: leftNo };
+      }
+      if (!leftIsLibero && rightIsLibero) {
+        return { normalNo: leftNo, liberoNo: rightNo };
+      }
+      return { normalNo: leftNo, liberoNo: rightNo };
+    }
+  }
+  const genericPair = note.match(/自由人常规换人[\s\S]*?(\d{1,2})\s*↔\s*(\d{1,2})/);
+  if (genericPair) {
+    const leftNo = normalizeSubstituteNumber(genericPair[1]);
+    const rightNo = normalizeSubstituteNumber(genericPair[2]);
+    if (leftNo && rightNo) {
+      return { normalNo: leftNo, liberoNo: rightNo };
+    }
+  }
+  return null;
+}
+
+function parseSpecialLiberoRecordText(noteRaw: string): { upNo: string; downNo: string } | null {
+  const note = normalizeSwapSymbolText(noteRaw);
+  const direct = note.match(/↑\s*(\d{1,2})\s*(（自）)?\s*↓\s*(\d{1,2})\s*(（自）)?/);
+  if (!direct) {
+    return null;
+  }
+  const upNo = normalizeSubstituteNumber(direct[1]);
+  const downNo = normalizeSubstituteNumber(direct[3]);
+  if (!upNo || !downNo) {
+    return null;
+  }
+  return {
+    upNo,
+    downNo,
+  };
+}
+
+function isSpecialLiberoSubAction(actionRaw: string): boolean {
+  const action = String(actionRaw || "");
+  return (
+    action === "sub_special_libero" ||
+    action === "sub_special_libero_injury" ||
+    action === "sub_special_libero_penalty_set" ||
+    action === "sub_special_libero_penalty_match" ||
+    action === "sub_special_libero_other"
+  );
+}
+
+function isSpecialLiberoSubNote(noteRaw: string): boolean {
+  const note = normalizeSwapSymbolText(noteRaw);
+  return note.indexOf("自由人特殊换人") >= 0 || note.indexOf("特殊自由人换人") >= 0;
+}
+
+function buildRevertedOpIdSet(logs: MatchLogItem[]): Set<string> {
+  const hiddenOpIds = new Set<string>();
+  (logs || []).forEach((item) => {
+    const action = String(item && item.action ? item.action : "");
+    const revertedOpId = String((item as any).revertedOpId || "");
+    if (action === "score_undo" && revertedOpId) {
+      hiddenOpIds.add(revertedOpId);
+    }
+  });
+  return hiddenOpIds;
+}
+
+function countNormalSubstitutionsBySet(logs: MatchLogItem[], setNo: number, team: TeamCode): number {
+  const targetSet = Math.max(1, Number(setNo || 1));
+  const hiddenOpIds = buildRevertedOpIdSet(logs);
+  let count = 0;
+  (logs || []).forEach((item) => {
+    if (!item || item.team !== team) {
+      return;
+    }
+    const itemSetNo = Math.max(1, Number((item as any).setNo || extractSetNoFromNote(String(item.note || "")) || 1));
+    if (itemSetNo !== targetSet) {
+      return;
+    }
+    const opId = String((item as any).opId || "");
+    if (opId && hiddenOpIds.has(opId)) {
+      return;
+    }
+    const action = String(item.action || "");
+    const note = String(item.note || "");
+    if (action === "sub_normal" || action === "substitution_normal" || note.indexOf("普通换人") >= 0) {
+      count += 1;
+    }
+  });
+  return count;
+}
+
+function buildSpecialBanStateBySet(logs: MatchLogItem[], setNo: number, team: TeamCode): SpecialBanState {
+  const targetSet = Math.max(1, Number(setNo || 1));
+  const hiddenOpIds = buildRevertedOpIdSet(logs);
+  const setBanNos = new Set<string>();
+  const matchBanNos = new Set<string>();
+  (logs || []).forEach((item) => {
+    if (!item || item.team !== team) {
+      return;
+    }
+    const opId = String((item as any).opId || "");
+    if (opId && hiddenOpIds.has(opId)) {
+      return;
+    }
+    const action = String(item.action || "");
+    const note = String(item.note || "");
+    const isSpecialLiberoSub = isSpecialLiberoSubAction(action) || isSpecialLiberoSubNote(note);
+    const parsed = isSpecialLiberoSub ? parseSpecialLiberoRecordText(note) : parseGenericSubRecordText(note);
+    const downNo = normalizeSubstituteNumber(parsed && parsed.downNo ? parsed.downNo : "");
+    if (!downNo) {
+      return;
+    }
+    const itemSetNo = Math.max(1, Number((item as any).setNo || extractSetNoFromNote(note) || 1));
+    if (
+      action === "sub_special_penalty_set" ||
+      action === "sub_special_libero_penalty_set" ||
+      note.indexOf("本局禁赛") >= 0
+    ) {
+      if (itemSetNo === targetSet) {
+        setBanNos.add(downNo);
+      }
+      return;
+    }
+    if (
+      action === "sub_special_injury" ||
+      action === "sub_special_penalty_match" ||
+      action === "sub_special_libero_injury" ||
+      action === "sub_special_libero_penalty_match" ||
+      action === "sub_special_libero" ||
+      note.indexOf("全场禁赛") >= 0
+    ) {
+      matchBanNos.add(downNo);
+    }
+  });
+  return {
+    setBanNos,
+    matchBanNos,
+  };
+}
+
+function toSubRecordRows(lines: string[]): SubRecordRow[] {
+  return lines.map((text, idx) => ({
+    index: idx + 1,
+    text: text,
+  }));
+}
+
+function buildNormalSubPairsFromLogs(logs: MatchLogItem[], setNo: number, team: TeamCode): NormalSubPair[] {
+  const targetSet = Math.max(1, Number(setNo || 1));
+  const hiddenOpIds = buildRevertedOpIdSet(logs);
+  const pairs: NormalSubPair[] = [];
+  (logs || []).forEach((item) => {
+    if (!item || item.team !== team) {
+      return;
+    }
+    const itemSetNo = Math.max(1, Number((item as any).setNo || extractSetNoFromNote(String(item.note || "")) || 1));
+    if (itemSetNo !== targetSet) {
+      return;
+    }
+    const opId = String((item as any).opId || "");
+    if (opId && hiddenOpIds.has(opId)) {
+      return;
+    }
+    const action = String(item.action || "");
+    const note = String(item.note || "");
+    const isNormalSub =
+      action === "sub_normal" || action === "substitution_normal" || note.indexOf("普通换人") >= 0;
+    if (!isNormalSub) {
+      return;
+    }
+    const parsed = parseGenericSubRecordText(note);
+    if (!parsed) {
+      return;
+    }
+    const upNo = normalizeSubstituteNumber(parsed.upNo);
+    const downNo = normalizeSubstituteNumber(parsed.downNo);
+    if (!upNo || !downNo) {
+      return;
+    }
+    const pair = pairs.find((p) => p.starterNo === downNo || p.substituteNo === downNo || p.starterNo === upNo || p.substituteNo === upNo);
+    if (!pair) {
+      pairs.push({
+        starterNo: downNo,
+        substituteNo: upNo,
+        closed: false,
+      });
+      return;
+    }
+    if (pair.closed) {
+      return;
+    }
+    if (pair.starterNo === upNo && pair.substituteNo === downNo) {
+      pair.closed = true;
+    }
+  });
+  return pairs;
+}
+
+function validateNormalSubPairRule(logs: MatchLogItem[], setNo: number, team: TeamCode, downNoRaw: string, upNoRaw: string): string {
+  const downNo = normalizeSubstituteNumber(downNoRaw);
+  const upNo = normalizeSubstituteNumber(upNoRaw);
+  if (!downNo || !upNo) {
+    return "";
+  }
+  const pairs = buildNormalSubPairsFromLogs(logs, setNo, team);
+  const downPair = pairs.find((p) => p.starterNo === downNo || p.substituteNo === downNo) || null;
+  const upPair = pairs.find((p) => p.starterNo === upNo || p.substituteNo === upNo) || null;
+
+  if (downPair && upPair && downPair !== upPair) {
+    return "普通换人必须按既有配对执行，不能跨配对换人";
+  }
+
+  const pair = downPair || upPair;
+  if (!pair) {
+    return "";
+  }
+
+  if (pair.closed) {
+    return "该配对本局已锁定，不能再普通换人";
+  }
+
+  if (pair.starterNo === upNo && pair.substituteNo === downNo) {
+    return "";
+  }
+
+  if (pair.substituteNo === downNo) {
+    return "该号码只能与 " + pair.starterNo + " 进行换回";
+  }
+  if (pair.starterNo === upNo) {
+    return pair.starterNo + " 只能换回 " + pair.substituteNo;
+  }
+  return "该号码已存在普通换人配对，不能与其他号码换人";
+}
+
+function buildSubRecordSummary(logs: MatchLogItem[], setNo: number, team: TeamCode): SubRecordSummary {
+  const targetSet = Math.max(1, Number(setNo || 1));
+  const hiddenOpIds = buildRevertedOpIdSet(logs);
+
+  const normalLines: string[] = [];
+  const specialLines: string[] = [];
+  const liberoLines: string[] = [];
+  const specialLiberoLines: string[] = [];
+  const punishSetLines: string[] = [];
+  const punishMatchLines: string[] = [];
+
+  (logs || []).forEach((item) => {
+    if (!item || item.team !== team) {
+      return;
+    }
+    const itemSetNo = Math.max(1, Number((item as any).setNo || extractSetNoFromNote(String(item.note || "")) || 1));
+    if (itemSetNo !== targetSet) {
+      return;
+    }
+    const opId = String((item as any).opId || "");
+    if (opId && hiddenOpIds.has(opId)) {
+      return;
+    }
+
+    const action = String(item.action || "");
+    const note = String(item.note || "");
+    const generic = parseGenericSubRecordText(note);
+
+    if (action === "libero_swap" || note.indexOf("自由人常规换人") >= 0) {
+      const parsedLibero = parseLiberoSwapRecordText(note);
+      if (parsedLibero) {
+        appendSubRecordRow(liberoLines, buildLiberoSwapRecordText(parsedLibero.normalNo, parsedLibero.liberoNo));
+      }
+      return;
+    }
+
+    const isNormalSub =
+      action === "sub_normal" || action === "substitution_normal" || note.indexOf("普通换人") >= 0;
+    if (isNormalSub) {
+      if (generic) {
+        appendSubRecordRow(normalLines, buildSubRecordText(generic.upNo, generic.downNo));
+      }
+      return;
+    }
+
+    const isSpecialLiberoSub = isSpecialLiberoSubAction(action) || isSpecialLiberoSubNote(note);
+    if (isSpecialLiberoSub) {
+      const parsedSpecialLibero = parseSpecialLiberoRecordText(note);
+      if (parsedSpecialLibero) {
+        const line = buildSpecialLiberoRecordText(parsedSpecialLibero.upNo, parsedSpecialLibero.downNo);
+        appendSubRecordRow(specialLiberoLines, line);
+        if (action === "sub_special_libero_penalty_set" || note.indexOf("本局禁赛") >= 0) {
+          appendSubRecordRow(punishSetLines, line);
+        }
+        if (action === "sub_special_libero_penalty_match" || note.indexOf("全场禁赛") >= 0) {
+          appendSubRecordRow(punishMatchLines, line);
+        }
+      }
+      return;
+    }
+
+    const isSpecialSub =
+      action === "sub_special" ||
+      action === "sub_special_injury" ||
+      action === "sub_special_other" ||
+      action === "sub_special_penalty_set" ||
+      action === "sub_special_penalty_match" ||
+      action === "substitution_special" ||
+      note.indexOf("特殊换人") >= 0;
+    if (isSpecialSub) {
+      if (generic) {
+        const line = buildSubRecordText(generic.upNo, generic.downNo);
+        appendSubRecordRow(specialLines, line);
+        if (action === "sub_special_penalty_set" || note.indexOf("本局禁赛") >= 0) {
+          appendSubRecordRow(punishSetLines, line);
+        }
+        if (action === "sub_special_penalty_match" || note.indexOf("全场禁赛") >= 0) {
+          appendSubRecordRow(punishMatchLines, line);
+        }
+      }
+    }
+  });
+
+  return {
+    normal: toSubRecordRows(normalLines),
+    special: toSubRecordRows(specialLines),
+    libero: toSubRecordRows(liberoLines),
+    specialLibero: toSubRecordRows(specialLiberoLines),
+    punishSet: toSubRecordRows(punishSetLines),
+    punishMatch: toSubRecordRows(punishMatchLines),
+  };
+}
+
 function clonePlayerList(players: PlayerSlot[]): PlayerSlot[] {
   return (players || []).map(function (item) {
     return { pos: item.pos, number: item.number };
   });
+}
+
+function getSetStartLineupsMap(room: any): Record<string, SetStartLineupSnapshot> {
+  if (!room.match || !room.match.setStartLineupsBySet || typeof room.match.setStartLineupsBySet !== "object") {
+    room.match.setStartLineupsBySet = {};
+  }
+  return room.match.setStartLineupsBySet as Record<string, SetStartLineupSnapshot>;
+}
+
+function ensureSetStartLineupSnapshot(room: any, setNoRaw: number): void {
+  if (!room || !room.match) {
+    return;
+  }
+  const setNo = Math.max(1, Number(setNoRaw) || 1);
+  const map = getSetStartLineupsMap(room);
+  const key = String(setNo);
+  if (map[key]) {
+    return;
+  }
+  const savedAt = Date.now();
+  map[key] = {
+    setNo: setNo,
+    teamAPlayers: clonePlayerList((room.teamA && room.teamA.players) || []),
+    teamBPlayers: clonePlayerList((room.teamB && room.teamB.players) || []),
+    servingTeam: room.match.servingTeam === "B" ? "B" : "A",
+    startIsSwapped: !!room.match.isSwapped,
+    endIsSwapped: !!room.match.isSwapped,
+    teamACaptainNo: String((room.match as any).teamACurrentCaptainNo || room.teamA.captainNo || ""),
+    teamBCaptainNo: String((room.match as any).teamBCurrentCaptainNo || room.teamB.captainNo || ""),
+    savedAt: savedAt,
+    endedAt: 0,
+  };
+}
+
+function markSetEndIsSwapped(room: any, setNoRaw: number): void {
+  if (!room || !room.match) {
+    return;
+  }
+  const setNo = Math.max(1, Number(setNoRaw) || 1);
+  ensureSetStartLineupSnapshot(room, setNo);
+  const map = getSetStartLineupsMap(room);
+  const key = String(setNo);
+  const snapshot = map[key];
+  if (!snapshot) {
+    return;
+  }
+  snapshot.endIsSwapped = !!room.match.isSwapped;
+  snapshot.endedAt = Date.now();
 }
 
 function rotateTeamReverseByRule(players: PlayerSlot[]): PlayerSlot[] {
@@ -351,13 +1072,14 @@ function appendMatchLog(room: any, action: string, note: string, team?: TeamCode
   if (!room.match.logs) {
     room.match.logs = [];
   }
+  const normalizedNote = normalizeSwapSymbolText(note);
   const resolvedOpId = String(opId || (room.match as any).currentOpId || "");
   room.match.logs.push({
     id: createLogId(),
     ts: Date.now(),
     action: action,
     team: team || "",
-    note: note,
+    note: normalizedNote,
     setNo: Math.max(1, Number(room.match.setNo || 1)),
     opId: resolvedOpId,
     revertedOpId: String(revertedOpId || ""),
@@ -554,6 +1276,8 @@ Page({
     bSetWins: 0,
     teamATimeoutCount: 0,
     teamBTimeoutCount: 0,
+    teamANormalSubCount: 0,
+    teamBNormalSubCount: 0,
     timeoutActive: false,
     timeoutTeam: "" as TeamCode | "",
     timeoutLeftText: "暂停 30s",
@@ -564,6 +1288,30 @@ Page({
     isMatchFinished: false,
     isSwapped: false,
     showLogPanel: false,
+    logPanelInlineStyle: "",
+    showSubstitutionPanel: false,
+    subTeam: "A" as TeamCode,
+    subTeamName: "甲",
+    subUseSwapLayout: false,
+    subMainGrid: [] as PlayerSlot[][],
+    subLibero: [] as PlayerSlot[],
+    subCaptainNo: "",
+    subSelectedPos: "" as "" | Position,
+    subMode: "normal" as "normal" | "special" | "special_libero",
+    subReason: "injury" as "injury" | "penalty_set" | "penalty_match" | "other",
+    subIncomingNoInput: "",
+    subIncomingNo: "",
+    subNormalRecords: [] as SubRecordRow[],
+    subSpecialRecords: [] as SubRecordRow[],
+    subLiberoRecords: [] as SubRecordRow[],
+    subSpecialLiberoRecords: [] as SubRecordRow[],
+    subPunishSetRecords: [] as SubRecordRow[],
+    subPunishMatchRecords: [] as SubRecordRow[],
+    subNormalCount: 0,
+    subSpecialCount: 0,
+    showSubMatchLogPopover: false,
+    subLogPopoverInlineStyle: "",
+    subRecordTab: "normal" as "normal" | "special" | "libero" | "special_libero",
     logs: [] as DisplayLogItem[],
     logSetSwitchVisible: false,
     logSetOptions: [] as number[],
@@ -576,6 +1324,8 @@ Page({
     switchingIn: false,
     teamAPlayers: [] as PlayerSlot[],
     teamBPlayers: [] as PlayerSlot[],
+    teamALiberoRosterNos: [] as string[],
+    teamBLiberoRosterNos: [] as string[],
     teamALibero: [] as PlayerSlot[],
     teamAMainGrid: [] as PlayerSlot[][],
     teamBLibero: [] as PlayerSlot[],
@@ -602,14 +1352,35 @@ Page({
     setEndMatchFinished: false,
     setEndActionText: "继续",
     setEndWaiting: false,
-    connStatusText: "连接中",
-    connStatusClass: "status-reconnecting",
+    connStatusText: "信号正常",
+    connStatusClass: "status-online",
     roomOwnerClientId: "",
     roomOperatorClientId: "",
     controlRole: "operator" as "operator" | "observer",
     hasOperationAuthority: true,
     observerViewSide: "A" as "A" | "B",
     rawRoomSwapped: false,
+    swapDragActive: false,
+    swapDragTeam: "" as "" | TeamCode,
+    swapDragPos: "" as "" | Position,
+    swapDragSourceIsLibero: false,
+    swapDragSourceInMain: false,
+    swapDragTargetMainPoses: [] as MainPosition[],
+    swapDragTargetI: false,
+    swapDragTargetII: false,
+    swapDragTargetIII: false,
+    swapDragTargetIV: false,
+    swapDragTargetV: false,
+    swapDragTargetVI: false,
+    swapDragTargetL1: false,
+    swapDragTargetL2: false,
+    swapDragGhostVisible: false,
+    swapDragGhostStyle: "",
+    swapDragGhostNumber: "",
+    swapDragGhostPos: "" as "" | Position,
+    swapDragGhostTeam: "" as "" | TeamCode,
+    swapDragGhostIsCaptain: false,
+    swapDragGhostIsLibero: false,
   },
 
   pollTimer: 0 as number,
@@ -657,14 +1428,31 @@ Page({
   observerPerspectiveTargetSide: "" as "" | "A" | "B",
   observerViewSideLocal: "" as "" | "A" | "B",
   observerPerspectiveFreezeUntil: 0 as number,
+  swapDragStart: null as
+    | null
+    | {
+        team: TeamCode;
+        pos: Position;
+        x: number;
+        y: number;
+        sourceIsLiberoSlot: boolean;
+        sourceInMain: boolean;
+      },
+  swapDragLastPoint: null as null | { x: number; y: number },
+  swapDragGhostSize: null as null | { width: number; height: number },
+  statusRouteRedirecting: false as boolean,
   roomMissingRetryTimer: 0 as number,
   roomMissingToastAt: 0 as number,
+  roomMissingLoadingVisible: false as boolean,
+  reconfigureLoadingVisible: false as boolean,
   roomMissingVerifyAt: 0 as number,
   roomMissingVerifyInFlight: false as boolean,
   roomClosedHandled: false as boolean,
   rectCacheWarmupTimer: 0 as number,
   rectCacheWarmupInFlight: false as boolean,
   rotateActionInFlight: false as boolean,
+  pageActive: false as boolean,
+  lastFrontRowLiberoHintSign: "" as string,
 
   getConnState(): ConnState {
     const klass = String(this.data.connStatusClass || "");
@@ -678,7 +1466,7 @@ Page({
   },
 
   setConnState(state: ConnState, options?: { force?: boolean }) {
-    const nextText = state === "online" ? "已连接" : state === "offline" ? "已离线" : "连接中";
+    const nextText = state === "online" ? "信号正常" : state === "offline" ? "信号断联" : "正在重连";
     const nextClass = state === "online" ? "status-online" : state === "offline" ? "status-offline" : "status-reconnecting";
     if (this.data.connStatusText === nextText && this.data.connStatusClass === nextClass) {
       return;
@@ -721,16 +1509,16 @@ Page({
     this.connFailureStreak += 1;
     const current = this.getConnState();
     if (current === "online") {
-      if (this.connFailureStreak >= 3) {
+      if (this.connFailureStreak >= CONN_OFFLINE_FAILS_ONLINE) {
         this.setConnState("offline");
         return;
       }
-      if (this.connFailureStreak >= 2) {
+      if (this.connFailureStreak >= CONN_RECONNECT_FAILS_ONLINE) {
         this.setConnState("reconnecting");
       }
       return;
     }
-    if (this.connFailureStreak >= 2) {
+    if (this.connFailureStreak >= CONN_OFFLINE_FAILS_NONONLINE) {
       this.setConnState("offline");
       return;
     }
@@ -749,11 +1537,11 @@ Page({
         return;
       }
       const elapsed = Date.now() - Math.max(0, Number(this.lastConnAliveAt) || 0);
-      if (elapsed > 22000) {
+      if (elapsed > CONN_WATCHDOG_OFFLINE_MS) {
         this.setConnState("offline");
         return;
       }
-      if (elapsed > 12000 && this.data.connStatusClass === "status-online") {
+      if (elapsed > CONN_WATCHDOG_RECONNECT_MS && this.data.connStatusClass === "status-online") {
         this.setConnState("reconnecting");
       }
     }, 3000) as unknown as number;
@@ -864,8 +1652,420 @@ Page({
     return this.actionQueue;
   },
 
+  isLiberoSwapEnabled(): boolean {
+    if (!this.data.hasOperationAuthority) {
+      return false;
+    }
+    if (this.data.showSetEndModal) {
+      return false;
+    }
+    if (this.data.isMatchFinished) {
+      return false;
+    }
+    return true;
+  },
+
+  getTouchClientPoint(e: WechatMiniprogram.TouchEvent): { x: number; y: number } | null {
+    const t =
+      (e.changedTouches && e.changedTouches[0]) ||
+      (e.touches && e.touches[0]) ||
+      null;
+    if (!t) {
+      return null;
+    }
+    const x = typeof (t as any).clientX === "number" ? Number((t as any).clientX) : Number((t as any).pageX);
+    const y = typeof (t as any).clientY === "number" ? Number((t as any).clientY) : Number((t as any).pageY);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return null;
+    }
+    return { x, y };
+  },
+
+  buildSwapDragGhostStyle(
+    point: { x: number; y: number },
+    size?: null | { width: number; height: number }
+  ): string {
+    const x = Number(point && point.x);
+    const y = Number(point && point.y);
+    if (!Number.isFinite(x) || !Number.isFinite(y)) {
+      return "";
+    }
+    const widthRaw = Number((size && size.width) || 70);
+    const heightRaw = Number((size && size.height) || 58);
+    const width = Number.isFinite(widthRaw) && widthRaw > 1 ? widthRaw : 70;
+    const height = Number.isFinite(heightRaw) && heightRaw > 1 ? heightRaw : 58;
+    return (
+      "left:" +
+      String(x) +
+      "px;top:" +
+      String(y) +
+      "px;width:" +
+      String(width) +
+      "px;height:" +
+      String(height) +
+      "px;"
+    );
+  },
+
+  updateSwapDragGhostByPoint(point: { x: number; y: number }) {
+    this.swapDragLastPoint = { x: point.x, y: point.y };
+    const style = this.buildSwapDragGhostStyle(point, this.swapDragGhostSize);
+    if (!style || style === this.data.swapDragGhostStyle) {
+      return;
+    }
+    this.setData({
+      swapDragGhostStyle: style,
+    });
+  },
+
+  measureSwapSourceCard(team: TeamCode, pos: Position): Promise<null | { width: number; height: number }> {
+    return new Promise((resolve) => {
+      const query = wx.createSelectorQuery().in(this);
+      query.select("#swap-card-" + team + "-" + pos).boundingClientRect();
+      query.exec((res) => {
+        const rect = Array.isArray(res) ? (res[0] as WechatMiniprogram.BoundingClientRectCallbackResult | null) : null;
+        if (
+          !rect ||
+          typeof rect.width !== "number" ||
+          typeof rect.height !== "number" ||
+          rect.width <= 1 ||
+          rect.height <= 1
+        ) {
+          resolve(null);
+          return;
+        }
+        resolve({
+          width: rect.width,
+          height: rect.height,
+        });
+      });
+    });
+  },
+
+  clearSwapDragVisual() {
+    this.swapDragStart = null;
+    this.swapDragLastPoint = null;
+    this.swapDragGhostSize = null;
+    if (
+      !this.data.swapDragActive &&
+      !this.data.swapDragTeam &&
+      !this.data.swapDragPos &&
+      !this.data.swapDragSourceIsLibero &&
+      !this.data.swapDragSourceInMain &&
+      (!this.data.swapDragTargetMainPoses || this.data.swapDragTargetMainPoses.length === 0) &&
+      !this.data.swapDragTargetI &&
+      !this.data.swapDragTargetII &&
+      !this.data.swapDragTargetIII &&
+      !this.data.swapDragTargetIV &&
+      !this.data.swapDragTargetV &&
+      !this.data.swapDragTargetVI &&
+      !this.data.swapDragTargetL1 &&
+      !this.data.swapDragTargetL2 &&
+      !this.data.swapDragGhostVisible &&
+      !this.data.swapDragGhostStyle &&
+      !this.data.swapDragGhostNumber &&
+      !this.data.swapDragGhostPos &&
+      !this.data.swapDragGhostTeam &&
+      !this.data.swapDragGhostIsCaptain &&
+      !this.data.swapDragGhostIsLibero
+    ) {
+      return;
+    }
+    this.setData({
+      swapDragActive: false,
+      swapDragTeam: "",
+      swapDragPos: "",
+      swapDragSourceIsLibero: false,
+      swapDragSourceInMain: false,
+      swapDragTargetMainPoses: [],
+      swapDragTargetI: false,
+      swapDragTargetII: false,
+      swapDragTargetIII: false,
+      swapDragTargetIV: false,
+      swapDragTargetV: false,
+      swapDragTargetVI: false,
+      swapDragTargetL1: false,
+      swapDragTargetL2: false,
+      swapDragGhostVisible: false,
+      swapDragGhostStyle: "",
+      swapDragGhostNumber: "",
+      swapDragGhostPos: "",
+      swapDragGhostTeam: "",
+      swapDragGhostIsCaptain: false,
+      swapDragGhostIsLibero: false,
+    });
+  },
+
+  onSwapCardTouchStart(e: WechatMiniprogram.TouchEvent) {
+    if (!this.isLiberoSwapEnabled()) {
+      return;
+    }
+    const dataset = (e.currentTarget && e.currentTarget.dataset) as { team?: string; pos?: string };
+    const team = dataset && dataset.team === "B" ? "B" : dataset && dataset.team === "A" ? "A" : "";
+    const rawPos = String((dataset && dataset.pos) || "");
+    if (!team || !isPosition(rawPos)) {
+      return;
+    }
+    const pos = rawPos as Position;
+    const point = this.getTouchClientPoint(e);
+    if (!point) {
+      return;
+    }
+    const teamPlayers = team === "A" ? this.data.teamAPlayers : this.data.teamBPlayers;
+    const teamRoster = normalizeLiberoRosterNumbers(
+      team === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []
+    );
+    const source = getPlayerByPos(teamPlayers || [], pos);
+    const sourceNo = String((source && source.number) || "?");
+    const sourceNoNorm = normalizeNumberInput(sourceNo);
+    const captainNoNorm = normalizeNumberInput(team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo);
+    const sourceSlotIsLibero = isLiberoPosition(pos);
+    const sourceNumberIsLibero = !!sourceNoNorm && teamRoster.indexOf(sourceNoNorm) >= 0;
+    if (!sourceSlotIsLibero && !isBackRowPosition(pos) && !sourceNumberIsLibero) {
+      return;
+    }
+    const targetMainPoses = sourceSlotIsLibero
+      ? buildSwapTargetMainPositions(teamPlayers || [], teamRoster, pos)
+      : [];
+    const targetMainSet = new Set(targetMainPoses);
+    const targetLiberoPoses = !sourceSlotIsLibero
+      ? buildSwapTargetLiberoPositions(teamPlayers || [], teamRoster, pos)
+      : [];
+    const targetLiberoSet = new Set(targetLiberoPoses);
+    this.swapDragGhostSize = null;
+    this.swapDragStart = {
+      team,
+      pos,
+      x: point.x,
+      y: point.y,
+      sourceIsLiberoSlot: sourceSlotIsLibero,
+      sourceInMain: !sourceSlotIsLibero,
+    };
+    this.swapDragLastPoint = { x: point.x, y: point.y };
+    this.setData({
+      swapDragActive: true,
+      swapDragTeam: team,
+      swapDragPos: pos,
+      swapDragSourceIsLibero: sourceSlotIsLibero,
+      swapDragSourceInMain: !sourceSlotIsLibero,
+      swapDragTargetMainPoses: targetMainPoses,
+      swapDragTargetI: targetMainSet.has("I"),
+      swapDragTargetII: targetMainSet.has("II"),
+      swapDragTargetIII: targetMainSet.has("III"),
+      swapDragTargetIV: targetMainSet.has("IV"),
+      swapDragTargetV: targetMainSet.has("V"),
+      swapDragTargetVI: targetMainSet.has("VI"),
+      swapDragTargetL1: targetLiberoSet.has("L1"),
+      swapDragTargetL2: targetLiberoSet.has("L2"),
+      swapDragGhostVisible: true,
+      swapDragGhostStyle: this.buildSwapDragGhostStyle(point, null),
+      swapDragGhostNumber: sourceNo || "?",
+      swapDragGhostPos: pos,
+      swapDragGhostTeam: team,
+      swapDragGhostIsCaptain: !!sourceNoNorm && sourceNoNorm === captainNoNorm,
+      swapDragGhostIsLibero: sourceNumberIsLibero,
+    });
+    void this.measureSwapSourceCard(team, pos).then((size) => {
+      if (!size || !this.swapDragStart) {
+        return;
+      }
+      if (this.swapDragStart.team !== team || this.swapDragStart.pos !== pos) {
+        return;
+      }
+      this.swapDragGhostSize = size;
+      this.updateSwapDragGhostByPoint(this.swapDragLastPoint || point);
+    });
+  },
+
+  onSwapCardTouchMove(e: WechatMiniprogram.TouchEvent) {
+    if (!this.swapDragStart || !this.data.swapDragGhostVisible) {
+      return;
+    }
+    const point = this.getTouchClientPoint(e);
+    if (!point) {
+      return;
+    }
+    this.updateSwapDragGhostByPoint(point);
+  },
+
+  async resolveSwapDropPosByPoint(team: TeamCode, x: number, y: number): Promise<Position | ""> {
+    const candidates: Position[] = ALL_POSITIONS.slice();
+    return await new Promise<Position | "">((resolve) => {
+      const query = wx.createSelectorQuery().in(this);
+      candidates.forEach((pos) => {
+        query.select("#swap-card-" + team + "-" + pos).boundingClientRect();
+      });
+      query.exec((res) => {
+        const list = Array.isArray(res) ? res : [];
+        for (let i = 0; i < candidates.length; i += 1) {
+          const rect = list[i] as WechatMiniprogram.BoundingClientRectCallbackResult | null;
+          if (
+            rect &&
+            typeof rect.left === "number" &&
+            typeof rect.top === "number" &&
+            typeof rect.width === "number" &&
+            typeof rect.height === "number"
+          ) {
+            const right = rect.left + rect.width;
+            const bottom = rect.top + rect.height;
+            if (x >= rect.left && x <= right && y >= rect.top && y <= bottom) {
+              resolve(candidates[i]);
+              return;
+            }
+          }
+        }
+        resolve("");
+      });
+    });
+  },
+
+  validateLiberoSwapByLocalState(team: TeamCode, fromPos: Position, toPos: Position): string {
+    const roster = normalizeLiberoRosterNumbers(
+      team === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []
+    );
+    const teamPlayers = ensureTeamPlayerOrder(team === "A" ? this.data.teamAPlayers || [] : this.data.teamBPlayers || []);
+    return validateLiberoSwapByRule(teamPlayers, roster, fromPos, toPos);
+  },
+
+  async performLiberoSwap(team: TeamCode, fromPos: Position, toPos: Position) {
+    if (!this.isLiberoSwapEnabled()) {
+      return;
+    }
+    const fromIsLibero = isLiberoPosition(fromPos);
+    const toIsLibero = isLiberoPosition(toPos);
+    if (fromIsLibero === toIsLibero) {
+      return;
+    }
+    const roomId = String(this.data.roomId || "");
+    if (!roomId) {
+      return;
+    }
+    let swapError = "";
+    const next = await updateRoomAsync(roomId, (room) => {
+      if (!room || !room.match || !room.teamA || !room.teamB) {
+        swapError = "房间状态异常";
+        return room;
+      }
+      if (room.match.isFinished) {
+        swapError = "比赛已结束，无法替换";
+        return room;
+      }
+      const setEndState = (room.match as any).setEndState;
+      if (setEndState && setEndState.active) {
+        swapError = "本局已结束，无法替换";
+        return room;
+      }
+      ensureLiberoRosterForCurrentSet(room);
+      const rosterKey = team === "A" ? "teamALiberoRoster" : "teamBLiberoRoster";
+      const liberoRoster = (((room.match as any)[rosterKey] || []) as string[])
+        .map((n) => normalizeNumberInput(String(n || "")))
+        .filter(Boolean);
+      if (!liberoRoster.length) {
+        swapError = "未配置自由人号码";
+        return room;
+      }
+      const teamObj = team === "A" ? room.teamA : room.teamB;
+      const players = ensureTeamPlayerOrder(teamObj.players || []);
+      const fromSlot = getPlayerByPos(players, fromPos);
+      const toSlot = getPlayerByPos(players, toPos);
+      if (!fromSlot || !toSlot) {
+        swapError = "球员位置异常";
+        return room;
+      }
+      const fromNo = normalizeNumberInput(fromSlot.number || "");
+      const toNo = normalizeNumberInput(toSlot.number || "");
+      if (!fromNo || !toNo) {
+        swapError = "号码未填写，无法替换";
+        return room;
+      }
+      const ruleError = validateLiberoSwapByRule(players, liberoRoster, fromPos, toPos);
+      if (ruleError) {
+        swapError = ruleError;
+        return room;
+      }
+      const nextPlayers = ensureTeamPlayerOrder(players);
+      const fromIdx = nextPlayers.findIndex((p) => p.pos === fromPos);
+      const toIdx = nextPlayers.findIndex((p) => p.pos === toPos);
+      if (fromIdx < 0 || toIdx < 0) {
+        swapError = "球员位置异常";
+        return room;
+      }
+      const tmpNo = nextPlayers[fromIdx].number;
+      nextPlayers[fromIdx].number = nextPlayers[toIdx].number;
+      nextPlayers[toIdx].number = tmpNo;
+      const opId = createLogId();
+      (room.match as any).currentOpId = opId;
+      pushUndoSnapshot(room);
+      teamObj.players = nextPlayers;
+      const teamName = team === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙");
+      const fromInLiberoRoster = liberoRoster.indexOf(fromNo) >= 0;
+      const toInLiberoRoster = liberoRoster.indexOf(toNo) >= 0;
+      const liberoNo = fromInLiberoRoster ? fromNo : toInLiberoRoster ? toNo : fromNo;
+      const normalNo = fromInLiberoRoster ? toNo : toInLiberoRoster ? fromNo : toNo;
+      appendMatchLog(
+        room,
+        "libero_swap",
+        teamName + "队 自由人常规换人 ↑" + normalNo + " ↓" + liberoNo + "（自）",
+        team,
+        opId
+      );
+      (room.match as any).lastActionOpId = opId;
+      return room;
+    });
+    if (!next) {
+      showToastHint("系统繁忙，请重试");
+      return;
+    }
+    if (swapError) {
+      showToastHint(swapError);
+      return;
+    }
+    this.applyLocalLineupFromRoom(next);
+    await this.loadRoom(roomId, true);
+  },
+
+  onSwapCardTouchEnd(e: WechatMiniprogram.TouchEvent) {
+    const start = this.swapDragStart;
+    const fallbackPoint = this.swapDragLastPoint;
+    this.clearSwapDragVisual();
+    if (!start) {
+      return;
+    }
+    if (!this.isLiberoSwapEnabled()) {
+      return;
+    }
+    const point = this.getTouchClientPoint(e) || fallbackPoint;
+    if (!point) {
+      return;
+    }
+    const sourcePos = start.pos;
+    const sourceIsLiberoSlot = !!start.sourceIsLiberoSlot;
+    const sourceInMain = !!start.sourceInMain;
+    if (!sourceIsLiberoSlot && !sourceInMain) {
+      return;
+    }
+    void this.enqueueAction(async () => {
+      const dropPos = await this.resolveSwapDropPosByPoint(start.team, point.x, point.y);
+      if (!dropPos || dropPos === sourcePos) {
+        return;
+      }
+      const dropIsLibero = isLiberoPosition(dropPos);
+      if (sourceIsLiberoSlot === dropIsLibero) {
+        return;
+      }
+      const localError = this.validateLiberoSwapByLocalState(start.team, sourcePos, dropPos);
+      if (localError) {
+        showToastHint(localError);
+        return;
+      }
+      await this.performLiberoSwap(start.team, sourcePos, dropPos);
+    });
+  },
+
   onLoad(query: Record<string, string>) {
     this.actionQueue = Promise.resolve();
+    this.statusRouteRedirecting = false;
+    this.pageActive = true;
     this.applyNavigationTheme();
     if (!this.themeOff) {
       this.themeOff = bindThemeChange(() => {
@@ -898,9 +2098,10 @@ Page({
   },
 
   onShow() {
+    this.pageActive = true;
+    this.statusRouteRedirecting = false;
     this.openingLineup = false;
     this.lineupNavigateLockUntil = 0;
-    this.setConnState("reconnecting", { force: true });
     setKeepScreenOnSafe(true);
     this.syncSafePadding();
     setTimeout(() => {
@@ -911,6 +2112,10 @@ Page({
     }, 260);
     this.applyNavigationTheme();
     this.refreshNetworkState();
+    const roomId = String(this.data.roomId || "");
+    if (roomId) {
+      void this.loadRoom(roomId, true, true);
+    }
     this.startHeartbeat();
     this.startConnWatchdog();
     this.startTimerTick();
@@ -920,6 +2125,9 @@ Page({
   },
 
   openLineupAdjustOnce(roomId: string, entry: "normal" | "reconfigure" = "normal"): boolean {
+    if (!this.pageActive) {
+      return false;
+    }
     const now = Date.now();
     const pages = getCurrentPages();
     const top = pages[pages.length - 1];
@@ -934,24 +2142,27 @@ Page({
     this.lineupNavigateLockUntil = now + 4000;
     wx.navigateTo({
       url: "/pages/lineup-adjust/lineup-adjust?roomId=" + roomId + "&entry=" + entry,
-      complete: () => {
-        setTimeout(() => {
-          const latestPages = getCurrentPages();
-          const latestTop = latestPages[latestPages.length - 1];
-          const latestRoute = String((latestTop && (latestTop as any).route) || "");
-          if (latestRoute !== "pages/lineup-adjust/lineup-adjust") {
-            this.openingLineup = false;
-          }
-        }, 500);
-      },
       fail: () => {
         this.openingLineup = false;
+      },
+      complete: () => {
+        setTimeout(() => {
+          this.openingLineup = false;
+        }, 250);
       },
     });
     return true;
   },
 
   onHide() {
+    this.pageActive = false;
+    this.clearSwapDragVisual();
+    if (this.roomMissingLoadingVisible) {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.roomMissingLoadingVisible = false;
+    }
     setKeepScreenOnSafe(false);
     this.clearRectCacheWarmup();
     this.clearRoomMissingRetry();
@@ -963,6 +2174,14 @@ Page({
   },
 
   onUnload() {
+    this.pageActive = false;
+    this.clearSwapDragVisual();
+    if (this.roomMissingLoadingVisible) {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.roomMissingLoadingVisible = false;
+    }
     setKeepScreenOnSafe(false);
     this.clearRectCacheWarmup();
     this.clearRoomMissingRetry();
@@ -1068,6 +2287,7 @@ Page({
       return;
     }
     if (this.setEndActionInFlight) {
+      showToastHint("操作处理中，请稍候");
       return;
     }
     const roomId = String(this.data.roomId || "");
@@ -1080,15 +2300,20 @@ Page({
     }
 
     this.setEndActionInFlight = true;
-    wx.showLoading({
-      title: "处理中",
-      mask: true,
-    });
+    if (!this.reconfigureLoadingVisible) {
+      this.reconfigureLoadingVisible = true;
+      wx.showLoading({
+        title: "处理中",
+        mask: true,
+      });
+    }
+    let reconfigureError = "";
     try {
       const updated = await updateRoomAsync(
         roomId,
         (room) => {
           if (!room.match || room.match.isFinished) {
+            reconfigureError = "比赛已结束，无法重配";
             return room;
           }
           const roomSetNo = Math.max(1, Number(room.match.setNo || 1));
@@ -1098,6 +2323,7 @@ Page({
             Math.max(0, Number((room.match as any).setTimerStartAt) || 0) <= 0 &&
             Math.max(0, Number((room.match as any).setTimerElapsedMs) || 0) <= 0;
           if (!preStart) {
+            reconfigureError = "本局已开始，无法重配";
             return room;
           }
 
@@ -1182,8 +2408,13 @@ Page({
           };
           return room;
         },
-        { awaitCloud: true }
+        { awaitCloud: false }
       );
+      if (reconfigureError) {
+        await this.loadRoom(roomId, true);
+        showToastHint(reconfigureError);
+        return;
+      }
       const latest = updated || (await getRoomAsync(roomId));
       const latestState = latest && latest.match ? ((latest.match as any).setEndState || null) : null;
       const latestSetNo = Math.max(1, Number(latest && latest.match && latest.match.setNo) || 1);
@@ -1197,14 +2428,33 @@ Page({
         Number(latestDraft.setNo || 0) === latestSetNo;
       if (!acquired) {
         await this.loadRoom(roomId, true);
+        showToastHint("当前状态无法进入重配，请重试");
         return;
       }
       this.setData({ showSetEndModal: false, setEndWaiting: false });
-      this.openLineupAdjustOnce(roomId, "reconfigure");
+      const opened = this.openLineupAdjustOnce(roomId, "reconfigure");
+      if (!opened) {
+        const pages = getCurrentPages();
+        const top = pages[pages.length - 1];
+        const topRoute = String((top && (top as any).route) || "");
+        if (topRoute !== "pages/lineup-adjust/lineup-adjust") {
+          this.openingLineup = false;
+          this.lineupNavigateLockUntil = 0;
+          wx.navigateTo({
+            url: "/pages/lineup-adjust/lineup-adjust?roomId=" + roomId + "&entry=reconfigure",
+            fail: () => {
+              showToastHint("进入配置页失败，请重试");
+            },
+          });
+        }
+      }
     } finally {
-      wx.hideLoading({
-        fail: () => {},
-      });
+      if (this.reconfigureLoadingVisible) {
+        wx.hideLoading({
+          fail: () => {},
+        });
+        this.reconfigureLoadingVisible = false;
+      }
       this.setEndActionInFlight = false;
     }
   },
@@ -1246,6 +2496,7 @@ Page({
         if (!(room as any).matchStartedAt) {
           (room as any).matchStartedAt = Date.now();
         }
+        ensureSetStartLineupSnapshot(room, Math.max(1, Number(room.match.setNo || 1)));
         (room.match as any).setTimerStartAt = Date.now();
         (room.match as any).setTimerElapsedMs = 0;
         appendMatchLog(room, "timer_start", "比赛开始", undefined, opId);
@@ -1389,8 +2640,49 @@ Page({
     this.syncSafePadding();
   },
 
+  isMatchPageTop(): boolean {
+    const pages = getCurrentPages();
+    const top = pages.length ? pages[pages.length - 1] : null;
+    const route = String((top && (top as any).route) || "");
+    return route === "pages/match/match";
+  },
+
   applyNavigationTheme() {
     applyNavigationBarTheme();
+  },
+
+  maybeShowFrontRowLiberoHint(room: any) {
+    if (!room || !room.match || room.match.isFinished) {
+      this.lastFrontRowLiberoHintSign = "";
+      return;
+    }
+    if (!this.data.hasOperationAuthority) {
+      return;
+    }
+    const setEndState = (room.match as any).setEndState;
+    if (setEndState && setEndState.active) {
+      return;
+    }
+    const teamAPlayers = ensureTeamPlayerOrder((room.teamA && room.teamA.players) || []);
+    const teamBPlayers = ensureTeamPlayerOrder((room.teamB && room.teamB.players) || []);
+    const teamARoster = getLiberoRosterForTeam(room, "A", this.data.teamALiberoRosterNos || []);
+    const teamBRoster = getLiberoRosterForTeam(room, "B", this.data.teamBLiberoRosterNos || []);
+    const frontA = hasFrontRowLibero(teamAPlayers, teamARoster);
+    const frontB = hasFrontRowLibero(teamBPlayers, teamBRoster);
+    if (!frontA && !frontB) {
+      this.lastFrontRowLiberoHintSign = "";
+      return;
+    }
+    const sign = String(Math.max(1, Number(room.match.setNo || 1))) + "|" + String(frontA ? 1 : 0) + String(frontB ? 1 : 0);
+    if (this.lastFrontRowLiberoHintSign === sign) {
+      return;
+    }
+    this.lastFrontRowLiberoHintSign = sign;
+    wx.showToast({
+      title: "自由人已轮转至前排，请留意并按规则处理",
+      icon: "none",
+      duration: 5000,
+    });
   },
 
   handleRoomClosed() {
@@ -1399,9 +2691,12 @@ Page({
     }
     this.roomClosedHandled = true;
     this.clearRoomMissingRetry();
-    wx.hideToast({
-      fail: () => {},
-    });
+    if (this.roomMissingLoadingVisible) {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.roomMissingLoadingVisible = false;
+    }
     wx.showModal({
       title: "房间已关闭",
       content: "该裁判团队已超时关闭或不存在，请重新创建或加入有效团队。",
@@ -1503,12 +2798,12 @@ Page({
       return;
     }
     this.roomMissingToastAt = nowTs;
-    wx.showToast({
+    this.roomMissingLoadingVisible = true;
+    wx.showLoading({
       title: "连接中，正在重试",
-      icon: "loading",
-      duration: 1200,
       mask: false,
       fail: () => {
+        this.roomMissingLoadingVisible = false;
         showToastHint("连接中，正在重试");
       },
     });
@@ -1617,24 +2912,7 @@ Page({
         if (typeof count === "number") {
           const displayCount = Math.max(1, Math.floor(count));
           const currentCount = Math.max(1, Math.floor(Number(this.data.participantCount) || 1));
-          if (displayCount >= currentCount) {
-            this.pendingLowerParticipantCount = 0;
-            this.pendingLowerParticipantHit = 0;
-            if (displayCount !== currentCount) {
-              this.setData({ participantCount: displayCount });
-            }
-            return;
-          }
-          if (this.pendingLowerParticipantCount === displayCount) {
-            this.pendingLowerParticipantHit += 1;
-          } else {
-            this.pendingLowerParticipantCount = displayCount;
-            this.pendingLowerParticipantHit = 1;
-          }
-          // 需要连续两次心跳都看到更低人数，才允许向下更新，避免 1/2 来回抖动。
-          if (this.pendingLowerParticipantHit >= 2) {
-            this.pendingLowerParticipantCount = 0;
-            this.pendingLowerParticipantHit = 0;
+          if (displayCount !== currentCount) {
             this.setData({ participantCount: displayCount });
           }
         }
@@ -2088,10 +3366,14 @@ Page({
     this.lastRoomSnapshot = room;
     const nextSwapped = this.resolveDisplaySwapped(!!room.match.isSwapped, options);
     const teamASide: TeamCode = nextSwapped ? "B" : "A";
-    const teamAPlayers = (room.teamA.players || []).slice();
-    const teamBPlayers = (room.teamB.players || []).slice();
-    const aRows = buildTeamRows(teamAPlayers);
-    const bRows = buildTeamRows(teamBPlayers);
+    const teamAPlayers = ensureTeamPlayerOrder((room.teamA.players || []).slice());
+    const teamBPlayers = ensureTeamPlayerOrder((room.teamB.players || []).slice());
+    const teamALiberoRosterNos = getLiberoRosterForTeam(room, "A", this.data.teamALiberoRosterNos || []);
+    const teamBLiberoRosterNos = getLiberoRosterForTeam(room, "B", this.data.teamBLiberoRosterNos || []);
+    const displayAPlayers = markDisplayPlayersByLiberoRoster(teamAPlayers, teamALiberoRosterNos);
+    const displayBPlayers = markDisplayPlayersByLiberoRoster(teamBPlayers, teamBLiberoRosterNos);
+    const aRows = buildTeamRows(displayAPlayers);
+    const bRows = buildTeamRows(displayBPlayers);
     const currentTeamACaptain = normalizeNumberInput(
       String((room.match as any).teamACurrentCaptainNo || (room.teamA as any).captainNo || "")
     );
@@ -2105,10 +3387,12 @@ Page({
       teamBCaptainNo: currentTeamBCaptain,
       teamAPlayers: teamAPlayers,
       teamBPlayers: teamBPlayers,
+      teamALiberoRosterNos: teamALiberoRosterNos,
+      teamBLiberoRosterNos: teamBLiberoRosterNos,
       teamALibero: aRows.libero,
-      teamAMainGrid: buildMainGridByOrder(teamAPlayers, getMainOrderForTeam("A", teamASide)),
+      teamAMainGrid: buildMainGridByOrder(displayAPlayers, getMainOrderForTeam("A", teamASide)),
       teamBLibero: bRows.libero,
-      teamBMainGrid: buildMainGridByOrder(teamBPlayers, getMainOrderForTeam("B", teamASide)),
+      teamBMainGrid: buildMainGridByOrder(displayBPlayers, getMainOrderForTeam("B", teamASide)),
     });
   },
 
@@ -2155,6 +3439,10 @@ Page({
       }
     };
     const cachedRects = this.getCachedTeamRectMap(team);
+    const teamLiberoRoster = normalizeLiberoRosterNumbers(
+      team === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []
+    );
+    const teamLiberoSet = new Set(teamLiberoRoster);
     let mergedBeforeRects = this.completeTeamRectMapByGrid(team, beforeRects || {}, cachedRects || {});
     if (!mergedBeforeRects || MAIN_POSITIONS.every((pos) => !mergedBeforeRects[pos])) {
       const retryBeforeRects = await this.measureTeamMainPosRectsStable(team, 360);
@@ -2172,6 +3460,7 @@ Page({
         fromRect: TeamPosRect;
         number: string;
         isCaptain: boolean;
+        isLibero: boolean;
         id: string;
         baseStyle: string;
       }> = [];
@@ -2183,6 +3472,8 @@ Page({
         const number = beforeNoMap[sourcePos] || "?";
         const isCaptain =
           normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
+        const isLibero =
+          normalizeNumberInput(number) !== "" && teamLiberoSet.has(normalizeNumberInput(number));
         const baseStyle =
           "left:" +
           String(fromRect.left) +
@@ -2198,6 +3489,7 @@ Page({
           fromRect,
           number,
           isCaptain,
+          isLibero,
           id: team + "-" + sourcePos + "-" + String(Date.now()) + "-" + String(startSeeds.length),
           baseStyle,
         });
@@ -2212,6 +3504,7 @@ Page({
         team,
         number: seed.number,
         isCaptain: seed.isCaptain,
+        isLibero: seed.isLibero,
         style: seed.baseStyle + "transform:translate(0,0);transition:none;",
       }));
       if (team === "A") {
@@ -2275,6 +3568,7 @@ Page({
           team,
           number: seed.number,
           isCaptain: seed.isCaptain,
+          isLibero: seed.isLibero,
           style:
             seed.baseStyle +
             "transform:translate(" +
@@ -2346,9 +3640,12 @@ Page({
       } else {
         this.roomClosedHandled = false;
         this.clearRoomMissingRetry();
-        wx.hideToast({
-          fail: () => {},
-        });
+        if (this.roomMissingLoadingVisible && !this.setEndActionInFlight) {
+          wx.hideLoading({
+            fail: () => {},
+          });
+          this.roomMissingLoadingVisible = false;
+        }
         this.lastRoomSnapshot = room;
         this.writeCachedRoomSnapshot(room);
       }
@@ -2363,11 +3660,33 @@ Page({
         return;
       }
       if (room.status === "setup") {
-        wx.redirectTo({ url: "/pages/create-room/create-room?roomId=" + roomId });
+        if (!this.pageActive || !this.isMatchPageTop()) {
+          return;
+        }
+        if (!this.statusRouteRedirecting) {
+          this.statusRouteRedirecting = true;
+          wx.redirectTo({
+            url: "/pages/create-room/create-room?roomId=" + roomId,
+            fail: () => {
+              this.statusRouteRedirecting = false;
+            },
+          });
+        }
         return;
       }
       if (room.status === "result") {
-        wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
+        if (!this.pageActive || !this.isMatchPageTop()) {
+          return;
+        }
+        if (!this.statusRouteRedirecting) {
+          this.statusRouteRedirecting = true;
+          wx.reLaunch({
+            url: "/pages/result/result?roomId=" + roomId,
+            fail: () => {
+              this.statusRouteRedirecting = false;
+            },
+          });
+        }
         return;
       }
       if (!force && incomingUpdatedAt === currentUpdatedAt) {
@@ -2405,9 +3724,17 @@ Page({
       const latestLogId = incomingLogs.length
         ? String(incomingLogs[incomingLogs.length - 1].id || "")
         : "";
-      const prevAPlayers = this.data.teamAPlayers || [];
-      const prevBPlayers = this.data.teamBPlayers || [];
+      const prevAPlayers = ensureTeamPlayerOrder(this.data.teamAPlayers || []);
+      const prevBPlayers = ensureTeamPlayerOrder(this.data.teamBPlayers || []);
       const shouldAutoAnimate = !force && this.data.updatedAt > 0 && prevAPlayers.length > 0 && prevBPlayers.length > 0;
+      const roomAPlayers = ensureTeamPlayerOrder((room.teamA && room.teamA.players) || []);
+      const roomBPlayers = ensureTeamPlayerOrder((room.teamB && room.teamB.players) || []);
+      const teamALiberoRosterNos = getLiberoRosterForTeam(room, "A", this.data.teamALiberoRosterNos || []);
+      const teamBLiberoRosterNos = getLiberoRosterForTeam(room, "B", this.data.teamBLiberoRosterNos || []);
+      const roomADisplayPlayers = markDisplayPlayersByLiberoRoster(roomAPlayers, teamALiberoRosterNos);
+      const roomBDisplayPlayers = markDisplayPlayersByLiberoRoster(roomBPlayers, teamBLiberoRosterNos);
+      const prevADisplayPlayers = markDisplayPlayersByLiberoRoster(prevAPlayers, teamALiberoRosterNos);
+      const prevBDisplayPlayers = markDisplayPlayersByLiberoRoster(prevBPlayers, teamBLiberoRosterNos);
 
       const roomSwapped = !!room.match.isSwapped;
       const nextSwapped = this.resolveDisplaySwapped(roomSwapped, {
@@ -2421,8 +3748,8 @@ Page({
           : [];
       if (!rotateReplayQueue.length && shouldAutoAnimate && !shouldSwapAnimate) {
         rotateReplayQueue = rotateReplayQueue
-          .concat(buildRotateStepsByDiff(prevAPlayers, room.teamA.players || [], "A"))
-          .concat(buildRotateStepsByDiff(prevBPlayers, room.teamB.players || [], "B"));
+          .concat(buildRotateStepsByDiff(prevAPlayers, roomAPlayers, "A"))
+          .concat(buildRotateStepsByDiff(prevBPlayers, roomBPlayers, "B"));
       }
       const useReplayQueue = shouldAutoAnimate && rotateReplayQueue.length > 0;
       const autoAnimateA = false;
@@ -2434,14 +3761,14 @@ Page({
       const beforeACaptain = autoAnimateA ? this.data.teamACaptainNo : "";
       const beforeBCaptain = autoAnimateB ? this.data.teamBCaptainNo : "";
       const teamASide: TeamCode = nextSwapped ? "B" : "A";
-      const aRows = buildTeamRows(room.teamA.players);
-      const bRows = buildTeamRows(room.teamB.players);
-      const aMainGrid = buildMainGridByOrder(room.teamA.players, getMainOrderForTeam("A", teamASide));
-      const bMainGrid = buildMainGridByOrder(room.teamB.players, getMainOrderForTeam("B", teamASide));
-      const prevARows = buildTeamRows(prevAPlayers);
-      const prevBRows = buildTeamRows(prevBPlayers);
-      const prevAMainGrid = buildMainGridByOrder(prevAPlayers, getMainOrderForTeam("A", teamASide));
-      const prevBMainGrid = buildMainGridByOrder(prevBPlayers, getMainOrderForTeam("B", teamASide));
+      const aRows = buildTeamRows(roomADisplayPlayers);
+      const bRows = buildTeamRows(roomBDisplayPlayers);
+      const aMainGrid = buildMainGridByOrder(roomADisplayPlayers, getMainOrderForTeam("A", teamASide));
+      const bMainGrid = buildMainGridByOrder(roomBDisplayPlayers, getMainOrderForTeam("B", teamASide));
+      const prevARows = buildTeamRows(prevADisplayPlayers);
+      const prevBRows = buildTeamRows(prevBDisplayPlayers);
+      const prevAMainGrid = buildMainGridByOrder(prevADisplayPlayers, getMainOrderForTeam("A", teamASide));
+      const prevBMainGrid = buildMainGridByOrder(prevBDisplayPlayers, getMainOrderForTeam("B", teamASide));
       const teamAColor = room.teamA.color || TEAM_COLOR_OPTIONS[0].value;
       const teamBColor = room.teamB.color || TEAM_COLOR_OPTIONS[1].value;
       const currentTeamACaptain = normalizeNumberInput(
@@ -2467,6 +3794,8 @@ Page({
       const setWinsText = String(leftSetWins || 0) + " : " + String(rightSetWins || 0);
       const teamATimeoutCount = Math.max(0, Math.min(2, Number((room.match as any).teamATimeoutCount) || 0));
       const teamBTimeoutCount = Math.max(0, Math.min(2, Number((room.match as any).teamBTimeoutCount) || 0));
+      const teamANormalSubCount = Math.max(0, Math.min(6, countNormalSubstitutionsBySet(incomingLogs, currentSetNo, "A")));
+      const teamBNormalSubCount = Math.max(0, Math.min(6, countNormalSubstitutionsBySet(incomingLogs, currentSetNo, "B")));
       const timerStartAt = Number((room.match as any).setTimerStartAt) || 0;
       const timerElapsedMs = Number((room.match as any).setTimerElapsedMs) || 0;
       const timeoutEndAt = Math.max(0, Number((room.match as any).timeoutEndAt) || 0);
@@ -2578,11 +3907,7 @@ Page({
         await this.delayAsync(120);
       }
       this.setData({
-        participantCount: Math.max(
-          1,
-          Object.keys((room as any).participants || {}).length,
-          Number(this.data.participantCount || 1)
-        ),
+        participantCount: Math.max(1, Object.keys((room as any).participants || {}).length),
         teamAName: room.teamA.name,
         teamBName: room.teamB.name,
         teamAColor: teamAColor,
@@ -2602,6 +3927,8 @@ Page({
         bSetWins: freezeSetEndDisplay ? Number(this.data.bSetWins || 0) : room.match.bSetWins || 0,
         teamATimeoutCount: freezeSetEndDisplay ? Number(this.data.teamATimeoutCount || 0) : teamATimeoutCount,
         teamBTimeoutCount: freezeSetEndDisplay ? Number(this.data.teamBTimeoutCount || 0) : teamBTimeoutCount,
+        teamANormalSubCount: freezeSetEndDisplay ? Number(this.data.teamANormalSubCount || 0) : teamANormalSubCount,
+        teamBNormalSubCount: freezeSetEndDisplay ? Number(this.data.teamBNormalSubCount || 0) : teamBNormalSubCount,
         timeoutActive: freezeSetEndDisplay ? !!this.data.timeoutActive : timeoutActive,
         timeoutTeam: freezeSetEndDisplay ? this.data.timeoutTeam : timeoutActive ? timeoutTeam : "",
         timeoutLeftText: freezeSetEndDisplay ? String(this.data.timeoutLeftText || "暂停 30s") : timeoutLeftText,
@@ -2631,8 +3958,10 @@ Page({
         observerViewSide: observerViewSide,
         rawRoomSwapped: freezeSetEndDisplay ? !!this.data.rawRoomSwapped : roomSwapped,
         isSwapped: freezeSetEndDisplay ? !!this.data.isSwapped : nextSwapped,
-        teamAPlayers: freezeSetEndDisplay ? this.data.teamAPlayers : effectiveUseReplayQueue ? prevAPlayers : room.teamA.players,
-        teamBPlayers: freezeSetEndDisplay ? this.data.teamBPlayers : effectiveUseReplayQueue ? prevBPlayers : room.teamB.players,
+        teamAPlayers: freezeSetEndDisplay ? this.data.teamAPlayers : effectiveUseReplayQueue ? prevAPlayers : roomAPlayers,
+        teamBPlayers: freezeSetEndDisplay ? this.data.teamBPlayers : effectiveUseReplayQueue ? prevBPlayers : roomBPlayers,
+        teamALiberoRosterNos: freezeSetEndDisplay ? this.data.teamALiberoRosterNos : teamALiberoRosterNos,
+        teamBLiberoRosterNos: freezeSetEndDisplay ? this.data.teamBLiberoRosterNos : teamBLiberoRosterNos,
         teamALibero: freezeSetEndDisplay ? this.data.teamALibero : effectiveUseReplayQueue ? prevARows.libero : aRows.libero,
         teamAMainGrid: freezeSetEndDisplay ? this.data.teamAMainGrid : effectiveUseReplayQueue ? prevAMainGrid : aMainGrid,
         teamBLibero: freezeSetEndDisplay ? this.data.teamBLibero : effectiveUseReplayQueue ? prevBRows.libero : bRows.libero,
@@ -2708,15 +4037,17 @@ Page({
             }
           }
 
-          const tempARows = buildTeamRows(tempAPlayers);
-          const tempBRows = buildTeamRows(tempBPlayers);
+          const tempADisplayPlayers = markDisplayPlayersByLiberoRoster(tempAPlayers, teamALiberoRosterNos);
+          const tempBDisplayPlayers = markDisplayPlayersByLiberoRoster(tempBPlayers, teamBLiberoRosterNos);
+          const tempARows = buildTeamRows(tempADisplayPlayers);
+          const tempBRows = buildTeamRows(tempBDisplayPlayers);
           this.setData({
             teamAPlayers: tempAPlayers,
             teamBPlayers: tempBPlayers,
             teamALibero: tempARows.libero,
-            teamAMainGrid: buildMainGridByOrder(tempAPlayers, getMainOrderForTeam("A", teamASide)),
+            teamAMainGrid: buildMainGridByOrder(tempADisplayPlayers, getMainOrderForTeam("A", teamASide)),
             teamBLibero: tempBRows.libero,
-            teamBMainGrid: buildMainGridByOrder(tempBPlayers, getMainOrderForTeam("B", teamASide)),
+            teamBMainGrid: buildMainGridByOrder(tempBDisplayPlayers, getMainOrderForTeam("B", teamASide)),
           });
 
           if (canParallel && nextStep && beforeRects2 && beforeNoMap2) {
@@ -2749,8 +4080,8 @@ Page({
           }
         }
         this.setData({
-          teamAPlayers: room.teamA.players,
-          teamBPlayers: room.teamB.players,
+          teamAPlayers: roomAPlayers,
+          teamBPlayers: roomBPlayers,
           teamALibero: aRows.libero,
           teamAMainGrid: aMainGrid,
           teamBLibero: bRows.libero,
@@ -2764,6 +4095,10 @@ Page({
         await this.playTeamRotateMotion("B", beforeBRects, beforeBNoMap, beforeBCaptain);
       }
       this.scheduleRectCacheWarmup(36);
+      if (this.data.showSubstitutionPanel) {
+        this.syncSubstitutionTeamDisplay(this.data.subTeam === "B" ? "B" : "A");
+      }
+      this.maybeShowFrontRowLiberoHint(room);
       this.lastSeenLogId = latestLogId;
       if (
         effectiveSetEndActive &&
@@ -2920,6 +4255,7 @@ Page({
             const endedSetNo = Number(room.match.setNo || 1);
             const endedScoreA = Number(room.match.aScore || 0);
             const endedScoreB = Number(room.match.bScore || 0);
+            markSetEndIsSwapped(room, endedSetNo);
             const startedAt = Number(room.match.setTimerStartAt) || 0;
             const baseElapsed = Number(room.match.setTimerElapsedMs) || 0;
             const finalElapsed = startedAt > 0 ? baseElapsed + (Date.now() - startedAt) : baseElapsed;
@@ -3174,10 +4510,12 @@ Page({
     const rawRoomSwapped = !!this.data.rawRoomSwapped;
     const nextSide: "A" | "B" = nextSwapped === rawRoomSwapped ? "A" : "B";
     const teamASide: TeamCode = nextSwapped ? "B" : "A";
-    const teamAPlayers = (this.data.teamAPlayers || []).slice();
-    const teamBPlayers = (this.data.teamBPlayers || []).slice();
-    const aRows = buildTeamRows(teamAPlayers);
-    const bRows = buildTeamRows(teamBPlayers);
+    const teamAPlayers = ensureTeamPlayerOrder((this.data.teamAPlayers || []).slice());
+    const teamBPlayers = ensureTeamPlayerOrder((this.data.teamBPlayers || []).slice());
+    const displayAPlayers = markDisplayPlayersByLiberoRoster(teamAPlayers, this.data.teamALiberoRosterNos || []);
+    const displayBPlayers = markDisplayPlayersByLiberoRoster(teamBPlayers, this.data.teamBLiberoRosterNos || []);
+    const aRows = buildTeamRows(displayAPlayers);
+    const bRows = buildTeamRows(displayBPlayers);
     const currSetWins = String(this.data.setWinsText || "0 : 0")
       .split(":")
       .map((s) => String(s || "").trim());
@@ -3202,9 +4540,9 @@ Page({
         setWinsText: rightWins + " : " + leftWins,
         lastScoringTeam: this.data.lastScoringTeam === "A" ? "B" : this.data.lastScoringTeam === "B" ? "A" : "",
         teamALibero: aRows.libero,
-        teamAMainGrid: buildMainGridByOrder(teamAPlayers, getMainOrderForTeam("A", teamASide)),
+        teamAMainGrid: buildMainGridByOrder(displayAPlayers, getMainOrderForTeam("A", teamASide)),
         teamBLibero: bRows.libero,
-        teamBMainGrid: buildMainGridByOrder(teamBPlayers, getMainOrderForTeam("B", teamASide)),
+        teamBMainGrid: buildMainGridByOrder(displayBPlayers, getMainOrderForTeam("B", teamASide)),
       });
     } catch (_e) {
       this.setData({
@@ -3485,6 +4823,7 @@ Page({
       (room.match as any).timeoutTeam = "";
       (room.match as any).timeoutEndAt = 0;
       room.match.isFinished = false;
+      (room.match as any).setStartLineupsBySet = {};
       appendMatchLog(room, "score_reset", "比分清零（0:0）", undefined, opId);
       (room.match as any).lastActionOpId = opId;
       return room;
@@ -3700,13 +5039,59 @@ Page({
   },
 
   onOpenLogPanel() {
-    const currentSetNo = Math.max(1, Number(this.data.setNo || 1));
-    const availableSetCount = Math.max(1, Number((this.data.logSetOptions || []).length || 1));
-    const targetSetNo = Math.min(currentSetNo, availableSetCount);
-    this.setData({
-      showLogPanel: true,
-      selectedLogSet: targetSetNo,
-      logs: this.getDisplayLogsBySet(this.allLogs, targetSetNo),
+    const openPanel = () => {
+      const currentSetNo = Math.max(1, Number(this.data.setNo || 1));
+      const availableSetCount = Math.max(1, Number((this.data.logSetOptions || []).length || 1));
+      const targetSetNo = Math.min(currentSetNo, availableSetCount);
+      this.setData({
+        showLogPanel: true,
+        showSubstitutionPanel: false,
+        selectedLogSet: targetSetNo,
+        logs: this.getDisplayLogsBySet(this.allLogs, targetSetNo),
+      });
+    };
+    this.syncLogPanelSizeFromSubPanel(openPanel);
+  },
+
+  syncLogPanelSizeFromSubPanel(done?: () => void) {
+    const finish = () => {
+      if (typeof done === "function") {
+        done();
+      }
+    };
+    wx.nextTick(() => {
+      const query = this.createSelectorQuery();
+      query.select("#sub-panel-size-probe").boundingClientRect();
+      query.exec((res) => {
+        const rect = (res && res[0]) as WechatMiniprogram.BoundingClientRectCallbackResult | null;
+        if (!rect || !rect.width || !rect.height) {
+          finish();
+          return;
+        }
+        const width = Math.max(0, Math.round(Number(rect.width)));
+        const minHeight = Math.max(0, Math.round(Number(rect.height)));
+        if (!width || !minHeight) {
+          finish();
+          return;
+        }
+        const inlineStyle =
+          "width:" +
+          width +
+          "px;max-width:" +
+          width +
+          "px;min-height:" +
+          minHeight +
+          "px;max-height:" +
+          minHeight +
+          "px;height:" +
+          minHeight +
+          "px;";
+        if (this.data.logPanelInlineStyle === inlineStyle) {
+          finish();
+          return;
+        }
+        this.setData({ logPanelInlineStyle: inlineStyle }, finish);
+      });
     });
   },
 
@@ -3727,4 +5112,539 @@ Page({
   },
 
   onLogPanelTap() {},
+
+  syncSubstitutionTeamDisplay(team: TeamCode) {
+    const nextTeam: TeamCode = team === "B" ? "B" : "A";
+    const teamName = nextTeam === "A" ? String(this.data.teamAName || "甲") : String(this.data.teamBName || "乙");
+    const mainGrid = nextTeam === "A" ? this.data.teamAMainGrid || [] : this.data.teamBMainGrid || [];
+    const libero = nextTeam === "A" ? this.data.teamALibero || [] : this.data.teamBLibero || [];
+    const captainNo = nextTeam === "A" ? String(this.data.teamACaptainNo || "") : String(this.data.teamBCaptainNo || "");
+    const subUseSwapLayout = nextTeam === "A" ? !!this.data.isSwapped : !this.data.isSwapped;
+    const summary = buildSubRecordSummary(this.allLogs, Math.max(1, Number(this.data.setNo || 1)), nextTeam);
+    this.setData({
+      subTeam: nextTeam,
+      subTeamName: teamName,
+      subUseSwapLayout: subUseSwapLayout,
+      subMainGrid: mainGrid,
+      subLibero: libero,
+      subCaptainNo: captainNo,
+      subSelectedPos: "",
+      subIncomingNoInput: "",
+      subIncomingNo: "",
+      subNormalRecords: summary.normal,
+      subSpecialRecords: summary.special,
+      subLiberoRecords: summary.libero,
+      subSpecialLiberoRecords: summary.specialLibero,
+      subPunishSetRecords: summary.punishSet,
+      subPunishMatchRecords: summary.punishMatch,
+      subNormalCount: summary.normal.length,
+      subSpecialCount: summary.special.length,
+    });
+  },
+
+  onOpenSubstitutionPanel(e: WechatMiniprogram.TouchEvent) {
+    if (!this.data.hasOperationAuthority) {
+      return;
+    }
+    const dataset = (e && e.currentTarget && e.currentTarget.dataset) as { team?: TeamCode };
+    const team = dataset && dataset.team === "B" ? "B" : dataset && dataset.team === "A" ? "A" : (this.data.subTeam as TeamCode);
+    this.syncSubstitutionTeamDisplay(team);
+    this.setData({
+      showSubstitutionPanel: true,
+      showLogPanel: false,
+      showSubMatchLogPopover: false,
+      subLogPopoverInlineStyle: "",
+      subRecordTab: "normal",
+      subMode: "normal",
+      subReason: "injury",
+      subIncomingNoInput: "",
+      subIncomingNo: "",
+    });
+  },
+
+  onCloseSubstitutionPanel() {
+    this.setData({
+      showSubstitutionPanel: false,
+      showSubMatchLogPopover: false,
+      subLogPopoverInlineStyle: "",
+      subRecordTab: "normal",
+      subSelectedPos: "",
+      subIncomingNoInput: "",
+      subIncomingNo: "",
+    });
+  },
+
+  onToggleSubMatchLogPopover() {
+    const opening = !this.data.showSubMatchLogPopover;
+    if (!opening) {
+      this.setData({ showSubMatchLogPopover: false });
+      return;
+    }
+    this.setData({
+      showSubMatchLogPopover: opening,
+      subRecordTab:
+        this.data.subMode === "special"
+          ? "special"
+          : this.data.subMode === "special_libero"
+            ? "special_libero"
+            : "normal",
+    }, () => {
+      this.syncSubMatchLogPopoverSize();
+    });
+  },
+
+  syncSubMatchLogPopoverSize(done?: () => void) {
+    const finish = () => {
+      if (typeof done === "function") {
+        done();
+      }
+    };
+    wx.nextTick(() => {
+      const query = this.createSelectorQuery();
+      query.select(".substitution-panel").boundingClientRect();
+      query.select("#sub-log-tab-seg").boundingClientRect();
+      query.exec((res) => {
+        const panelRect = (res && res[0]) as WechatMiniprogram.BoundingClientRectCallbackResult | null;
+        const tabRect = (res && res[1]) as WechatMiniprogram.BoundingClientRectCallbackResult | null;
+        if (!panelRect || !tabRect || !panelRect.width || !tabRect.width) {
+          finish();
+          return;
+        }
+        const panelWidth = Math.max(0, Number(panelRect.width) || 0);
+        const tabWidth = Math.max(0, Number(tabRect.width) || 0);
+        if (!panelWidth || !tabWidth) {
+          finish();
+          return;
+        }
+        const contentPadding = 24;
+        const desiredWidth = Math.ceil(tabWidth + contentPadding);
+        const minWidth = 250;
+        const maxWidth = Math.max(minWidth, Math.floor(panelWidth - 20));
+        const width = Math.min(maxWidth, Math.max(minWidth, desiredWidth));
+        const inlineStyle = "width:" + width + "px;";
+        if (this.data.subLogPopoverInlineStyle === inlineStyle) {
+          finish();
+          return;
+        }
+        this.setData({ subLogPopoverInlineStyle: inlineStyle }, finish);
+      });
+    });
+  },
+
+  onCloseSubMatchLogPopover() {
+    this.setData({ showSubMatchLogPopover: false });
+  },
+
+  onSubMatchLogPopoverTap() {},
+
+  onSelectSubRecordTab(e: WechatMiniprogram.TouchEvent) {
+    const tab = String(((e.currentTarget && e.currentTarget.dataset) as { tab?: string }).tab || "");
+    if (tab !== "normal" && tab !== "special" && tab !== "libero" && tab !== "special_libero") {
+      return;
+    }
+    this.setData({ subRecordTab: tab as "normal" | "special" | "libero" | "special_libero" });
+  },
+
+  onSubSelectPlayer(e: WechatMiniprogram.TouchEvent) {
+    const posRaw = String(((e.currentTarget && e.currentTarget.dataset) as { pos?: string }).pos || "");
+    if (!isPosition(posRaw)) {
+      return;
+    }
+    const pos = posRaw as Position;
+    this.setData({
+      subSelectedPos: this.data.subSelectedPos === pos ? "" : pos,
+    });
+    const incomingNo = normalizeSubstituteNumber(this.data.subIncomingNoInput || this.data.subIncomingNo || "");
+    const nextPos = this.data.subSelectedPos === pos ? "" : pos;
+    if (incomingNo && nextPos) {
+      const msg = this.validateSubstitutionDraftInput(
+        this.data.subTeam === "B" ? "B" : "A",
+        nextPos as Position,
+        incomingNo,
+        {
+          mode: this.data.subMode,
+          logs: this.allLogs,
+          setNo: this.data.setNo,
+        }
+      );
+      if (msg) {
+        showToastHint(msg);
+      }
+    }
+  },
+
+  onSubSelectMode(e: WechatMiniprogram.TouchEvent) {
+    const mode = String(((e.currentTarget && e.currentTarget.dataset) as { mode?: string }).mode || "");
+    if (mode !== "normal" && mode !== "special" && mode !== "special_libero") {
+      return;
+    }
+    this.setData({
+      subMode: mode as "normal" | "special" | "special_libero",
+      subReason: mode === "normal" ? "injury" : this.data.subReason,
+    });
+  },
+
+  onSubSelectReason(e: WechatMiniprogram.TouchEvent) {
+    const reason = String(((e.currentTarget && e.currentTarget.dataset) as { reason?: string }).reason || "");
+    if (
+      reason !== "injury" &&
+      reason !== "penalty_set" &&
+      reason !== "penalty_match" &&
+      reason !== "other"
+    ) {
+      return;
+    }
+    this.setData({
+      subReason: reason as "injury" | "penalty_set" | "penalty_match" | "other",
+    });
+  },
+
+  onSubIncomingNoInput(e: WechatMiniprogram.Input) {
+    const raw = String((e.detail && e.detail.value) || "").replace(/\D/g, "").slice(0, 2);
+    const normalized = normalizeSubstituteNumber(raw);
+    this.setData({
+      subIncomingNoInput: normalized,
+      subIncomingNo: normalized,
+    });
+  },
+
+  onSubIncomingNoBlur() {
+    const normalized = normalizeSubstituteNumber(this.data.subIncomingNoInput || this.data.subIncomingNo || "");
+    this.setData({
+      subIncomingNoInput: normalized,
+      subIncomingNo: normalized,
+    });
+    if (!normalized) {
+      return;
+    }
+    const pos = this.data.subSelectedPos;
+    if (!pos || !isPosition(String(pos))) {
+      showToastHint("请先选择要换下的球员");
+      return;
+    }
+    const msg = this.validateSubstitutionDraftInput(this.data.subTeam === "B" ? "B" : "A", pos as Position, normalized, {
+      mode: this.data.subMode,
+      logs: this.allLogs,
+      setNo: this.data.setNo,
+    });
+    if (msg) {
+      showToastHint(msg);
+    }
+  },
+
+  validateSubstitutionDraftInput(
+    team: TeamCode,
+    selectedPos: Position,
+    incomingNo: string,
+    options?: { mode?: "normal" | "special" | "special_libero"; logs?: MatchLogItem[]; setNo?: number }
+  ): string {
+    if (!isPosition(String(selectedPos))) {
+      return "请先选择要换下的球员";
+    }
+    const mode =
+      options && options.mode === "special"
+        ? "special"
+        : options && options.mode === "special_libero"
+          ? "special_libero"
+          : "normal";
+    if (mode !== "special_libero" && isLiberoPosition(selectedPos)) {
+      return "自由人常规换人请在比赛页拖拽完成";
+    }
+    const logs = options && Array.isArray(options.logs) ? options.logs : this.allLogs;
+    const setNo = Math.max(1, Number((options && options.setNo) || this.data.setNo || 1));
+    const teamPlayers = ensureTeamPlayerOrder(team === "A" ? this.data.teamAPlayers || [] : this.data.teamBPlayers || []);
+    const selectedSlot = getPlayerByPos(teamPlayers, selectedPos);
+    const downNo = normalizeSubstituteNumber(String((selectedSlot && selectedSlot.number) || ""));
+    if (!downNo) {
+      return "当前被换下球员号码无效";
+    }
+    const upNo = normalizeSubstituteNumber(incomingNo);
+    if (!upNo) {
+      return "请输入换上号码";
+    }
+    if (upNo === downNo) {
+      return "换上号码与换下号码不能相同";
+    }
+    const duplicateOnCourt = teamPlayers.some((p) => p.pos !== selectedPos && normalizeSubstituteNumber(p.number) === upNo);
+    if (duplicateOnCourt) {
+      return "该号码已在场上";
+    }
+    const liberoRoster = normalizeLiberoRosterNumbers(
+      team === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []
+    ).map((n) => normalizeSubstituteNumber(n));
+    if (mode !== "special_libero" && liberoRoster.indexOf(upNo) >= 0) {
+      return "自由人请使用拖拽替换";
+    }
+    const banState = buildSpecialBanStateBySet(logs, setNo, team);
+    if (banState.matchBanNos.has(upNo)) {
+      return "该号码已被全场禁赛，不能上场";
+    }
+    if (banState.setBanNos.has(upNo)) {
+      return "该号码本局禁赛，不能上场";
+    }
+    if (mode === "normal") {
+      const pairRuleMsg = validateNormalSubPairRule(logs, setNo, team, downNo, upNo);
+      if (pairRuleMsg) {
+        return pairRuleMsg;
+      }
+      return "";
+    }
+    if (mode === "special") {
+      const normalCount = countNormalSubstitutionsBySet(logs, setNo, team);
+      const pairRuleMsg = validateNormalSubPairRule(logs, setNo, team, downNo, upNo);
+      if (normalCount < 6 && !pairRuleMsg) {
+        return "当前可执行普通换人，无需特殊换人";
+      }
+      return "";
+    }
+    if (liberoRoster.indexOf(downNo) < 0) {
+      return "请选择受伤自由人";
+    }
+    if (liberoRoster.indexOf(upNo) >= 0) {
+      return "该号码已是自由人";
+    }
+    return "";
+  },
+
+  showSubstitutionBlock(content: string) {
+    wx.showModal({
+      title: "无法确认换人",
+      content: content,
+      showCancel: false,
+      confirmText: "知道了",
+    });
+  },
+
+  async onSubConfirmTap() {
+    if (!this.data.hasOperationAuthority) {
+      showToastHint("请先接管后继续");
+      return;
+    }
+    const roomId = String(this.data.roomId || "");
+    if (!roomId) {
+      showToastHint("房间状态异常");
+      return;
+    }
+    const team: TeamCode = this.data.subTeam === "B" ? "B" : "A";
+    const selectedPos = this.data.subSelectedPos;
+    const incomingNo = normalizeSubstituteNumber(this.data.subIncomingNoInput || this.data.subIncomingNo || "");
+    if (!selectedPos || !isPosition(String(selectedPos))) {
+      this.showSubstitutionBlock("请先选择要换下的球员");
+      return;
+    }
+    if (!incomingNo) {
+      this.showSubstitutionBlock("请先输入换上号码");
+      return;
+    }
+    const localError = this.validateSubstitutionDraftInput(team, selectedPos as Position, incomingNo, {
+      mode: this.data.subMode,
+      logs: this.allLogs,
+      setNo: this.data.setNo,
+    });
+    if (localError) {
+      this.showSubstitutionBlock(localError);
+      return;
+    }
+    const currentSetNo = Math.max(1, Number(this.data.setNo || 1));
+    if (this.data.subMode === "normal") {
+      const normalCount = countNormalSubstitutionsBySet(this.allLogs, currentSetNo, team);
+      if (normalCount >= 6) {
+        this.showSubstitutionBlock("普通换人本局已达6次上限");
+        return;
+      }
+    }
+
+    let updateError = "";
+    const mode =
+      this.data.subMode === "special"
+        ? "special"
+        : this.data.subMode === "special_libero"
+          ? "special_libero"
+          : "normal";
+    const specialReason = this.data.subReason;
+    const next = await updateRoomAsync(roomId, (room) => {
+      if (!room || !room.match || !room.teamA || !room.teamB) {
+        updateError = "房间状态异常";
+        return room;
+      }
+      if (room.match.isFinished) {
+        updateError = "比赛已结束，无法换人";
+        return room;
+      }
+      const setEndState = (room.match as any).setEndState;
+      if (setEndState && setEndState.active) {
+        updateError = "本局已结束，无法换人";
+        return room;
+      }
+
+      const roomSetNo = Math.max(1, Number(room.match.setNo || 1));
+      const roomLogs = normalizeLogsBySet(Array.isArray(room.match.logs) ? (room.match.logs as MatchLogItem[]) : []);
+      const banState = buildSpecialBanStateBySet(roomLogs, roomSetNo, team);
+      if (mode === "normal" && countNormalSubstitutionsBySet(roomLogs, roomSetNo, team) >= 6) {
+        updateError = "普通换人本局已达6次上限";
+        return room;
+      }
+
+      const teamObj = team === "A" ? room.teamA : room.teamB;
+      const nextPlayers = ensureTeamPlayerOrder(teamObj.players || []);
+      const selectedSlot = getPlayerByPos(nextPlayers, selectedPos as Position);
+      if (!selectedSlot) {
+        updateError = "被换下球员位置无效";
+        return room;
+      }
+      if (mode !== "special_libero" && isLiberoPosition(selectedPos as Position)) {
+        updateError = "自由人常规换人请在比赛页拖拽完成";
+        return room;
+      }
+      const downNo = normalizeSubstituteNumber(String(selectedSlot.number || ""));
+      if (!downNo) {
+        updateError = "被换下球员号码无效";
+        return room;
+      }
+      if (incomingNo === downNo) {
+        updateError = "换上号码与换下号码不能相同";
+        return room;
+      }
+
+      const duplicateOnCourt = nextPlayers.some(
+        (p) => p.pos !== selectedPos && normalizeSubstituteNumber(p.number) === incomingNo
+      );
+      if (duplicateOnCourt) {
+        updateError = "该号码已在场上";
+        return room;
+      }
+      if (banState.matchBanNos.has(incomingNo)) {
+        updateError = "该号码已被全场禁赛，不能上场";
+        return room;
+      }
+      if (banState.setBanNos.has(incomingNo)) {
+        updateError = "该号码本局禁赛，不能上场";
+        return room;
+      }
+      if (mode === "normal") {
+        const pairRuleMsg = validateNormalSubPairRule(roomLogs, roomSetNo, team, downNo, incomingNo);
+        if (pairRuleMsg) {
+          updateError = pairRuleMsg;
+          return room;
+        }
+      } else if (mode === "special") {
+        const normalCount = countNormalSubstitutionsBySet(roomLogs, roomSetNo, team);
+        const pairRuleMsg = validateNormalSubPairRule(roomLogs, roomSetNo, team, downNo, incomingNo);
+        if (normalCount < 6 && !pairRuleMsg) {
+          updateError = "当前可执行普通换人，无需特殊换人";
+          return room;
+        }
+      }
+
+      ensureLiberoRosterForCurrentSet(room);
+      const roster = normalizeLiberoRosterNumbers(getLiberoRosterForTeam(room, team)).map((n) => normalizeSubstituteNumber(n));
+      if (mode !== "special_libero" && roster.indexOf(incomingNo) >= 0) {
+        updateError = "自由人请使用拖拽替换";
+        return room;
+      }
+      if (mode === "special_libero") {
+        if (roster.indexOf(downNo) < 0) {
+          updateError = "请选择受伤自由人";
+          return room;
+        }
+        if (roster.indexOf(incomingNo) >= 0) {
+          updateError = "该号码已是自由人";
+          return room;
+        }
+      }
+
+      const selectedIdx = nextPlayers.findIndex((p) => p.pos === selectedPos);
+      if (selectedIdx < 0) {
+        updateError = "被换下球员位置无效";
+        return room;
+      }
+
+      const opId = createLogId();
+      (room.match as any).currentOpId = opId;
+      pushUndoSnapshot(room);
+      nextPlayers[selectedIdx].number = incomingNo;
+      if (mode === "special_libero") {
+        const rosterKey = team === "A" ? "teamALiberoRoster" : "teamBLiberoRoster";
+        const nextRoster = normalizeLiberoRosterNumbers(getLiberoRosterForTeam(room, team));
+        const downIdx = nextRoster.findIndex((n) => normalizeSubstituteNumber(n) === downNo);
+        if (downIdx >= 0) {
+          nextRoster[downIdx] = incomingNo;
+        } else if (nextRoster.length < 2) {
+          nextRoster.push(incomingNo);
+        }
+        (room.match as any)[rosterKey] = normalizeLiberoRosterNumbers(nextRoster).slice(0, 2);
+      }
+      teamObj.players = nextPlayers;
+
+      const teamName = team === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙");
+      const detail = buildSubRecordDetailText(incomingNo, downNo);
+      if (mode === "normal") {
+        appendMatchLog(room, "sub_normal", teamName + "队 普通换人 " + detail, team, opId);
+      } else if (mode === "special_libero") {
+        const reasonTextMap: Record<string, string> = {
+          injury: "伤病",
+          penalty_set: "处罚 (本局禁赛)",
+          penalty_match: "处罚 (全场禁赛)",
+          other: "其他",
+        };
+        const reasonText = reasonTextMap[specialReason] || "其他";
+        const action =
+          specialReason === "penalty_set"
+            ? "sub_special_libero_penalty_set"
+            : specialReason === "penalty_match"
+              ? "sub_special_libero_penalty_match"
+              : specialReason === "injury"
+                ? "sub_special_libero_injury"
+                : "sub_special_libero_other";
+        appendMatchLog(
+          room,
+          action,
+          teamName + "队 自由人特殊换人 " + reasonText + " " + buildSpecialLiberoRecordText(incomingNo, downNo),
+          team,
+          opId
+        );
+      } else {
+        const reasonTextMap: Record<string, string> = {
+          injury: "伤病",
+          penalty_set: "处罚 (本局禁赛)",
+          penalty_match: "处罚 (全场禁赛)",
+          other: "其他",
+        };
+        const reasonText = reasonTextMap[specialReason] || "其他";
+        const action =
+          specialReason === "penalty_set"
+            ? "sub_special_penalty_set"
+            : specialReason === "penalty_match"
+              ? "sub_special_penalty_match"
+              : specialReason === "injury"
+                ? "sub_special_injury"
+                : "sub_special_other";
+        appendMatchLog(room, action, teamName + "队 特殊换人 " + reasonText + " " + detail, team, opId);
+      }
+      (room.match as any).lastActionOpId = opId;
+      return room;
+    });
+
+    if (!next) {
+      showToastHint("系统繁忙，请重试");
+      return;
+    }
+    if (updateError) {
+      showToastHint(updateError);
+      return;
+    }
+    this.setData({
+      subSelectedPos: "",
+      subIncomingNoInput: "",
+      subIncomingNo: "",
+    });
+    const latestLogs = normalizeLogsBySet(Array.isArray(next.match && next.match.logs) ? (next.match.logs as MatchLogItem[]) : []);
+    this.allLogs = latestLogs.slice();
+    this.syncSubstitutionTeamDisplay(team);
+    this.applyLocalLineupFromRoom(next);
+    await this.loadRoom(roomId, true);
+    showToastHint("换人已记录");
+  },
+
+  onSubstitutionPanelTap() {},
 });

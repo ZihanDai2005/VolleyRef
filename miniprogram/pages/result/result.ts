@@ -49,11 +49,18 @@ function extractSetNoFromText(text: string): number | null {
   return toSetNo(match[1], 1);
 }
 
+function normalizeSwapSymbolText(text: string): string {
+  return String(text || "")
+    .replace(/\uFE0F/g, "")
+    .replace(/\u2194\uFE0F/g, "\u2194")
+    .replace(/自由人替换/g, "自由人常规换人");
+}
+
 function normalizeLogsBySet(logs: MatchLogItem[]): MatchLogItem[] {
   let cursorSetNo = 1;
   return (logs || []).map((item, idx) => {
     const action = String(item && item.action ? item.action : "");
-    const note = String(item && item.note ? item.note : "");
+    const note = normalizeSwapSymbolText(String(item && item.note ? item.note : ""));
     const explicitSetNo = Number((item as any).setNo) || 0;
     const noteSetNo = extractSetNoFromText(note);
     let resolvedSetNo = explicitSetNo > 0 ? toSetNo(explicitSetNo, cursorSetNo) : 0;
@@ -114,7 +121,7 @@ function extractWinnerFromText(text: string, teamAName: string, teamBName: strin
 }
 
 function withTeamSuffixForDisplay(noteRaw: string, teamANameRaw: string, teamBNameRaw: string): string {
-  let note = String(noteRaw || "");
+  let note = normalizeSwapSymbolText(noteRaw);
   const names = [String(teamANameRaw || "").trim(), String(teamBNameRaw || "").trim()].filter(Boolean);
   names.forEach((name) => {
     const esc = escapeRegExp(name);
