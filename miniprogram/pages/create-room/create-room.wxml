@@ -467,6 +467,7 @@
   </view>
 
   <view class="create-actions" wx:if="{{createMode}}">
+    <text class="create-invite-reminder">请核对信息 进入比赛后不可修改</text>
     <button class="entry-btn create-invite-btn {{createInviteBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateInviteTap">
       <view class="entry-btn-content">
         <view class="entry-btn-copy-icon"></view>

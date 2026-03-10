@@ -585,6 +585,7 @@ Page({
   pageActive: false as boolean,
   networkOnline: true as boolean,
   networkStatusHandler: null as null | ((res: { isConnected?: boolean }) => void),
+  passwordAutoHideTimer: 0 as number,
   data: {
     continueBtnFx: false,
     adjustHeadTitle: "确认下一局的球员配置",
@@ -597,6 +598,9 @@ Page({
     hideTeamAMainNumbers: false,
     hideTeamBMainNumbers: false,
     roomId: "",
+    roomPassword: "",
+    showRoomPassword: false,
+    passwordEyeFx: false,
     teamAName: "甲",
     teamBName: "乙",
     teamAColor: TEAM_COLOR_OPTIONS[2].value,
@@ -678,6 +682,56 @@ Page({
       return "offline";
     }
     return "reconnecting";
+  },
+
+  clearPasswordAutoHideTimer() {
+    if (!this.passwordAutoHideTimer) {
+      return;
+    }
+    clearTimeout(this.passwordAutoHideTimer);
+    this.passwordAutoHideTimer = 0;
+  },
+
+  triggerPasswordEyeFx() {
+    this.setData({ passwordEyeFx: true });
+    setTimeout(() => {
+      this.setData({ passwordEyeFx: false });
+    }, 220);
+  },
+
+  hideRoomPassword() {
+    this.clearPasswordAutoHideTimer();
+    if (!this.data.showRoomPassword) {
+      return;
+    }
+    this.setData({
+      showRoomPassword: false,
+    });
+  },
+
+  onToggleRoomPasswordVisible() {
+    if (this.data.showRoomPassword) {
+      this.triggerPasswordEyeFx();
+      this.hideRoomPassword();
+      return;
+    }
+    const password = String(this.data.roomPassword || "");
+    if (!/^\d{6}$/.test(password)) {
+      showToastHint("密码暂不可用");
+      return;
+    }
+    this.triggerPasswordEyeFx();
+    this.setData({
+      showRoomPassword: true,
+    });
+    showToastHint("30秒后密码将自动隐藏");
+    this.clearPasswordAutoHideTimer();
+    this.passwordAutoHideTimer = setTimeout(() => {
+      this.passwordAutoHideTimer = 0;
+      if (this.data.showRoomPassword) {
+        this.setData({ showRoomPassword: false });
+      }
+    }, 30000) as unknown as number;
   },
 
   markConnectionAlive() {
@@ -845,6 +899,7 @@ Page({
 
   onUnload() {
     this.pageActive = false;
+    this.hideRoomPassword();
     this.persistLineupDraftNow().catch(() => {});
     this.clearContinueRouteTimer();
     this.clearDraftSaveTimer();
@@ -870,6 +925,7 @@ Page({
 
   onHide() {
     this.pageActive = false;
+    this.hideRoomPassword();
     this.persistLineupDraftNow().catch(() => {});
     this.clearContinueRouteTimer();
     this.inputEditing = false;
@@ -1364,6 +1420,7 @@ Page({
         isDecidingSet: isDecidingSetByRule(roomSetNo, roomWins),
         teamAName: room.teamA.name || "甲",
         teamBName: room.teamB.name || "乙",
+        roomPassword: String(room.password || ""),
         teamAColor: room.teamA.color || TEAM_COLOR_OPTIONS[2].value,
         teamBColor: room.teamB.color || TEAM_COLOR_OPTIONS[6].value,
         teamARGB: hexToRgbTriplet(room.teamA.color || TEAM_COLOR_OPTIONS[2].value),

@@ -4,11 +4,19 @@
 }
 
 .landing-container {
-  --bg-deep: #ffffff;
+  --bg-deep: var(--gray-0);
   --brand-red: var(--theme-accent);
-  --brand-white: #1e1a16;
-  --text-muted: #8d7a67;
-  --shadow-red: rgba(var(--theme-accent-rgb), 0.05);
+  --brand-white: var(--ink-base);
+  --text-muted: var(--text-muted);
+  --bg-gradient-tint: var(--ol-black-20);
+  --court-line-gray: var(--gray-400);
+  --court-line-glow: var(--ol-slate-25);
+  --liquid-c1: #f15a22;
+  --liquid-c2: #0a0e27;
+  --liquid-c3: #6a46d6;
+  --liquid-c4: #131b4a;
+  --liquid-c5: #f15a22;
+  --liquid-c6: #8a63ff;
   --font-hero: "Anton";
   --font-ui: -apple-system, "PingFang SC", "Helvetica Neue", sans-serif;
   width: 100%;
@@ -21,11 +29,13 @@
 
 @media (prefers-color-scheme: dark) {
   .landing-container {
-    --bg-deep: #050202;
+    --bg-deep: var(--gray-900);
     --brand-red: var(--theme-accent);
-    --brand-white: #eaeaea;
-    --text-muted: #887070;
-    --shadow-red: rgba(var(--theme-accent-rgb), 0.05);
+    --brand-white: var(--ink-base);
+    --text-muted: var(--text-muted);
+    --bg-gradient-tint: var(--ol-white-08);
+    --court-line-gray: var(--gray-400);
+    --court-line-glow: var(--ol-slate-25);
   }
 }
 
@@ -42,7 +52,7 @@
   padding-right: 64rpx;
   box-sizing: border-box;
   position: relative;
-  background: radial-gradient(circle at 50% 50%, var(--bg-deep) 0%, var(--shadow-red) 100%);
+  background: var(--bg-deep);
   overflow: hidden;
   --home-button-bottom: var(--entry-action-bottom);
   --home-version-bottom: var(--entry-tag-bottom);
@@ -60,7 +70,7 @@
   --line-gap: 200rpx;
   pointer-events: none;
   opacity: 0.1;
-  z-index: 0;
+  z-index: 1;
 }
 
 @media (prefers-color-scheme: dark) {
@@ -73,34 +83,33 @@
   position: absolute;
   left: 0;
   right: 0;
-  border: 2rpx solid var(--brand-red);
-  box-shadow: 0 0 30rpx var(--brand-red);
+  border: 2rpx solid var(--court-line-gray);
+  box-shadow: 0 0 30rpx var(--court-line-glow);
 }
 
 .line-center {
   bottom: calc(var(--line-bottom-offset) + var(--line-gap));
   height: 4px;
   border: 0;
-  background: var(--brand-red);
+  background: var(--court-line-gray);
 }
 
 .line-attack-top {
   bottom: calc(var(--line-bottom-offset) + (var(--line-gap) * 2));
   height: 4px;
   border: 0;
-  background: var(--brand-red);
+  background: var(--court-line-gray);
 }
 
 .line-attack-bottom {
   bottom: var(--line-bottom-offset);
   height: 4px;
   border: 0;
-  background: var(--brand-red);
+  background: var(--court-line-gray);
 }
 
 .content-layer {
   position: static;
-  z-index: 2;
   text-align: left;
   width: 100%;
   min-width: 100%;
@@ -117,7 +126,7 @@
   left: var(--home-side-gutter);
   right: var(--home-side-gutter);
   bottom: var(--home-logo-bottom);
-  z-index: 2;
+  z-index: 4;
   margin-bottom: 0;
   margin-left: 0;
   margin-right: 0;
@@ -148,7 +157,11 @@
   font-family: var(--font-hero);
   font-size: 168rpx;
   line-height: 0.95;
-  color: var(--brand-red);
+  color: var(--theme-accent);
+  background-image: none;
+  -webkit-text-fill-color: var(--theme-accent);
+  filter: none;
+  animation: none;
 }
 
 .brand-subtitle {
@@ -156,11 +169,85 @@
   margin-top: 30rpx;
   font-size: 32rpx;
   line-height: 1;
-  color: var(--brand-red);
+  color: var(--theme-accent);
   letter-spacing: 12rpx;
   font-weight: 700;
   opacity: 0.9;
   text-align: left;
+  background-image: none;
+  -webkit-text-fill-color: var(--theme-accent);
+  filter: none;
+  animation: none;
+}
+
+@keyframes homeLiquidFlowDot {
+  0% {
+    background-position: 11% 61%;
+    background-size: 320% 280%;
+  }
+  12% {
+    background-position: 86% 22%;
+    background-size: 280% 340%;
+  }
+  25% {
+    background-position: 18% 92%;
+    background-size: 360% 250%;
+  }
+  39% {
+    background-position: 94% 58%;
+    background-size: 270% 330%;
+  }
+  53% {
+    background-position: 49% 6%;
+    background-size: 350% 260%;
+  }
+  67% {
+    background-position: 4% 62%;
+    background-size: 290% 340%;
+  }
+  82% {
+    background-position: 78% 96%;
+    background-size: 360% 260%;
+  }
+  100% {
+    background-position: 11% 61%;
+    background-size: 320% 280%;
+  }
+}
+
+@keyframes homeLiquidFlowSubtitle {
+  0% {
+    background-position: 77% 18%;
+    background-size: 340% 300%;
+  }
+  15% {
+    background-position: 15% 66%;
+    background-size: 280% 360%;
+  }
+  31% {
+    background-position: 92% 93%;
+    background-size: 380% 260%;
+  }
+  46% {
+    background-position: 34% 33%;
+    background-size: 290% 340%;
+  }
+  62% {
+    background-position: 7% 84%;
+    background-size: 360% 270%;
+  }
+  78% {
+    background-position: 73% 10%;
+    background-size: 270% 360%;
+  }
+  91% {
+    background-position: 58% 61%;
+    background-size: 390% 250%;
+  }
+  100% {
+    background-position: 77% 18%;
+    background-size: 340% 300%;
+  }
 }
 
 .button-group {
@@ -180,6 +267,7 @@
   margin-top: 0;
   margin-left: 0;
   margin-right: 0;
+  z-index: 4;
 }
 
 .pill-button {
@@ -241,36 +329,32 @@
 }
 
 .pill-primary {
-  background: var(--brand-red);
+  background: var(--brand-white);
   color: var(--white-ink);
-  box-shadow: 0 16rpx 48rpx rgba(255, 255, 255, 0.28);
+  box-shadow: 0 12rpx 32rpx var(--ol-white-20);
+}
+
+.pill-secondary {
+  background: transparent;
+  color: var(--brand-white);
+  border: 0;
+  box-shadow: inset 0 0 0 1.5px var(--ol-black-50);
 }
 
 @media (prefers-color-scheme: dark) {
   .pill-primary {
     background: var(--brand-white);
     color: var(--bg-deep);
-    box-shadow: 0 8rpx 30rpx rgba(0, 0, 0, 0.3);
+    box-shadow: 0 8rpx 30rpx var(--ol-black-30);
   }
-}
-
-.pill-secondary {
-  background: rgba(var(--theme-accent-rgb), 0.05);
-  color: var(--brand-red);
-  border: 0;
-  box-shadow: inset 0 0 0 1.5px rgba(var(--theme-accent-rgb), 0.05);
-  backdrop-filter: blur(18px);
-  -webkit-backdrop-filter: blur(18px);
 }
 
 @media (prefers-color-scheme: dark) {
   .pill-secondary {
-    background: rgba(255, 255, 255, 0.05);
+    background: transparent;
     color: var(--brand-white);
     border: 0;
-    box-shadow: inset 0 0 0 1.5px rgba(255, 255, 255, 0.2);
-    backdrop-filter: blur(18px);
-    -webkit-backdrop-filter: blur(18px);
+    box-shadow: inset 0 0 0 1.5px var(--ol-white-50);
   }
 }
 
@@ -302,11 +386,12 @@
   position: absolute;
   bottom: var(--home-version-bottom);
   font-size: 20rpx;
-  color: var(--text-muted);
+  color: var(--brand-white);
+  opacity: 0.5;
   letter-spacing: 2rpx;
   left: 50%;
   transform: translateX(-50%);
-  z-index: 2;
+  z-index: 4;
 }
 
 @media (min-width: 700px) {

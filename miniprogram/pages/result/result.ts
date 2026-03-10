@@ -225,6 +225,25 @@ Page({
     const targetSet = toSetNo(setNo, 1);
     const teamAName = String(this.data.teamAName || "甲");
     const teamBName = String(this.data.teamBName || "乙");
+    let setStartTs = 0;
+    (logs || []).forEach((item) => {
+      const action = String(item && item.action ? item.action : "");
+      if (action !== "timer_start") {
+        return;
+      }
+      const noteSetNo = extractSetNoFromText(String(item && item.note ? item.note : ""));
+      const itemSetNo = toSetNo(item && (item as any).setNo, noteSetNo || 1);
+      if (itemSetNo !== targetSet) {
+        return;
+      }
+      const ts = Math.max(0, Number(item && item.ts) || 0);
+      if (!ts) {
+        return;
+      }
+      if (!setStartTs || ts < setStartTs) {
+        setStartTs = ts;
+      }
+    });
     const hiddenOpIds = new Set<string>();
     (logs || []).forEach((item) => {
       const action = String(item && item.action ? item.action : "");
@@ -236,6 +255,12 @@ Page({
     return (logs || [])
       .filter((item) => {
         const action = String(item.action || "");
+        const noteText = String(item.note || "");
+        const isSubstitutionAction =
+          action === "libero_swap" ||
+          action.indexOf("sub_") === 0 ||
+          action.indexOf("substitution_") === 0 ||
+          noteText.indexOf("换人") >= 0;
         if (
           action === "timeout_end" ||
           action === "next_set" ||
@@ -249,7 +274,18 @@ Page({
           return false;
         }
         const noteSetNo = extractSetNoFromText(String(item.note || ""));
-        return toSetNo(item.setNo, noteSetNo || 1) === targetSet;
+        const itemSetNo = toSetNo(item.setNo, noteSetNo || 1);
+        if (itemSetNo !== targetSet) {
+          return false;
+        }
+        // 赛前只隐藏轮转/换边；换人记录（含赛前）应在结果页保留展示。
+        if (!isSubstitutionAction && setStartTs > 0 && (action === "rotate" || action === "switch_sides")) {
+          const ts = Math.max(0, Number(item.ts) || 0);
+          if (ts > 0 && ts < setStartTs) {
+            return false;
+          }
+        }
+        return true;
       })
       .slice()
       .reverse()

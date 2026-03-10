@@ -18,10 +18,20 @@
       </view>
     </view>
     <view class="match-nav-title">
-      <text>裁判团队编号 {{roomId}}</text>
       <view class="conn-inline {{connStatusClass}}">
         <view class="conn-inline-icon"></view>
         <text class="conn-inline-text">{{connStatusText}}</text>
+      </view>
+      <view class="nav-fixed-gap"></view>
+      <text>裁判团队编号 <text class="nav-code-mono">{{roomId}}</text></text>
+      <view class="nav-fixed-gap"></view>
+      <text>密码 <text class="nav-code-mono">{{showRoomPassword ? roomPassword : '######'}}</text></text>
+      <view
+        class="password-eye-btn pressable {{passwordEyeFx ? 'fx' : ''}}"
+        hover-class="tap-active"
+        bindtap="onToggleRoomPasswordVisible"
+      >
+        <view class="password-eye-icon {{showRoomPassword ? 'eye-close' : 'eye-open'}}"></view>
       </view>
     </view>
     <view class="match-nav-space"></view>
@@ -180,7 +190,7 @@
         <view class="libero-col">
           <view
             id="swap-card-A-{{item.pos}}"
-            class="player-card libero {{swapDragActive && swapDragTeam === 'A' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos !== item.pos && swapDragSourceInMain && ((item.pos === 'L1' && swapDragTargetL1) || (item.pos === 'L2' && swapDragTargetL2)) ? 'swap-drag-target' : ''}}"
+            class="player-card {{item.isLibero ? 'libero' : ''}} {{quickSubFlashKey === ('A-' + item.pos) ? 'quick-sub-flash' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos !== item.pos && swapDragSourceIsLibero && ((item.pos === 'L1' && swapDragTargetL1) || (item.pos === 'L2' && swapDragTargetL2)) ? 'swap-drag-target' : ''}}"
             wx:for="{{teamALibero}}"
             wx:for-item="item"
             wx:key="pos"
@@ -190,16 +200,17 @@
             catchtouchmove="onSwapCardTouchMove"
             catchtouchend="onSwapCardTouchEnd"
             catchtouchcancel="onSwapCardTouchEnd"
+            catchtap="onPlayerCardTapQuickSub"
           >
-            <text class="num {{item.number === teamACaptainNo ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
-            <text class="sub-text">{{item.pos}}</text>
+            <text class="num {{item.number === teamACaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+            <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
           </view>
         </view>
         <view class="main-col">
           <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
             <view
               id="swap-card-A-{{item.pos}}"
-              class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos !== item.pos && swapDragSourceIsLibero && ((item.pos === 'I' && swapDragTargetI) || (item.pos === 'II' && swapDragTargetII) || (item.pos === 'III' && swapDragTargetIII) || (item.pos === 'IV' && swapDragTargetIV) || (item.pos === 'V' && swapDragTargetV) || (item.pos === 'VI' && swapDragTargetVI)) ? 'swap-drag-target' : ''}}"
+              class="player-card pos-card-{{item.pos}} {{item.isLibero ? 'libero' : ''}} {{quickSubFlashKey === ('A-' + item.pos) ? 'quick-sub-flash' : ''}} {{item.pos === 'I' && servingTeam === 'A' ? 'score-pos-one' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'A' && swapDragPos !== item.pos && swapDragSourceIsLibero && ((item.pos === 'I' && swapDragTargetI) || (item.pos === 'II' && swapDragTargetII) || (item.pos === 'III' && swapDragTargetIII) || (item.pos === 'IV' && swapDragTargetIV) || (item.pos === 'V' && swapDragTargetV) || (item.pos === 'VI' && swapDragTargetVI)) ? 'swap-drag-target' : ''}}"
               wx:for="{{row}}"
               wx:for-item="item"
               wx:key="pos"
@@ -209,10 +220,12 @@
               catchtouchmove="onSwapCardTouchMove"
               catchtouchend="onSwapCardTouchEnd"
               catchtouchcancel="onSwapCardTouchEnd"
+              catchtap="onPlayerCardTapQuickSub"
             >
               <text
-                class="num pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-num' : ''}} {{hideTeamAMainNumbers ? 'num-hidden' : ''}} {{item.isLibero ? 'libero-dot' : ''}}"
+                class="num pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-num' : ''}} {{hideTeamAMainNumbers ? 'num-hidden' : ''}}"
               >{{item.number}}</text>
+              <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
               <text class="sub-text">{{item.pos}}</text>
               <text class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}">发</text>
             </view>
@@ -289,7 +302,7 @@
           <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
             <view
               id="swap-card-B-{{item.pos}}"
-              class="player-card pos-card-{{item.pos}} {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos !== item.pos && swapDragSourceIsLibero && ((item.pos === 'I' && swapDragTargetI) || (item.pos === 'II' && swapDragTargetII) || (item.pos === 'III' && swapDragTargetIII) || (item.pos === 'IV' && swapDragTargetIV) || (item.pos === 'V' && swapDragTargetV) || (item.pos === 'VI' && swapDragTargetVI)) ? 'swap-drag-target' : ''}}"
+              class="player-card pos-card-{{item.pos}} {{item.isLibero ? 'libero' : ''}} {{quickSubFlashKey === ('B-' + item.pos) ? 'quick-sub-flash' : ''}} {{item.pos === 'I' && servingTeam === 'B' ? 'score-pos-one' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos !== item.pos && swapDragSourceIsLibero && ((item.pos === 'I' && swapDragTargetI) || (item.pos === 'II' && swapDragTargetII) || (item.pos === 'III' && swapDragTargetIII) || (item.pos === 'IV' && swapDragTargetIV) || (item.pos === 'V' && swapDragTargetV) || (item.pos === 'VI' && swapDragTargetVI)) ? 'swap-drag-target' : ''}}"
               wx:for="{{row}}"
               wx:for-item="item"
               wx:key="pos"
@@ -299,10 +312,12 @@
               catchtouchmove="onSwapCardTouchMove"
               catchtouchend="onSwapCardTouchEnd"
               catchtouchcancel="onSwapCardTouchEnd"
+              catchtap="onPlayerCardTapQuickSub"
             >
               <text
-                class="num pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-num' : ''}} {{hideTeamBMainNumbers ? 'num-hidden' : ''}} {{item.isLibero ? 'libero-dot' : ''}}"
+                class="num pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-num' : ''}} {{hideTeamBMainNumbers ? 'num-hidden' : ''}}"
               >{{item.number}}</text>
+              <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
               <text class="sub-text">{{item.pos}}</text>
               <text class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}">发</text>
             </view>
@@ -311,7 +326,7 @@
         <view class="libero-col">
           <view
             id="swap-card-B-{{item.pos}}"
-            class="player-card libero {{swapDragActive && swapDragTeam === 'B' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos !== item.pos && swapDragSourceInMain && ((item.pos === 'L1' && swapDragTargetL1) || (item.pos === 'L2' && swapDragTargetL2)) ? 'swap-drag-target' : ''}}"
+            class="player-card {{item.isLibero ? 'libero' : ''}} {{quickSubFlashKey === ('B-' + item.pos) ? 'quick-sub-flash' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos === item.pos ? 'swap-drag-source' : ''}} {{swapDragActive && swapDragTeam === 'B' && swapDragPos !== item.pos && swapDragSourceIsLibero && ((item.pos === 'L1' && swapDragTargetL1) || (item.pos === 'L2' && swapDragTargetL2)) ? 'swap-drag-target' : ''}}"
             wx:for="{{teamBLibero}}"
             wx:for-item="item"
             wx:key="pos"
@@ -321,9 +336,10 @@
             catchtouchmove="onSwapCardTouchMove"
             catchtouchend="onSwapCardTouchEnd"
             catchtouchcancel="onSwapCardTouchEnd"
+            catchtap="onPlayerCardTapQuickSub"
           >
-            <text class="num {{item.number === teamBCaptainNo ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
-            <text class="sub-text">{{item.pos}}</text>
+            <text class="num {{item.number === teamBCaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+            <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
           </view>
         </view>
       </view>
@@ -335,7 +351,7 @@
     class="swap-drag-ghost team-{{swapDragGhostTeam === 'B' ? 'b' : 'a'}} {{swapDragSourceIsLibero ? 'libero' : ''}}"
     style="{{swapDragGhostStyle}}"
   >
-    <text class="num {{swapDragGhostIsCaptain ? 'captain-num' : ''}} {{swapDragGhostIsLibero ? 'libero-dot' : ''}}">{{swapDragGhostNumber}}</text>
+    <text class="num {{swapDragGhostIsCaptain ? 'captain-num' : ''}}">{{swapDragGhostNumber}}</text>
     <text class="sub-text">{{swapDragGhostPos}}</text>
   </view>
 
@@ -347,7 +363,7 @@
       class="rotate-fly-item team-a"
       style="{{item.style}}"
     >
-      <text class="num {{item.isCaptain ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
+      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
     </view>
     <view
       wx:for="{{rotateFlyItemsB}}"
@@ -356,7 +372,7 @@
       class="rotate-fly-item team-b"
       style="{{item.style}}"
     >
-      <text class="num {{item.isCaptain ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
+      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
     </view>
   </view>
 
@@ -368,7 +384,7 @@
       <view class="set-end-body">
         <view class="set-end-score-panels">
           <view class="set-end-score-panel">
-            <text class="set-end-section-label">小比分</text>
+            <text class="set-end-section-label">比分</text>
             <view class="set-end-compare-line">
               <text class="set-end-compare-left">{{setEndTeamAName}}</text>
               <text class="set-end-compare-colon">:</text>
@@ -381,7 +397,7 @@
             </view>
           </view>
           <view class="set-end-score-panel">
-            <text class="set-end-section-label">大比分</text>
+            <text class="set-end-section-label">比局</text>
             <view class="set-end-compare-line">
               <text class="set-end-compare-left">{{setEndTeamAName}}</text>
               <text class="set-end-compare-colon">:</text>
@@ -450,7 +466,10 @@
   <view class="log-mask" wx:if="{{showLogPanel}}" bindtap="onCloseLogPanel">
     <view class="log-panel" style="{{logPanelInlineStyle}}" catchtap="onLogPanelTap">
       <view class="log-head">
-        <text class="log-title sub-panel-title">操作记录</text>
+        <view class="sub-panel-title-row">
+          <text class="log-title sub-panel-title">操作记录</text>
+          <text class="sub-panel-title popup-title-dot">.</text>
+        </view>
         <view class="log-head-right">
           <view class="log-set-switch" wx:if="{{logSetSwitchVisible}}">
             <text class="log-set-label">局</text>
@@ -482,8 +501,11 @@
     <view class="log-panel substitution-panel" catchtap="onSubstitutionPanelTap">
       <view class="log-head">
         <view class="sub-panel-title-wrap">
-          <text class="log-title sub-panel-title">局中换人</text>
-          <text class="sub-panel-tip">自由人常规换人可直接在比赛页拖拽球员卡片到目标球员卡片完成。</text>
+          <view class="sub-panel-title-row">
+            <text class="log-title sub-panel-title">局中换人</text>
+            <text class="sub-panel-title popup-title-dot">.</text>
+          </view>
+          <text class="sub-panel-tip">自由人常规换人可直接在比赛页拖拽自由人卡片到目标球员卡片完成</text>
         </view>
         <view class="log-head-right">
           <view class="sub-head-record-btn pressable" hover-class="tap-active" bindtap="onToggleSubMatchLogPopover">
@@ -500,28 +522,31 @@
           <view class="lineup-grid sub-player-grid {{subTeam === 'A' ? 'team-a' : 'team-b'}} {{subUseSwapLayout ? 'swap-layout' : ''}}">
             <view class="libero-col">
               <view
-                class="player-card libero {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}}"
+                class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}}"
                 wx:for="{{subLibero}}"
                 wx:key="pos"
                 wx:for-item="item"
                 data-pos="{{item.pos}}"
+                data-number="{{item.number}}"
                 bindtap="onSubSelectPlayer"
               >
-                <text class="num {{item.number === subCaptainNo ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
-                <text class="sub-text">{{item.pos}}</text>
+                <text class="num {{item.number === subCaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+                <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
               </view>
             </view>
             <view class="main-col">
               <view class="player-row row-two" wx:for="{{subMainGrid}}" wx:key="index" wx:for-item="row">
                 <view
-                  class="player-card {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}}"
+                  class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}}"
                   wx:for="{{row}}"
                   wx:key="pos"
                   wx:for-item="item"
                   data-pos="{{item.pos}}"
+                  data-number="{{item.number}}"
                   bindtap="onSubSelectPlayer"
                 >
-                  <text class="num {{item.number === subCaptainNo ? 'captain-num' : ''}} {{item.isLibero ? 'libero-dot' : ''}}">{{item.number}}</text>
+                  <text class="num {{item.number === subCaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+                  <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
                   <text class="sub-text">{{item.pos}}</text>
                 </view>
               </view>
@@ -542,7 +567,11 @@
 
             <view class="sub-field">
               <text class="sub-field-label">换上号码</text>
+              <view wx:if="{{subIncomingLocked}}" class="sub-no-input sub-no-input-locked">
+                <text class="sub-no-input-locked-text">{{subIncomingLockedNo}}</text>
+              </view>
               <input
+                wx:else
                 class="sub-no-input"
                 type="number"
                 maxlength="2"

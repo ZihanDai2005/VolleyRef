@@ -15,7 +15,7 @@
     </view>
 
     <view class="result-score-panel">
-      <text class="result-section-label">大比分</text>
+      <text class="result-section-label">比局</text>
       <view class="result-compare-line">
         <text class="result-compare-left">{{teamAName}}</text>
         <text class="result-compare-colon">:</text>
@@ -43,7 +43,7 @@
     </view>
 
     <view class="result-score-panel">
-      <text class="result-section-label">第{{selectedSetNo}}局小比分</text>
+      <text class="result-section-label">第{{selectedSetNo}}局比分</text>
       <view class="result-compare-line">
         <text class="result-compare-left">{{teamAName}}</text>
         <text class="result-compare-colon">:</text>

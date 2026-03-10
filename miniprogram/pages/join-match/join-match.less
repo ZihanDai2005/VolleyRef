@@ -11,14 +11,7 @@ page {
   padding: 0 64rpx;
   box-sizing: border-box;
   background-color: var(--page-bg);
-  background-image: linear-gradient(
-    180deg,
-    rgba(var(--theme-accent-rgb), 0.12) 0%,
-    rgba(var(--theme-accent-rgb), 0) 100%
-  );
-  background-repeat: no-repeat;
-  background-position: top left;
-  background-size: 100% 400rpx;
+  background-image: none;
 }
 
 .entry-shell {
@@ -225,11 +218,10 @@ page {
 }
 
 .paste-link-btn {
-  --entry-fill: var(--theme-accent);
   margin-top: 0;
   display: inline-flex;
   align-items: center;
-  color: var(--entry-fill);
+  color: var(--text-primary);
   font-size: 28rpx;
   font-weight: 500;
   line-height: 1.2;
@@ -273,7 +265,7 @@ page {
 }
 
 .action-row .entry-btn {
-  --entry-fill: var(--theme-accent);
+  --entry-fill: var(--ink-base);
   width: 100%;
   max-width: none;
   min-width: 0;
@@ -283,13 +275,14 @@ page {
   line-height: 100rpx;
   padding: 0;
   background: var(--entry-fill);
-  color: var(--white-ink);
+  color: var(--ink-on-base);
   border-radius: 999rpx;
   font-size: 34rpx;
   font-weight: 700;
   letter-spacing: 4rpx;
   position: relative;
   overflow: hidden;
+  box-shadow: 0 12rpx 32rpx var(--ol-white-20);
   transition: transform 150ms ease, filter 150ms ease;
 }
 
@@ -338,26 +331,20 @@ page {
 
 @media (prefers-color-scheme: dark) {
   .entry-container {
-    background-image: linear-gradient(
-      180deg,
-      rgba(var(--theme-accent-rgb), 0.14) 0%,
-      rgba(var(--theme-accent-rgb), 0) 100%
-    );
+    background-image: none;
   }
 
   .paste-link-btn {
-    --entry-fill: var(--white-ink);
+    color: var(--text-primary);
   }
 
   .action-row .entry-btn {
-    --entry-fill: var(--white-ink);
+    --entry-fill: var(--ink-base);
     background: var(--entry-fill);
-    color: #111315;
+    color: var(--ink-on-base);
+    box-shadow: 0 8rpx 30rpx var(--ol-black-30);
   }
 
-  .paste-link-btn {
-    color: var(--entry-fill);
-  }
 }
 
 @keyframes btnFancyTap {
