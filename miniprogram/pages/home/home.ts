@@ -22,6 +22,9 @@ Page({
   },
 
   onShow() {
+    wx.hideLoading({
+      fail: () => {},
+    });
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
   },

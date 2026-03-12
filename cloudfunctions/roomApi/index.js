@@ -4,6 +4,7 @@ cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
 const db = cloud.database();
 const roomsCol = db.collection("rooms");
+const roomArchivesCol = db.collection("rooms_expired_archive");
 const locksCol = db.collection("room_locks");
 const _ = db.command;
 
@@ -12,6 +13,7 @@ const PARTICIPANT_TTL_MS = 40 * 1000;
 const ROOM_TTL_MS = 6 * 60 * 60 * 1000;
 const ROOM_EXTRA_TTL_MS = 3 * 60 * 60 * 1000;
 const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
+const EXPIRED_ROOM_RETAIN_MS = 3 * 24 * 60 * 60 * 1000;
 const AUTHORITY_PRESENCE_TTL_MS = 5 * 60 * 1000;
 const AUTO_OPERATOR_CLAIM_PROBATION_MS = 10 * 60 * 1000;
 const GLOBAL_CLEANUP_COOLDOWN_MS = 60 * 1000;
@@ -26,6 +28,40 @@ function now() {
 
 function err(message) {
   return { ok: false, message: String(message || "error") };
+}
+
+async function archiveExpiredRoom(roomId, room, expiredAt, reason) {
+  const id = String(roomId || "");
+  if (!id || !room || typeof room !== "object") {
+    return;
+  }
+  const ts = now();
+  const expiredTs = Math.max(0, Number(expiredAt || 0)) || ts;
+  const archiveId = id + "_" + String(expiredTs);
+  try {
+    await roomArchivesCol.doc(archiveId).set({
+      data: {
+        _id: archiveId,
+        roomId: id,
+        retainState: "expired_wait_delete",
+        expiredAt: expiredTs,
+        deleteAfterAt: expiredTs + EXPIRED_ROOM_RETAIN_MS,
+        archivedAt: ts,
+        reason: String(reason || "expired"),
+        sourceStatus: String(room.status || ""),
+        sourceExpiresAt: Math.max(0, Number(room.expiresAt || 0)),
+        sourceResultExpireAt: Math.max(0, Number(room.resultExpireAt || 0)),
+        room: JSON.parse(JSON.stringify(room)),
+      },
+    });
+  } catch (e) {}
+}
+
+async function removeRoomWithRetention(roomId, room, expiredAt, reason) {
+  await archiveExpiredRoom(roomId, room, expiredAt, reason);
+  try {
+    await roomsCol.doc(roomId).remove();
+  } catch (e) {}
 }
 
 async function getRoomDoc(roomId) {
@@ -61,7 +97,12 @@ async function getRoomDoc(roomId) {
         changed = true;
       }
       if (ts > Number(room.resultExpireAt || 0)) {
-        await roomsCol.doc(roomId).remove();
+        await removeRoomWithRetention(
+          roomId,
+          room,
+          Number(room.resultExpireAt || room.expiresAt || ts),
+          "result_expired"
+        );
         return null;
       }
       if (changed) {
@@ -73,7 +114,12 @@ async function getRoomDoc(roomId) {
 
     const hasStartedMatch = room.matchStartedAt > 0;
     if (!hasStartedMatch && ts > Number(room.expiresAt || 0)) {
-      await roomsCol.doc(roomId).remove();
+      await removeRoomWithRetention(
+        roomId,
+        room,
+        Number(room.expiresAt || ts),
+        "match_not_started_expired"
+      );
       return null;
     }
 
@@ -88,7 +134,12 @@ async function getRoomDoc(roomId) {
     }
 
     if (ts > Number(room.expiresAt || 0)) {
-      await roomsCol.doc(roomId).remove();
+      await removeRoomWithRetention(
+        roomId,
+        room,
+        Number(room.expiresAt || ts),
+        hasStartedMatch ? "match_started_expired" : "match_expired"
+      );
       return null;
     }
 
@@ -136,6 +187,39 @@ async function runGlobalExpiredRoomCleanup() {
   return deleted;
 }
 
+async function runExpiredArchiveCleanup() {
+  let deleted = 0;
+  for (let pass = 0; pass < GLOBAL_CLEANUP_MAX_PASSES; pass += 1) {
+    let ids = [];
+    try {
+      const res = await roomArchivesCol
+        .where({
+          deleteAfterAt: _.lte(now()),
+        })
+        .field({
+          _id: true,
+        })
+        .limit(GLOBAL_CLEANUP_BATCH)
+        .get();
+      ids = (res && Array.isArray(res.data) ? res.data : [])
+        .map((item) => String((item && item._id) || ""))
+        .filter(Boolean);
+    } catch (e) {
+      ids = [];
+    }
+    if (!ids.length) {
+      break;
+    }
+    for (let i = 0; i < ids.length; i += 1) {
+      try {
+        await roomArchivesCol.doc(ids[i]).remove();
+        deleted += 1;
+      } catch (e) {}
+    }
+  }
+  return deleted;
+}
+
 async function maybeRunGlobalCleanup(force) {
   const ts = now();
   const shouldForce = !!force;
@@ -169,8 +253,10 @@ async function maybeRunGlobalCleanup(force) {
   } catch (e) {}
 
   let deleted = 0;
+  let archiveDeleted = 0;
   try {
     deleted = await runGlobalExpiredRoomCleanup();
+    archiveDeleted = await runExpiredArchiveCleanup();
   } finally {
     try {
       await locksCol.doc(GLOBAL_CLEANUP_META_ID).set({
@@ -178,12 +264,13 @@ async function maybeRunGlobalCleanup(force) {
           lastRunAt: ts,
           runningUntil: 0,
           lastDeleted: deleted,
+          lastArchiveDeleted: archiveDeleted,
           updatedAt: now(),
         },
       });
     } catch (e) {}
   }
-  return { ran: true, deleted: deleted };
+  return { ran: true, deleted: deleted, archiveDeleted: archiveDeleted };
 }
 
 async function putRoomDoc(room) {
@@ -202,6 +289,16 @@ async function putRoomDoc(room) {
   } catch (e) {}
 
   if (existing) {
+    const existingStatus = String(existing.status || "");
+    const incomingStatus = String(normalized.status || "");
+    // 防止高版本旧快照把房间状态回滚（例如 result -> match/create-room）。
+    if (existingStatus === "result" && incomingStatus !== "result") {
+      return existing;
+    }
+    // 防止 match 被旧草稿回滚到 create-room。
+    if (existingStatus === "match" && incomingStatus === "create-room") {
+      return existing;
+    }
     const existingVersion = Math.max(1, Number(existing.syncVersion || 1));
     const incomingVersion = Math.max(1, Number(normalized.syncVersion || 1));
     if (incomingVersion <= existingVersion) {
@@ -227,13 +324,32 @@ async function putRoomDoc(room) {
     );
   }
   if (normalized.status === "result") {
+    const existingResultLockedAt =
+      existing && String(existing.status || "") === "result"
+        ? Math.max(0, Number(existing.resultLockedAt || 0))
+        : 0;
+    const existingResultExpireAt =
+      existing && String(existing.status || "") === "result"
+        ? Math.max(0, Number(existing.resultExpireAt || 0))
+        : 0;
+    if (existingResultLockedAt > Number(normalized.resultLockedAt || 0)) {
+      normalized.resultLockedAt = existingResultLockedAt;
+    }
+    if (existingResultExpireAt > Number(normalized.resultExpireAt || 0)) {
+      normalized.resultExpireAt = existingResultExpireAt;
+    }
     if (!normalized.resultLockedAt) {
       normalized.resultLockedAt = ts;
     }
     if (!normalized.resultExpireAt) {
       normalized.resultExpireAt = Number(normalized.resultLockedAt || ts) + RESULT_KEEP_MS;
     }
-    normalized.expiresAt = Number(normalized.resultExpireAt || normalized.expiresAt || ts);
+    normalized.expiresAt = Math.max(
+      Number(normalized.resultExpireAt || 0),
+      Math.max(0, Number(normalized.expiresAt || 0)),
+      Math.max(0, Number(existing && existing.expiresAt ? existing.expiresAt : 0)),
+      ts
+    );
   } else {
     normalized.resultLockedAt = 0;
     normalized.resultExpireAt = 0;
@@ -566,7 +682,13 @@ exports.main = async (event) => {
       !!(event && (event.type === "timer" || event.TriggerName || event.triggerName || event.$trigger));
     if (isTimerTrigger) {
       const info = await maybeRunGlobalCleanup(true);
-      return { ok: true, timer: true, ran: !!info.ran, deleted: Number(info.deleted || 0) };
+      return {
+        ok: true,
+        timer: true,
+        ran: !!info.ran,
+        deleted: Number(info.deleted || 0),
+        archiveDeleted: Number(info.archiveDeleted || 0),
+      };
     }
 
     if (action === "getRoom") {
@@ -603,7 +725,12 @@ exports.main = async (event) => {
     if (action === "cleanupExpiredRooms") {
       const force = !!(event && event.force);
       const info = await maybeRunGlobalCleanup(force);
-      return { ok: true, ran: !!info.ran, deleted: Number(info.deleted || 0) };
+      return {
+        ok: true,
+        ran: !!info.ran,
+        deleted: Number(info.deleted || 0),
+        archiveDeleted: Number(info.archiveDeleted || 0),
+      };
     }
 
     if (action === "isRoomIdBlocked") {

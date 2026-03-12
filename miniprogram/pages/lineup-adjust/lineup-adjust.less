@@ -89,6 +89,7 @@ page {
   gap: 0;
   line-height: 1;
   white-space: nowrap;
+  transform: translateX(calc((var(--safe-pad-right, 0px) - var(--safe-pad-left, 0px)) / 2));
 }
 
 .match-nav-space {
@@ -209,6 +210,8 @@ page {
   font-variant-numeric: tabular-nums;
   font-feature-settings: "tnum" 1;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  line-height: 1;
+  vertical-align: baseline;
 }
 
 @keyframes passwordEyePulse {
@@ -587,26 +590,27 @@ page {
 
 .player-card {
   height: auto;
-  border-radius: 12px;
+  border-radius: 9999rpx;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
   overflow: hidden;
+  font-family: "BebasNeue", "Anton", sans-serif;
   transition: background-color 180ms ease, border-color 180ms ease, color 180ms ease;
 }
 
 .team-a .player-card {
   background-color: var(--page-bg);
   color: var(--team-a-color, #8a87d0);
-  border: 1px solid var(--team-a-color, #8a87d0);
+  border: 1.5px solid var(--team-a-color, #8a87d0);
 }
 
 .team-b .player-card {
   background-color: var(--page-bg);
   color: var(--team-b-color, #81c79e);
-  border: 1px solid var(--team-b-color, #81c79e);
+  border: 1.5px solid var(--team-b-color, #81c79e);
 }
 
 .team-a .player-card::before,
@@ -679,7 +683,8 @@ page {
 }
 
 .player-input-hidden {
-  opacity: 0.16;
+  opacity: 0 !important;
+  transition: none !important;
 }
 
 .player-edit-content {
@@ -698,14 +703,21 @@ page {
   display: inline-block;
   font-size: 26px;
   font-weight: 600;
+  font-family: "BebasNeue", "Anton", sans-serif;
   color: inherit;
   will-change: transform;
   transition: opacity 140ms ease, color 220ms ease;
 }
 
+.player-edit-content.player-input-hidden {
+  opacity: 0 !important;
+  transition: none !important;
+}
+
 .player-qmark {
   font-size: 26px;
   font-weight: 600;
+  font-family: "BebasNeue", "Anton", sans-serif;
   color: inherit;
   line-height: 1;
 }
@@ -744,14 +756,42 @@ page {
   display: inline-block;
   line-height: 1;
   padding-bottom: 2px;
-  border-bottom: 2px solid currentColor;
+  border-bottom: 3px solid currentColor;
 }
 
 .captain-num {
   display: inline-block;
   line-height: 1;
   padding-bottom: 2px;
-  border-bottom: 2px solid currentColor;
+  border-bottom: 3px solid currentColor;
+}
+
+.current-captain-num {
+  position: relative;
+  display: inline-block;
+}
+
+.current-captain-num::after {
+  content: "";
+  position: absolute;
+  right: 100%;
+  left: auto;
+  top: 0;
+  transform: translate(-10%, -4%);
+  width: 13px;
+  height: 13px;
+  background-color: currentColor;
+  opacity: 0.7;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27currentColor%27%3E%3Cpath%20d%3D%27M3.78307%202.82598L12%201L20.2169%202.82598C20.6745%202.92766%2021%203.33347%2021%203.80217V13.7889C21%2015.795%2019.9974%2017.6684%2018.3282%2018.7812L12%2023L5.6718%2018.7812C4.00261%2017.6684%203%2015.795%203%2013.7889V3.80217C3%203.33347%203.32553%202.92766%203.78307%202.82598ZM12%2013.5L14.9389%2015.0451L14.3776%2011.7725L16.7553%209.45492L13.4695%208.97746L12%206L10.5305%208.97746L7.24472%209.45492L9.62236%2011.7725L9.06107%2015.0451L12%2013.5Z%27%2F%3E%3C%2Fsvg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2024%2024%27%20fill%3D%27currentColor%27%3E%3Cpath%20d%3D%27M3.78307%202.82598L12%201L20.2169%202.82598C20.6745%202.92766%2021%203.33347%2021%203.80217V13.7889C21%2015.795%2019.9974%2017.6684%2018.3282%2018.7812L12%2023L5.6718%2018.7812C4.00261%2017.6684%203%2015.795%203%2013.7889V3.80217C3%203.33347%203.32553%202.92766%203.78307%202.82598ZM12%2013.5L14.9389%2015.0451L14.3776%2011.7725L16.7553%209.45492L13.4695%208.97746L12%206L10.5305%208.97746L7.24472%209.45492L9.62236%2011.7725L9.06107%2015.0451L12%2013.5Z%27%2F%3E%3C%2Fsvg%3E")
+    center / contain no-repeat;
+  pointer-events: none;
+  z-index: 2;
+}
+
+.current-captain-mark {
+  display: none !important;
 }
 
 .player-card.libero .captain-num {
@@ -763,6 +803,7 @@ page {
   left: 6px;
   bottom: 4px;
   font-size: 12px;
+  font-family: "BebasNeue", "Anton", sans-serif;
   color: inherit;
 }
 
@@ -770,8 +811,13 @@ page {
   position: absolute;
   right: 6px;
   top: 4px;
-  font-size: 12px;
-  color: inherit;
+  width: 13px;
+  height: 13px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2021.99%2022%27%20fill%3D%27currentColor%27%3E%3Cpath%20d%3D%27M22%2011.36A10.93%2010.93%200%200%200%2015.13%200.81a11%2011%200%200%200-10.75%2019l0.1%200.06A11%2011%200%200%200%2022%2011.74a1%201%200%200%200%200-0.38ZM10.6%2020a9%209%200%200%201-3.44-0.86%209.74%209.74%200%200%200%204.8-7.5A7.73%207.73%200%200%201%2015%2010.75C15.05%2012.46%2014.69%2017.18%2010.6%2020Zm0.49-10.15A8%208%200%200%201%208.84%207.34%2010.68%2010.68%200%200%201%2019%206.86c0.11%200.21%200.22%200.42%200.31%200.63a8.93%208.93%200%200%201%200.6%202.16A10.17%2010.17%200%200%200%2011.09%209.83ZM11%202a9.08%209.08%200%200%201%203.38%200.66A9.46%209.46%200%200%201%2016.62%204%2013.31%2013.31%200%200%200%208.07%205.48a7%207%200%200%201-0.13-2.92A8.72%208.72%200%200%201%2011%202ZM5.84%203.64a9.73%209.73%200%200%200%204.1%207.85%207.53%207.53%200%200%201-0.89%202.93A9.87%209.87%200%200%201%203.51%206%209%209%200%200%201%205.84%203.64ZM2.72%2014.52a8.94%208.94%200%200%201-0.58-5.07%2012.14%2012.14%200%200%200%205.71%206.6%207.55%207.55%200%200%201-2.67%201.8A9.08%209.08%200%200%201%202.72%2014.52Zm11.8%204.77h0l-0.35%200.13A13.71%2013.71%200%200%200%2017%2010.81%206.89%206.89%200%200%201%2019.94%2012%209%209%200%200%201%2014.52%2019.29Z%27%2F%3E%3C%2Fsvg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns%3D%27http%3A%2F%2Fwww.w3.org%2F2000%2Fsvg%27%20viewBox%3D%270%200%2021.99%2022%27%20fill%3D%27currentColor%27%3E%3Cpath%20d%3D%27M22%2011.36A10.93%2010.93%200%200%200%2015.13%200.81a11%2011%200%200%200-10.75%2019l0.1%200.06A11%2011%200%200%200%2022%2011.74a1%201%200%200%200%200-0.38ZM10.6%2020a9%209%200%200%201-3.44-0.86%209.74%209.74%200%200%200%204.8-7.5A7.73%207.73%200%200%201%2015%2010.75C15.05%2012.46%2014.69%2017.18%2010.6%2020Zm0.49-10.15A8%208%200%200%201%208.84%207.34%2010.68%2010.68%200%200%201%2019%206.86c0.11%200.21%200.22%200.42%200.31%200.63a8.93%208.93%200%200%201%200.6%202.16A10.17%2010.17%200%200%200%2011.09%209.83ZM11%202a9.08%209.08%200%200%201%203.38%200.66A9.46%209.46%200%200%201%2016.62%204%2013.31%2013.31%200%200%200%208.07%205.48a7%207%200%200%201-0.13-2.92A8.72%208.72%200%200%201%2011%202ZM5.84%203.64a9.73%209.73%200%200%200%204.1%207.85%207.53%207.53%200%200%201-0.89%202.93A9.87%209.87%200%200%201%203.51%206%209%209%200%200%201%205.84%203.64ZM2.72%2014.52a8.94%208.94%200%200%201-0.58-5.07%2012.14%2012.14%200%200%200%205.71%206.6%207.55%207.55%200%200%201-2.67%201.8A9.08%209.08%200%200%201%202.72%2014.52Zm11.8%204.77h0l-0.35%200.13A13.71%2013.71%200%200%200%2017%2010.81%206.89%206.89%200%200%201%2019.94%2012%209%209%200%200%201%2014.52%2019.29Z%27%2F%3E%3C%2Fsvg%3E")
+    center / contain no-repeat;
   opacity: 0;
   transform: translateY(-2px);
   transition: opacity 180ms ease, transform 180ms ease;
@@ -799,8 +845,38 @@ page {
 }
 
 .rotate-fly-item .num {
-  position: relative;
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  line-height: 1;
   z-index: 1;
+  transition: opacity 320ms linear;
+}
+
+.rotate-fly-item .num-old {
+  opacity: 1;
+  z-index: 2;
+}
+
+.rotate-fly-item .num-new {
+  opacity: 0;
+}
+
+.rotate-fly-item .num-old-fade {
+  opacity: 0;
+}
+
+.rotate-fly-item .num-new-fade {
+  opacity: 1;
+}
+
+.rotate-fly-item .num.libero-num {
+  color: var(--white-ink);
+}
+
+.rotate-fly-item .num.libero-num.captain-num {
+  border-bottom-color: var(--page-bg);
 }
 
 .rotate-fly-item.team-a {
@@ -917,7 +993,7 @@ page {
   display: inline-block;
   line-height: 1;
   padding-bottom: 2px;
-  border-bottom: 2px solid currentColor;
+  border-bottom: 3px solid currentColor;
   transform: translateY(1px) scale(1.09);
   transform-origin: center;
   transition: transform 180ms ease;
@@ -947,6 +1023,7 @@ page {
 
 .num-text {
   font-size: 26px;
+  font-family: "BebasNeue", "Anton", sans-serif;
   font-weight: 600;
   line-height: 1;
 }

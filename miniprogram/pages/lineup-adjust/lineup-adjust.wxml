@@ -18,7 +18,7 @@
       <view class="nav-fixed-gap"></view>
       <text>裁判团队编号 <text class="nav-code-mono">{{roomId}}</text></text>
       <view class="nav-fixed-gap"></view>
-      <text>密码 <text class="nav-code-mono">{{showRoomPassword ? roomPassword : '######'}}</text></text>
+      <text>密码 <text class="nav-code-mono">{{showRoomPassword ? roomPassword : '••••••'}}</text></text>
       <view
         class="password-eye-btn pressable {{passwordEyeFx ? 'fx' : ''}}"
         hover-class="tap-active"
@@ -85,7 +85,7 @@
                   always-embed="true"
                   hold-keyboard="true"
                   cursor-spacing="0"
-                  class="player-input pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-input' : ''}}"
+                  class="player-input pos-{{item.pos}} {{item.number === teamAInitialCaptainNo ? 'captain-input' : ''}}"
                   placeholder-class="player-placeholder"
                   type="number"
                   maxlength="2"
@@ -101,7 +101,8 @@
               />
               <view class="player-edit-content">
                 <text class="adjust-fake-caret before {{activeAdjustInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
-                <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamACaptainNo ? 'captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{activeAdjustInputKey !== item.inputKey && item.number === teamACaptainNo ? 'current-captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                <view wx:if="{{activeAdjustInputKey !== item.inputKey && item.number !== '?' && item.number === teamACaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !hideTeamAMainNumbers)}}" class="current-captain-mark"></view>
                 <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
                 <text class="adjust-fake-caret {{activeAdjustInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
               </view>
@@ -116,7 +117,7 @@
                   always-embed="true"
                   hold-keyboard="true"
                   cursor-spacing="0"
-                  class="player-input pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-input' : ''}} {{hideTeamAMainNumbers ? 'player-input-hidden' : ''}}"
+                  class="player-input pos-{{item.pos}} {{item.number === teamAInitialCaptainNo ? 'captain-input' : ''}} {{hideTeamAMainNumbers ? 'player-input-hidden' : ''}}"
                   placeholder-class="player-placeholder"
                   type="number"
                   maxlength="2"
@@ -132,12 +133,13 @@
                 />
                 <view class="player-edit-content {{hideTeamAMainNumbers ? 'player-input-hidden' : ''}}">
                   <text class="adjust-fake-caret before {{activeAdjustInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
-                  <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamACaptainNo ? 'captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                  <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{activeAdjustInputKey !== item.inputKey && item.number === teamACaptainNo ? 'current-captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                  <view wx:if="{{activeAdjustInputKey !== item.inputKey && item.number !== '?' && item.number === teamACaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !hideTeamAMainNumbers)}}" class="current-captain-mark"></view>
                   <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
                   <text class="adjust-fake-caret {{activeAdjustInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
                 </view>
                 <text class="sub-text">{{item.pos}}</text>
-                <text class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}">发</text>
+                <view class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}"></view>
               </view>
             </view>
           </view>
@@ -218,7 +220,7 @@
                   always-embed="true"
                   hold-keyboard="true"
                   cursor-spacing="0"
-                  class="player-input pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-input' : ''}} {{hideTeamBMainNumbers ? 'player-input-hidden' : ''}}"
+                  class="player-input pos-{{item.pos}} {{item.number === teamBInitialCaptainNo ? 'captain-input' : ''}} {{hideTeamBMainNumbers ? 'player-input-hidden' : ''}}"
                   placeholder-class="player-placeholder"
                   type="number"
                   maxlength="2"
@@ -234,12 +236,13 @@
                 />
                 <view class="player-edit-content {{hideTeamBMainNumbers ? 'player-input-hidden' : ''}}">
                   <text class="adjust-fake-caret before {{activeAdjustInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
-                  <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamBCaptainNo ? 'captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                  <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{activeAdjustInputKey !== item.inputKey && item.number === teamBCaptainNo ? 'current-captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                  <view wx:if="{{activeAdjustInputKey !== item.inputKey && item.number !== '?' && item.number === teamBCaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !hideTeamBMainNumbers)}}" class="current-captain-mark"></view>
                   <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
                   <text class="adjust-fake-caret {{activeAdjustInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
                 </view>
                 <text class="sub-text">{{item.pos}}</text>
-                <text class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}">发</text>
+                <view class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}"></view>
               </view>
             </view>
           </view>
@@ -250,7 +253,7 @@
                 always-embed="true"
                 hold-keyboard="true"
                 cursor-spacing="0"
-                class="player-input pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-input' : ''}}"
+                class="player-input pos-{{item.pos}} {{item.number === teamBInitialCaptainNo ? 'captain-input' : ''}}"
                 placeholder-class="player-placeholder"
                 type="number"
                 maxlength="2"
@@ -266,7 +269,8 @@
               />
               <view class="player-edit-content">
                 <text class="adjust-fake-caret before {{activeAdjustInputKey === item.inputKey && item.number === '?' ? 'active' : ''}}"></text>
-                <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamBCaptainNo ? 'captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                <text class="num {{activeAdjustInputKey !== item.inputKey && item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{activeAdjustInputKey !== item.inputKey && item.number === teamBCaptainNo ? 'current-captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+                <view wx:if="{{activeAdjustInputKey !== item.inputKey && item.number !== '?' && item.number === teamBCaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !hideTeamBMainNumbers)}}" class="current-captain-mark"></view>
                 <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
                 <text class="adjust-fake-caret {{activeAdjustInputKey === item.inputKey && item.number !== '?' ? 'active' : ''}}"></text>
               </view>
@@ -308,7 +312,16 @@
       class="rotate-fly-item team-a"
       style="{{item.style}}"
     >
-      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+      <block wx:if="{{item.fadeOldToNew}}">
+        <text
+          class="num num-old {{item.isInitialCaptain ? 'captain-num' : ''}} {{item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}} num-old-fade"
+        >{{item.number}}</text>
+        <text
+          class="num num-new {{item.isInitialCaptain ? 'captain-num' : ''}} {{item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.targetIsLibero ? 'libero-num' : ''}} num-new-fade"
+        >{{item.number}}</text>
+      </block>
+      <text wx:else class="num {{item.isInitialCaptain ? 'captain-num' : ''}} {{item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}}">{{item.number}}</text>
+      <view wx:if="{{item.isCurrentCaptain}}" class="current-captain-mark"></view>
     </view>
     <view
       wx:for="{{rotateFlyItemsB}}"
@@ -317,7 +330,16 @@
       class="rotate-fly-item team-b"
       style="{{item.style}}"
     >
-      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+      <block wx:if="{{item.fadeOldToNew}}">
+        <text
+          class="num num-old {{item.isInitialCaptain ? 'captain-num' : ''}} {{item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}} num-old-fade"
+        >{{item.number}}</text>
+        <text
+          class="num num-new {{item.isInitialCaptain ? 'captain-num' : ''}} {{item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.targetIsLibero ? 'libero-num' : ''}} num-new-fade"
+        >{{item.number}}</text>
+      </block>
+      <text wx:else class="num {{item.isInitialCaptain ? 'captain-num' : ''}} {{item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}}">{{item.number}}</text>
+      <view wx:if="{{item.isCurrentCaptain}}" class="current-captain-mark"></view>
     </view>
   </view>
 

@@ -15,6 +15,7 @@
     </view>
 
     <view class="result-score-panel">
+      <view class="result-sheet-btn pressable" hover-class="tap-active" bindtap="onScoreSheetTap">记分表</view>
       <text class="result-section-label">比局</text>
       <view class="result-compare-line">
         <text class="result-compare-left">{{teamAName}}</text>
@@ -69,4 +70,11 @@
       </view>
     </view>
   </view>
+  <canvas
+    type="2d"
+    id="scoreSheetCanvas"
+    canvas-id="scoreSheetCanvas"
+    class="score-sheet-canvas"
+    style="width: 640px; height: 635px;"
+  ></canvas>
 </view>

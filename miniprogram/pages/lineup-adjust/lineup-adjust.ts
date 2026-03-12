@@ -34,8 +34,11 @@ type RotateFlyItem = {
   id: string;
   team: TeamCode;
   number: string;
-  isCaptain: boolean;
+  isCurrentCaptain: boolean;
+  isInitialCaptain: boolean;
   isLibero: boolean;
+  targetIsLibero: boolean;
+  fadeOldToNew: boolean;
   style: string;
 };
 type ConnState = "online" | "reconnecting" | "offline";
@@ -586,6 +589,10 @@ Page({
   networkOnline: true as boolean,
   networkStatusHandler: null as null | ((res: { isConnected?: boolean }) => void),
   passwordAutoHideTimer: 0 as number,
+  lineupStateGraceUntil: 0 as number,
+  roomLoadInFlight: false as boolean,
+  roomLoadPending: false as boolean,
+  returningToMatch: false as boolean,
   data: {
     continueBtnFx: false,
     adjustHeadTitle: "确认下一局的球员配置",
@@ -856,12 +863,18 @@ Page({
 
   onLoad(options: Record<string, string>) {
     this.pageActive = true;
+    this.returningToMatch = false;
+    this.roomLoadInFlight = false;
+    this.roomLoadPending = false;
     this.sideSwitchActionQueue = Promise.resolve();
     this.rotateActionQueueA = Promise.resolve();
     this.rotateActionQueueB = Promise.resolve();
     const roomId = String((options && options.roomId) || "");
     const entry = String((options && options.entry) || "");
     this.isReconfigureEntry = entry === "reconfigure";
+    // 从比赛页跳入局间配置时，云端 watch/拉取可能有短暂延迟；
+    // 在宽限窗口内不立即跳回比赛页，先重试读取，避免页面来回闪。
+    this.lineupStateGraceUntil = Date.now() + 2600;
     if (!roomId) {
       wx.reLaunch({ url: "/pages/home/home" });
       return;
@@ -883,6 +896,7 @@ Page({
   onShow() {
     this.pageActive = true;
     this.leavingPage = false;
+    this.returningToMatch = false;
     setKeepScreenOnSafe(true);
     this.syncSafePadding();
     setTimeout(() => {
@@ -899,6 +913,8 @@ Page({
 
   onUnload() {
     this.pageActive = false;
+    this.roomLoadPending = false;
+    this.roomLoadInFlight = false;
     this.hideRoomPassword();
     this.persistLineupDraftNow().catch(() => {});
     this.clearContinueRouteTimer();
@@ -925,6 +941,8 @@ Page({
 
   onHide() {
     this.pageActive = false;
+    this.roomLoadPending = false;
+    this.roomLoadInFlight = false;
     this.hideRoomPassword();
     this.persistLineupDraftNow().catch(() => {});
     this.clearContinueRouteTimer();
@@ -951,6 +969,9 @@ Page({
     }
     this.roomMissingRetryTimer = setTimeout(() => {
       this.roomMissingRetryTimer = 0;
+      if (!this.pageActive || !this.isLineupPageTop()) {
+        return;
+      }
       this.loadRoom();
     }, Math.max(400, Number(delayMs) || 1200)) as unknown as number;
   },
@@ -1046,7 +1067,15 @@ Page({
   },
 
   handleRoomTemporarilyUnavailable() {
-    this.markConnectionIssue();
+    if (!this.pageActive || !this.isLineupPageTop()) {
+      if (this.roomMissingLoadingVisible) {
+        wx.hideLoading({
+          fail: () => {},
+        });
+        this.roomMissingLoadingVisible = false;
+      }
+      return;
+    }
     this.scheduleRoomMissingRetry(1200);
     this.verifyRoomMissingFromServer();
     const nowTs = Date.now();
@@ -1056,11 +1085,11 @@ Page({
     this.roomMissingToastAt = nowTs;
     this.roomMissingLoadingVisible = true;
     wx.showLoading({
-      title: "连接中，正在重试",
+      title: "重连中",
       mask: false,
       fail: () => {
         this.roomMissingLoadingVisible = false;
-        showToastHint("连接中，正在重试");
+        showToastHint("重连中");
       },
     });
   },
@@ -1310,6 +1339,9 @@ Page({
   },
 
   async loadRoom() {
+    if (!this.pageActive || !this.isLineupPageTop()) {
+      return;
+    }
     if (this.leavingPage || this.continueInFlight) {
       return;
     }
@@ -1320,130 +1352,146 @@ Page({
       this.rotateLoadPending = true;
       return;
     }
+    if (this.roomLoadInFlight) {
+      this.roomLoadPending = true;
+      return;
+    }
     const roomId = String(this.data.roomId || "");
     if (!roomId) {
       return;
     }
-    let room: any = null;
+    this.roomLoadInFlight = true;
     try {
-      room = await getRoomAsync(roomId);
-    } catch (_e) {
-      this.markConnectionIssue();
-      return;
-    }
-    if (!room) {
-      const fallback = this.lastRoomSnapshot || this.readCachedRoomSnapshot(roomId);
-      if (fallback) {
-        room = fallback;
-        this.handleRoomTemporarilyUnavailable();
-      } else {
-        this.handleRoomTemporarilyUnavailable();
+      let room: any = null;
+      try {
+        room = await getRoomAsync(roomId);
+      } catch (_e) {
         return;
       }
-    } else {
-      this.roomClosedHandled = false;
-      this.clearRoomMissingRetry();
-      if (this.roomMissingLoadingVisible) {
-        wx.hideLoading({
-          fail: () => {},
-        });
-        this.roomMissingLoadingVisible = false;
+      if (!room) {
+        const fallback = this.lastRoomSnapshot || this.readCachedRoomSnapshot(roomId);
+        if (fallback) {
+          room = fallback;
+          this.handleRoomTemporarilyUnavailable();
+        } else {
+          this.handleRoomTemporarilyUnavailable();
+          return;
+        }
+      } else {
+        this.roomClosedHandled = false;
+        this.clearRoomMissingRetry();
+        if (this.roomMissingLoadingVisible) {
+          wx.hideLoading({
+            fail: () => {},
+          });
+          this.roomMissingLoadingVisible = false;
+        }
+        this.lastRoomSnapshot = room;
+        this.writeCachedRoomSnapshot(room);
       }
       this.lastRoomSnapshot = room;
-      this.writeCachedRoomSnapshot(room);
-    }
-    this.lastRoomSnapshot = room;
-    const setEndState = (room.match && (room.match as any).setEndState) || null;
-    const setEndActive = !!(setEndState && setEndState.active);
-    const setEndPhase = String((setEndState && setEndState.phase) || "");
-    const setEndOwnerClientId = String((setEndState && setEndState.ownerClientId) || "");
-    const currentClientId = String(this.clientId || ensureClientId());
-    const roomOwnerClientId = getRoomOwnerClientId(room);
-    const roomOperatorClientId = getRoomOperatorClientId(room);
-    const controlRole = getRoomControlRole(room, currentClientId);
-    if (!setEndActive || setEndPhase !== "lineup" || setEndOwnerClientId !== currentClientId) {
-      if (!this.pageActive || !this.isLineupPageTop()) {
+      const setEndState = (room.match && (room.match as any).setEndState) || null;
+      const setEndActive = !!(setEndState && setEndState.active);
+      const setEndPhase = String((setEndState && setEndState.phase) || "");
+      const setEndOwnerClientId = String((setEndState && setEndState.ownerClientId) || "");
+      const currentClientId = String(this.clientId || ensureClientId());
+      const roomOwnerClientId = getRoomOwnerClientId(room);
+      const roomOperatorClientId = getRoomOperatorClientId(room);
+      const controlRole = getRoomControlRole(room, currentClientId);
+      if (!setEndActive || setEndPhase !== "lineup" || setEndOwnerClientId !== currentClientId) {
+        if (Date.now() < this.lineupStateGraceUntil) {
+          this.scheduleRoomMissingRetry(220);
+          return;
+        }
+        if (!this.pageActive || !this.isLineupPageTop()) {
+          return;
+        }
+        this.returnToMatchPage(roomId);
         return;
       }
-      if (!this.leavingPage) {
-        this.leavingPage = true;
-        this.stopRoomWatch();
-        wx.redirectTo({
-          url: "/pages/match/match?roomId=" + roomId,
-          fail: () => {
-            this.leavingPage = false;
-            this.startRoomWatch();
-          },
-        });
+
+      const roomSetNo = Math.max(1, Number(room.match && room.match.setNo) || 1);
+      const roomWins = Math.max(1, Number((room.settings && room.settings.wins) || 1));
+      if (this.inputEditing) {
+        return;
       }
-      return;
-    }
+      this.currentSetNo = roomSetNo;
+      const preset = getPresetLineupFromPreviousSet(room);
+      const roomTeamACaptain = normalizeNumberInput(room.teamA.captainNo || "");
+      const roomTeamBCaptain = normalizeNumberInput(room.teamB.captainNo || "");
+      const draft = (room.match && (room.match as any).lineupAdjustDraft) as LineupAdjustDraft | undefined;
+      const canUseDraft =
+        !!draft &&
+        Number(draft.setNo || 0) === roomSetNo &&
+        Array.isArray(draft.teamAPlayers) &&
+        Array.isArray(draft.teamBPlayers);
 
-    const roomSetNo = Math.max(1, Number(room.match && room.match.setNo) || 1);
-    const roomWins = Math.max(1, Number((room.settings && room.settings.wins) || 1));
-    if (this.inputEditing) {
-      return;
-    }
-    this.currentSetNo = roomSetNo;
-    const preset = getPresetLineupFromPreviousSet(room);
-    const roomTeamACaptain = normalizeNumberInput(room.teamA.captainNo || "");
-    const roomTeamBCaptain = normalizeNumberInput(room.teamB.captainNo || "");
-    const draft = (room.match && (room.match as any).lineupAdjustDraft) as LineupAdjustDraft | undefined;
-    const canUseDraft =
-      !!draft &&
-      Number(draft.setNo || 0) === roomSetNo &&
-      Array.isArray(draft.teamAPlayers) &&
-      Array.isArray(draft.teamBPlayers);
+      const initTeamAPlayers = canUseDraft ? clonePlayers(draft!.teamAPlayers || []) : preset.teamAPlayers;
+      const initTeamBPlayers = canUseDraft ? clonePlayers(draft!.teamBPlayers || []) : preset.teamBPlayers;
+      const initIsSwapped = canUseDraft ? !!draft!.isSwapped : preset.isSwapped;
+      const initServingTeam: TeamCode = canUseDraft ? (draft!.servingTeam === "B" ? "B" : "A") : preset.servingTeam;
+      // 永久队长只取创建房间时写入的 teamX.captainNo，不受中场临时草稿影响。
+      const initTeamAInitialCaptainNo = roomTeamACaptain;
+      const initTeamBInitialCaptainNo = roomTeamBCaptain;
+      const initTeamACaptainNo = canUseDraft
+        ? normalizeNumberInput(draft!.teamACaptainNo || roomTeamACaptain)
+        : roomTeamACaptain;
+      const initTeamBCaptainNo = canUseDraft
+        ? normalizeNumberInput(draft!.teamBCaptainNo || roomTeamBCaptain)
+        : roomTeamBCaptain;
+      const initTeamAManualCaptainChosen = canUseDraft ? !!draft!.teamAManualCaptainChosen : false;
+      const initTeamBManualCaptainChosen = canUseDraft ? !!draft!.teamBManualCaptainChosen : false;
 
-    const initTeamAPlayers = canUseDraft ? clonePlayers(draft!.teamAPlayers || []) : preset.teamAPlayers;
-    const initTeamBPlayers = canUseDraft ? clonePlayers(draft!.teamBPlayers || []) : preset.teamBPlayers;
-    const initIsSwapped = canUseDraft ? !!draft!.isSwapped : preset.isSwapped;
-    const initServingTeam: TeamCode = canUseDraft ? (draft!.servingTeam === "B" ? "B" : "A") : preset.servingTeam;
-    // 永久队长只取创建房间时写入的 teamX.captainNo，不受中场临时草稿影响。
-    const initTeamAInitialCaptainNo = roomTeamACaptain;
-    const initTeamBInitialCaptainNo = roomTeamBCaptain;
-    const initTeamACaptainNo = canUseDraft
-      ? normalizeNumberInput(draft!.teamACaptainNo || roomTeamACaptain)
-      : roomTeamACaptain;
-    const initTeamBCaptainNo = canUseDraft
-      ? normalizeNumberInput(draft!.teamBCaptainNo || roomTeamBCaptain)
-      : roomTeamBCaptain;
-    const initTeamAManualCaptainChosen = canUseDraft ? !!draft!.teamAManualCaptainChosen : false;
-    const initTeamBManualCaptainChosen = canUseDraft ? !!draft!.teamBManualCaptainChosen : false;
-
-    this.setData(
-      {
-        adjustHeadTitle: this.isReconfigureEntry ? "重新配置本局球员" : "确认下一局的球员配置",
-        adjustHeadHint: this.isReconfigureEntry
-          ? "已恢复本局此前配置，点击球员可继续调整"
-          : buildAdjustHeadHint(roomSetNo, roomWins),
-        isDecidingSet: isDecidingSetByRule(roomSetNo, roomWins),
-        teamAName: room.teamA.name || "甲",
-        teamBName: room.teamB.name || "乙",
-        roomPassword: String(room.password || ""),
-        teamAColor: room.teamA.color || TEAM_COLOR_OPTIONS[2].value,
-        teamBColor: room.teamB.color || TEAM_COLOR_OPTIONS[6].value,
-        teamARGB: hexToRgbTriplet(room.teamA.color || TEAM_COLOR_OPTIONS[2].value),
-        teamBRGB: hexToRgbTriplet(room.teamB.color || TEAM_COLOR_OPTIONS[6].value),
-        teamACaptainNo: initTeamACaptainNo,
-        teamBCaptainNo: initTeamBCaptainNo,
-        teamAInitialCaptainNo: initTeamAInitialCaptainNo,
-        teamBInitialCaptainNo: initTeamBInitialCaptainNo,
-        teamAManualCaptainChosen: initTeamAManualCaptainChosen,
-        teamBManualCaptainChosen: initTeamBManualCaptainChosen,
-        teamACaptainSource: "",
-        teamBCaptainSource: "",
-        servingTeam: initServingTeam,
-        activeAdjustInputKey: "",
-        roomOwnerClientId: roomOwnerClientId,
-        roomOperatorClientId: roomOperatorClientId,
-        controlRole: controlRole,
-        hasOperationAuthority: controlRole === "operator",
-      },
-      () => {
-        this.applyDisplay(initTeamAPlayers, initTeamBPlayers, initIsSwapped);
+      this.setData(
+        {
+          adjustHeadTitle: this.isReconfigureEntry ? "重新配置本局球员" : "确认下一局的球员配置",
+          adjustHeadHint: this.isReconfigureEntry
+            ? "已恢复本局此前配置，点击球员可继续调整"
+            : buildAdjustHeadHint(roomSetNo, roomWins),
+          isDecidingSet: isDecidingSetByRule(roomSetNo, roomWins),
+          teamAName: room.teamA.name || "甲",
+          teamBName: room.teamB.name || "乙",
+          roomPassword: String(room.password || ""),
+          teamAColor: room.teamA.color || TEAM_COLOR_OPTIONS[2].value,
+          teamBColor: room.teamB.color || TEAM_COLOR_OPTIONS[6].value,
+          teamARGB: hexToRgbTriplet(room.teamA.color || TEAM_COLOR_OPTIONS[2].value),
+          teamBRGB: hexToRgbTriplet(room.teamB.color || TEAM_COLOR_OPTIONS[6].value),
+          teamACaptainNo: initTeamACaptainNo,
+          teamBCaptainNo: initTeamBCaptainNo,
+          teamAInitialCaptainNo: initTeamAInitialCaptainNo,
+          teamBInitialCaptainNo: initTeamBInitialCaptainNo,
+          teamAManualCaptainChosen: initTeamAManualCaptainChosen,
+          teamBManualCaptainChosen: initTeamBManualCaptainChosen,
+          teamACaptainSource: "",
+          teamBCaptainSource: "",
+          servingTeam: initServingTeam,
+          activeAdjustInputKey: "",
+          roomOwnerClientId: roomOwnerClientId,
+          roomOperatorClientId: roomOperatorClientId,
+          controlRole: controlRole,
+          hasOperationAuthority: controlRole === "operator",
+        },
+        () => {
+          this.applyDisplay(initTeamAPlayers, initTeamBPlayers, initIsSwapped);
+        }
+      );
+    } finally {
+      this.roomLoadInFlight = false;
+      if (
+        this.roomLoadPending &&
+        !this.leavingPage &&
+        !this.continueInFlight &&
+        !this.inputEditing &&
+        !this.sideSwitchInFlight &&
+        this.sideSwitchPendingCount <= 0 &&
+        !this.rotateActionInFlight
+      ) {
+        this.roomLoadPending = false;
+        void this.loadRoom();
+      } else {
+        this.roomLoadPending = false;
       }
-    );
+    }
   },
 
   onPlayerInputFocus(e: WechatMiniprogram.InputFocus) {
@@ -1691,36 +1739,54 @@ Page({
     if (!this.pageActive || !this.isLineupPageTop()) {
       return;
     }
+    if (this.returningToMatch) {
+      return;
+    }
     const id = String(roomId || "");
     if (!id) {
       wx.reLaunch({ url: "/pages/home/home" });
       return;
     }
-    const url = "/pages/match/match?roomId=" + id;
-    const pages = getCurrentPages();
-    const prev = pages.length > 1 ? pages[pages.length - 2] : null;
-    const prevRoute = String((prev && (prev as any).route) || "");
-    const prevRoomId = String((prev && (prev as any).data && (prev as any).data.roomId) || "");
-    if (prevRoute === "pages/match/match" && (!prevRoomId || prevRoomId === id)) {
-      wx.navigateBack({
-        delta: 1,
+    const doRedirect = () => {
+      const url = "/pages/match/match?roomId=" + id;
+      wx.redirectTo({
+        url: url,
         fail: () => {
-          wx.redirectTo({
-            url: url,
-            fail: () => {
-              wx.reLaunch({ url: url });
-            },
-          });
+          this.returningToMatch = false;
+          this.leavingPage = false;
+          this.startRoomWatch();
+          wx.reLaunch({ url: url });
+        },
+      });
+    };
+    const pages = getCurrentPages();
+    const topIndex = pages.length - 1;
+    let targetIndex = -1;
+    for (let i = topIndex - 1; i >= 0; i -= 1) {
+      const page: any = pages[i] || {};
+      if (String(page.route || "") !== "pages/match/match") {
+        continue;
+      }
+      const optRoomId = String((page.options && page.options.roomId) || "");
+      if (!optRoomId || optRoomId === id) {
+        targetIndex = i;
+        break;
+      }
+    }
+    this.returningToMatch = true;
+    this.leavingPage = true;
+    this.stopRoomWatch();
+    if (targetIndex >= 0) {
+      const delta = Math.max(1, topIndex - targetIndex);
+      wx.navigateBack({
+        delta: delta,
+        fail: () => {
+          doRedirect();
         },
       });
       return;
     }
-    wx.redirectTo({
-      url: url,
-      fail: () => {
-        wx.reLaunch({ url: url });
-      },
-    });
+    doRedirect();
   },
 
   async onContinueTap() {
@@ -1864,12 +1930,7 @@ Page({
   },
 
   onBackTap() {
-    const pages = getCurrentPages();
-    if (pages.length > 1) {
-      wx.navigateBack({ delta: 1 });
-      return;
-    }
-    wx.reLaunch({ url: "/pages/home/home" });
+    this.returnToMatchPage(String(this.data.roomId || ""));
   },
 
   onBackPress() {
@@ -1912,15 +1973,31 @@ Page({
         const beforeRects = await this.measureTeamMainPosRectsStable(team, 1000);
         const beforeNoMap = this.getTeamMainNumberMap(team);
         if (team === "A") {
+          this.setData({ hideTeamAMainNumbers: true });
           const rotated = rotateTeamByRule(this.data.teamAPlayers);
           this.applyDisplay(rotated, this.data.teamBPlayers, this.data.isSwapped);
           this.schedulePersistLineupDraft();
-          await this.playTeamRotateMotion("A", beforeRects, beforeNoMap, this.data.teamACaptainNo, "forward");
+          await this.playTeamRotateMotion(
+            "A",
+            beforeRects,
+            beforeNoMap,
+            this.data.teamACaptainNo,
+            this.data.teamAInitialCaptainNo,
+            "forward"
+          );
         } else {
+          this.setData({ hideTeamBMainNumbers: true });
           const rotated = rotateTeamByRule(this.data.teamBPlayers);
           this.applyDisplay(this.data.teamAPlayers, rotated, this.data.isSwapped);
           this.schedulePersistLineupDraft();
-          await this.playTeamRotateMotion("B", beforeRects, beforeNoMap, this.data.teamBCaptainNo, "forward");
+          await this.playTeamRotateMotion(
+            "B",
+            beforeRects,
+            beforeNoMap,
+            this.data.teamBCaptainNo,
+            this.data.teamBInitialCaptainNo,
+            "forward"
+          );
         }
       } finally {
         this.rotateActionInFlight = false;
@@ -2247,6 +2324,7 @@ Page({
     beforeRects: TeamRectMap,
     beforeNoMap: TeamMainNoMap,
     captainNo: string,
+    initialCaptainNo: string,
     directionHint: RotateDirectionHint = ""
   ) {
     const clearTeamMotion = () => {
@@ -2273,7 +2351,8 @@ Page({
       sourcePos: MainPosition;
       fromRect: TeamPosRect;
       number: string;
-      isCaptain: boolean;
+      isCurrentCaptain: boolean;
+      isInitialCaptain: boolean;
       isLibero: boolean;
       id: string;
       baseStyle: string;
@@ -2284,7 +2363,10 @@ Page({
         return;
       }
       const number = beforeNoMap[sourcePos] || "?";
-      const isCaptain = normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
+      const isCurrentCaptain =
+        normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(captainNo);
+      const isInitialCaptain =
+        normalizeNumberInput(number) !== "" && normalizeNumberInput(number) === normalizeNumberInput(initialCaptainNo);
       const isLibero = normalizeNumberInput(number) !== "" && teamLiberoSet.has(normalizeNumberInput(number));
       const baseStyle =
         "left:" +
@@ -2300,7 +2382,8 @@ Page({
         sourcePos,
         fromRect,
         number,
-        isCaptain,
+        isCurrentCaptain,
+        isInitialCaptain,
         isLibero,
         id: team + "-" + sourcePos + "-" + String(Date.now()) + "-" + String(startSeeds.length),
         baseStyle,
@@ -2314,8 +2397,11 @@ Page({
       id: seed.id,
       team,
       number: seed.number,
-      isCaptain: seed.isCaptain,
+      isCurrentCaptain: seed.isCurrentCaptain,
+      isInitialCaptain: seed.isInitialCaptain,
       isLibero: seed.isLibero,
+      targetIsLibero: seed.isLibero,
+      fadeOldToNew: false,
       style: seed.baseStyle + "transform:translate(0,0);transition:none;",
     }));
     if (team === "A") {
@@ -2374,12 +2460,19 @@ Page({
       const toRect = afterRects[targetPos] || seed.fromRect;
       const dx = toRect.left - seed.fromRect.left;
       const dy = toRect.top - seed.fromRect.top;
+      const targetNo = normalizeNumberInput(afterNoMap[targetPos] || "");
+      const targetIsLibero = targetNo ? teamLiberoSet.has(targetNo) : seed.isLibero;
       endItems.push({
         id: seed.id,
         team,
         number: seed.number,
-        isCaptain: seed.isCaptain,
+        isCurrentCaptain: seed.isCurrentCaptain,
+        isInitialCaptain: seed.isInitialCaptain,
         isLibero: seed.isLibero,
+        targetIsLibero: targetIsLibero,
+        // Only cross-fade when card role changes (libero <-> normal).
+        // Pure rotation keeps single-layer text to avoid ghosting.
+        fadeOldToNew: targetIsLibero !== seed.isLibero,
         style:
           seed.baseStyle +
           "transform:translate(" +

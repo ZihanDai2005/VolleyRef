@@ -124,6 +124,12 @@ export interface MatchState {
   };
   lineupAdjustDraft?: any;
   setStartLineupsBySet?: Record<string, SetStartLineupSnapshot>;
+  flowMode?: "normal" | "edit_players" | "between_sets";
+  flowReturnState?: "prestart" | "playing";
+  flowUpdatedAt?: number;
+  preStartCaptainConfirmed?: boolean;
+  preStartCaptainConfirmSetNo?: number;
+  currentOpId?: string;
 }
 
 export interface RoomState {
@@ -162,21 +168,21 @@ const CLOUD_PULL_INTERVAL_MS = 15000;
 const ROOM_API_FUNCTION = "roomApi";
 const ROOM_API_TIMEOUT_MS = 10000;
 const POSITIONS: Position[] = ["I", "II", "III", "IV", "V", "VI", "L1", "L2"];
-const DEFAULT_TEAM_A_COLOR = "#6C63BE";
-const DEFAULT_TEAM_B_COLOR = "#66B97A";
+const DEFAULT_TEAM_A_COLOR = "#BEC5CC";
+const DEFAULT_TEAM_B_COLOR = "#707A8A";
 export const TEAM_COLOR_OPTIONS: Array<{ label: string; value: string }> = [
-  { label: "浅灰", value: "#9FA8B4" },
-  { label: "深灰", value: "#4F5561" },
-  { label: "紫色", value: "#6C63BE" },
-  { label: "深蓝", value: "#3E6FB6" },
-  { label: "浅蓝", value: "#6FAEDC" },
-  { label: "青色", value: "#3FA89C" },
-  { label: "浅绿", value: "#66B97A" },
-  { label: "深绿", value: "#2F6F4A" },
-  { label: "黄色", value: "#E0BC45" },
-  { label: "粉色", value: "#E5A7BE" },
-  { label: "橙色", value: "#E28A47" },
-  { label: "红色", value: "#C95A5A" }
+  { label: "浅灰", value: "#BEC5CC" },
+  { label: "深灰", value: "#707A8A" },
+  { label: "紫色", value: "#837AE5" },
+  { label: "深蓝", value: "#4C87DE" },
+  { label: "浅蓝", value: "#7EC5FB" },
+  { label: "青色", value: "#4DD1C2" },
+  { label: "浅绿", value: "#86DB8A" },
+  { label: "深绿", value: "#409965" },
+  { label: "黄色", value: "#FCC947" },
+  { label: "粉色", value: "#FFBBD5" },
+  { label: "橙色", value: "#FD9D51" },
+  { label: "红色", value: "#EF6B6A" }
 ];
 
 const cloudPullingMap: Record<string, boolean> = {};
@@ -607,6 +613,28 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   }
   base.match.isFinished = !!(input.match && (input.match as any).isFinished);
   (base.match as any).lastActionOpId = String((input.match && (input.match as any).lastActionOpId) || "");
+  (base.match as any).currentOpId = String((input.match && (input.match as any).currentOpId) || "");
+  (base.match as any).flowMode =
+    input.match && ((input.match as any).flowMode === "edit_players" || (input.match as any).flowMode === "between_sets")
+      ? (input.match as any).flowMode
+      : "normal";
+  (base.match as any).flowReturnState =
+    input.match && (input.match as any).flowReturnState === "prestart"
+      ? "prestart"
+      : input.match && (input.match as any).flowReturnState === "playing"
+        ? "playing"
+        : "";
+  (base.match as any).flowUpdatedAt = Math.max(
+    0,
+    Number(input.match && (input.match as any).flowUpdatedAt) || 0
+  );
+  (base.match as any).preStartCaptainConfirmed = !!(
+    input.match && (input.match as any).preStartCaptainConfirmed
+  );
+  (base.match as any).preStartCaptainConfirmSetNo = Math.max(
+    0,
+    Number(input.match && (input.match as any).preStartCaptainConfirmSetNo) || 0
+  );
 
   const rawUndoStack = input.match && (input.match as any).undoStack;
   if (Array.isArray(rawUndoStack)) {
@@ -1463,7 +1491,7 @@ export async function leaveRoomAsync(roomId: string, clientId: string): Promise<
 export async function updateRoomAsync(
   roomId: string,
   updater: (room: RoomState) => RoomState,
-  options?: { awaitCloud?: boolean }
+  options?: { awaitCloud?: boolean; requireCloudAck?: boolean }
 ): Promise<RoomState | null> {
   let baseRoom = getRoom(roomId);
   try {
@@ -1491,13 +1519,22 @@ export async function updateRoomAsync(
   next.updatedAt = now();
   saveRoomToStore(next);
 
-  if (options && options.awaitCloud && canUseCloud()) {
+  const awaitCloud = !!(options && options.awaitCloud);
+  const requireCloudAck = !!(options && options.requireCloudAck);
+
+  if (awaitCloud && canUseCloud()) {
     try {
       const res = await callRoomApi<{ room?: any }>("upsertRoom", { room: next });
       if (res && res.room) {
         return cloneRoom(saveCloudRoomRaw(res.room));
       }
+      if (requireCloudAck) {
+        return null;
+      }
     } catch (e) {}
+    if (requireCloudAck) {
+      return null;
+    }
   }
 
   void callRoomApi<{ room?: any }>("upsertRoom", { room: next })

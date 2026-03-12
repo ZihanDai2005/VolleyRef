@@ -30,7 +30,7 @@
       </view>
       <view class="create-head-input-wrap create-head-input-wrap-readonly">
         <view class="create-head-input create-head-input-display create-head-input-readonly">
-          <text class="create-head-input-display-text">{{roomIdSpaced}}</text>
+          <text class="create-head-input-display-text room-pass-display-text">{{roomIdSpaced}}</text>
         </view>
       </view>
 
@@ -49,7 +49,7 @@
           bindinput="onInputChange"
         />
         <view class="create-head-input create-head-input-display">
-          <text class="create-head-input-display-text">{{roomPasswordSpaced}}</text>
+          <text class="create-head-input-display-text room-pass-display-text">{{roomPasswordSpaced}}</text>
           <text class="fake-caret create-password-caret {{focusCreatePasswordInput && passwordFocused && roomPassword.length < 6 ? 'active' : ''}}"></text>
         </view>
       </view>
@@ -64,7 +64,14 @@
         bindchange="onMatchModeChange"
       >
         <view class="create-head-input-wrap create-head-mode-wrap">
-          <text class="create-head-input create-head-input-mode">{{matchModes[matchModeIndex].label}}</text>
+          <view class="create-head-input create-head-input-mode">
+            <text
+              wx:for="{{matchModeChars}}"
+              wx:key="index"
+              class="match-mode-char {{item.kind}}"
+              style="transform: translateY({{item.offsetY}}rpx);"
+            >{{item.char}}</text>
+          </view>
           <view class="create-head-mode-arrow"></view>
         </view>
       </picker>
@@ -92,6 +99,7 @@
               bindtap="onTeamColorSelect"
             >
               <view class="color-dot" style="background-color: {{item.value}};"></view>
+              <view wx:if="{{teamBColor === item.value}}" class="color-dot-slash"></view>
             </view>
           </view>
         </view>
@@ -112,7 +120,9 @@
             <view class="side-toggle-btn switch-btn pressable {{teamASide === 'A' ? 'on' : ''}} {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
               <view class="draw-toggle-content">
                 <view class="side-toggle-icon draw-toggle-icon"></view>
-                <text class="toggle-text draw-toggle-text">{{teamASide === 'A' ? 'A场区' : 'B场区'}}</text>
+                <text class="toggle-text draw-toggle-text">
+                  <text class="draw-ab-letter">{{teamASide === 'A' ? 'A' : 'B'}}</text>场区
+                </text>
               </view>
             </view>
           </view>
@@ -196,10 +206,10 @@
       </view>
 
       <view class="create-head-captain-row">
-        <text class="create-head-hint">队长号码</text>
+        <text class="create-head-hint">球队队长号码</text>
         <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamACaptainNo">
           <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
-            class="create-head-input-native"
+            class="create-head-input-native create-captain-input-native"
             type="number"
             maxlength="2"
             value="{{teamACaptainNo}}"
@@ -211,7 +221,7 @@
             bindblur="onCaptainNoBlur"
           />
           <view class="create-head-input create-team-input-display">
-            <text class="create-team-input-display-text">{{teamACaptainNo}}</text>
+            <text class="create-team-input-display-text create-captain-input-display-text">{{teamACaptainNo}}</text>
             <text class="fake-caret create-password-caret {{activeCreateInputKey === 'teamACaptainNo' ? 'active' : ''}}"></text>
           </view>
         </view>
@@ -237,6 +247,7 @@
               bindtap="onTeamColorSelect"
             >
               <view class="color-dot" style="background-color: {{item.value}};"></view>
+              <view wx:if="{{teamAColor === item.value}}" class="color-dot-slash"></view>
             </view>
           </view>
         </view>
@@ -257,7 +268,9 @@
             <view class="side-toggle-btn switch-btn pressable {{teamASide === 'B' ? 'on' : ''}} {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
               <view class="draw-toggle-content">
                 <view class="side-toggle-icon draw-toggle-icon"></view>
-                <text class="toggle-text draw-toggle-text">{{teamASide === 'B' ? 'A场区' : 'B场区'}}</text>
+                <text class="toggle-text draw-toggle-text">
+                  <text class="draw-ab-letter">{{teamASide === 'B' ? 'A' : 'B'}}</text>场区
+                </text>
               </view>
             </view>
           </view>
@@ -341,10 +354,10 @@
       </view>
 
       <view class="create-head-captain-row">
-        <text class="create-head-hint">队长号码</text>
+        <text class="create-head-hint">球队队长号码</text>
         <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamBCaptainNo">
           <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
-            class="create-head-input-native"
+            class="create-head-input-native create-captain-input-native"
             type="number"
             maxlength="2"
             value="{{teamBCaptainNo}}"
@@ -356,7 +369,7 @@
             bindblur="onCaptainNoBlur"
           />
           <view class="create-head-input create-team-input-display">
-            <text class="create-team-input-display-text">{{teamBCaptainNo}}</text>
+            <text class="create-team-input-display-text create-captain-input-display-text">{{teamBCaptainNo}}</text>
             <text class="fake-caret create-password-caret {{activeCreateInputKey === 'teamBCaptainNo' ? 'active' : ''}}"></text>
           </view>
         </view>
@@ -378,13 +391,13 @@
           <view class="serve-toggle-icon {{servingTeam === 'A' ? 'serve' : 'receive'}}"></view>
         </view>
         <view class="side-toggle-btn switch-btn pressable {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
-          <text>{{teamASide === 'A' ? 'A场区' : 'B场区'}}</text>
+          <text><text class="draw-ab-letter">{{teamASide === 'A' ? 'A' : 'B'}}</text>场区</text>
           <view class="side-toggle-icon"></view>
         </view>
       </view>
     </view>
 
-    <view class="lineup-grid">
+    <view class="lineup-grid team-a">
       <view class="main-col">
         <view class="player-row row-two" wx:for="{{teamAMainGrid}}" wx:for-item="row" wx:key="index">
           <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
@@ -429,13 +442,13 @@
           <view class="serve-toggle-icon {{servingTeam === 'B' ? 'serve' : 'receive'}}"></view>
         </view>
         <view class="side-toggle-btn switch-btn pressable {{sidePulse ? 'switch-pulse' : ''}}" hover-class="tap-active" bindtap="onToggleTeamSide">
-          <text>{{teamASide === 'B' ? 'A场区' : 'B场区'}}</text>
+          <text><text class="draw-ab-letter">{{teamASide === 'B' ? 'A' : 'B'}}</text>场区</text>
           <view class="side-toggle-icon"></view>
         </view>
       </view>
     </view>
 
-    <view class="lineup-grid">
+    <view class="lineup-grid team-b">
       <view class="main-col">
         <view class="player-row row-two" wx:for="{{teamBMainGrid}}" wx:for-item="row" wx:key="index">
           <view class="player-card" wx:for="{{row}}" wx:for-item="item" wx:key="pos">
@@ -483,46 +496,4 @@
   </view>
   <button class="save-btn" wx:if="{{!createMode}}" bindtap="onSaveAndStart">进入比赛</button>
 
-  <view class="captain-picker-mask" wx:if="{{showCaptainPicker}}" catchtouchmove="noop" bindtap="onCaptainPickerCancel">
-    <view class="captain-picker-panel" catchtap="noop">
-      <view class="captain-picker-title">{{captainPickerTitle}}</view>
-      <view class="captain-picker-tip">队长不在场上，请选择一位球员作为场上队长</view>
-      <view class="lineup-grid captain-picker-grid {{captainPickerTeam === 'A' ? 'team-a' : 'team-b'}}">
-        <view class="main-col">
-          <view class="player-row row-two" wx:for="{{captainPickerMainGrid}}" wx:key="index" wx:for-item="row">
-            <view
-              class="player-card captain-option-card {{captainPickerSelectedNo === item.number ? 'captain-option-selected' : ''}} {{item.number === '?' ? 'captain-option-disabled' : ''}}"
-              wx:for="{{row}}"
-              wx:key="pos"
-              wx:for-item="item"
-              data-number="{{item.number}}"
-              hover-class="tap-active"
-              bindtap="onCaptainPickerSelect"
-            >
-              <text class="num-text">{{item.number}}</text>
-              <text class="sub-text">{{item.pos}}</text>
-            </view>
-          </view>
-        </view>
-        <view class="libero-col">
-          <view
-            class="player-card libero captain-option-card {{captainPickerSelectedNo === item.number ? 'captain-option-selected' : ''}} {{item.number === '?' ? 'captain-option-disabled' : ''}}"
-            wx:for="{{captainPickerLibero}}"
-            wx:key="pos"
-            wx:for-item="item"
-            data-number="{{item.number}}"
-            hover-class="tap-active"
-            bindtap="onCaptainPickerSelect"
-          >
-            <text class="num-text">{{item.number}}</text>
-            <text class="sub-text">{{item.pos}}</text>
-          </view>
-        </view>
-      </view>
-      <view class="captain-picker-actions">
-        <button class="captain-picker-btn cancel" bindtap="onCaptainPickerCancel">取消</button>
-        <button class="captain-picker-btn confirm" bindtap="onCaptainPickerConfirm">确定</button>
-      </view>
-    </view>
-  </view>
 </view>

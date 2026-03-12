@@ -200,7 +200,7 @@
 .create-head-input-wrap {
   width: 100%;
   height: 108rpx;
-  border-radius: 20rpx;
+  border-radius: 9999rpx;
   background: var(--surface);
   border: 0;
   box-shadow: inset 0 0 0 2rpx var(--line);
@@ -217,6 +217,7 @@
   height: 100%;
   display: flex;
   align-items: center;
+  line-height: 108rpx;
   font-size: 50rpx;
   letter-spacing: 12rpx;
   font-variant-numeric: tabular-nums;
@@ -224,7 +225,7 @@
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
   color: var(--text-primary);
   text-align: left;
-  padding: 0 30rpx;
+  padding: 0 30rpx 0 45rpx;
   box-sizing: border-box;
   background: transparent;
 }
@@ -251,15 +252,42 @@
 }
 
 .create-team-input-display-text {
-  display: block;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  line-height: 108rpx;
   max-width: 100%;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
 }
 
+.create-captain-input-display-text {
+  font-family: "BebasNeue", "Anton", sans-serif;
+  letter-spacing: 4rpx;
+  line-height: 108rpx;
+}
+
+.create-captain-input-native {
+  font-family: "BebasNeue", "Anton", sans-serif;
+  letter-spacing: 4rpx;
+  line-height: 108rpx;
+}
+
 .create-head-input-display-text {
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  line-height: 108rpx;
   white-space: nowrap;
+}
+
+.room-pass-display-text {
+  font-family: "BebasNeue", "Anton", sans-serif;
+  display: inline-flex;
+  align-items: center;
+  height: 100%;
+  line-height: 108rpx;
 }
 
 .fake-caret {
@@ -290,7 +318,33 @@
 }
 
 .create-head-input-mode {
+  display: flex;
+  align-items: center;
+  height: 100%;
+  line-height: 1;
   letter-spacing: 0;
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+}
+
+.match-mode-char {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+  white-space: pre;
+  font-size: 50rpx;
+}
+
+.match-mode-char.text {
+  font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
+  margin: 0 1rpx;
+}
+
+.match-mode-char.digit {
+  font-family: "BebasNeue", "Anton", sans-serif;
+  font-size: 52rpx;
+  min-width: 22rpx;
+  margin: 0 1rpx;
 }
 
 .create-head-mode-arrow {
@@ -327,9 +381,13 @@
   margin-left: 6rpx;
 }
 
-.create-head-input,
+.create-head-input {
+  pointer-events: none;
+}
+
 .player-edit-content {
   pointer-events: none;
+  font-family: "BebasNeue", "Anton", sans-serif;
 }
 
 .player-fake-caret {
@@ -374,7 +432,7 @@
   letter-spacing: 0;
   color: var(--text-primary);
   text-align: left;
-  padding: 0 30rpx;
+  padding: 0 30rpx 0 45rpx;
   box-sizing: border-box;
   background: transparent;
 }
@@ -476,6 +534,10 @@
   white-space: nowrap;
 }
 
+.draw-ab-letter {
+  font-family: inherit;
+}
+
 .create-head-draw-switches .draw-toggle-icon {
   width: var(--draw-icon-size);
   height: var(--draw-icon-size);
@@ -547,7 +609,7 @@
 .create-head-lineup-grid.team-a .player-card {
   background-color: var(--page-bg);
   color: var(--team-a-color, #8a87d0);
-  border: 1px solid var(--team-a-color, #8a87d0);
+  border: 1.5px solid var(--team-a-color, #8a87d0);
 }
 
 .create-head-lineup-grid.team-a .player-card.libero {
@@ -559,7 +621,7 @@
 .create-head-lineup-grid.team-b .player-card {
   background-color: var(--page-bg);
   color: var(--team-b-color, #8dc8a5);
-  border: 1px solid var(--team-b-color, #8dc8a5);
+  border: 1.5px solid var(--team-b-color, #8dc8a5);
 }
 
 .create-head-lineup-grid.team-b .player-card.libero {
@@ -680,26 +742,22 @@
   width: 24rpx;
   height: 24rpx;
   background-color: currentColor;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 2C17.52 2 22 6.48 22 12C22 17.52 17.52 22 12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2ZM12 9.5C10.6193 9.5 9.5 10.6193 9.5 12C9.5 13.3807 10.6193 14.5 12 14.5C13.3807 14.5 14.5 13.3807 14.5 12C14.5 10.6193 13.3807 9.5 12 9.5Z'/%3E%3C/svg%3E")
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C15.2713 2 18.1757 3.57078 20.0002 5.99923L17.2909 5.99931C15.8807 4.75499 14.0285 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C14.029 20 15.8816 19.2446 17.2919 17.9998L20.0009 17.9998C18.1765 20.4288 15.2717 22 12 22ZM19 16V13H11V11H19V8L24 12L19 16Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 2C17.52 2 22 6.48 22 12C22 17.52 17.52 22 12 22C6.48 22 2 17.52 2 12C2 6.48 6.48 2 12 2ZM12 9.5C10.6193 9.5 9.5 10.6193 9.5 12C9.5 13.3807 10.6193 14.5 12 14.5C13.3807 14.5 14.5 13.3807 14.5 12C14.5 10.6193 13.3807 9.5 12 9.5Z'/%3E%3C/svg%3E")
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C15.2713 2 18.1757 3.57078 20.0002 5.99923L17.2909 5.99931C15.8807 4.75499 14.0285 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20C14.029 20 15.8816 19.2446 17.2919 17.9998L20.0009 17.9998C18.1765 20.4288 15.2717 22 12 22ZM19 16V13H11V11H19V8L24 12L19 16Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
 
 .serve-toggle-icon.receive {
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 9.5C13.3807 9.5 14.5 10.6193 14.5 12 14.5 13.3807 13.3807 14.5 12 14.5 10.6193 14.5 9.5 13.3807 9.5 12 9.5 10.6193 10.6193 9.5 12 9.5ZM12 2C17.5228 2 22 6.47715 22 12 22 17.5228 17.5228 22 12 22 6.47715 22 2 17.5228 2 12 2 6.47715 6.47715 2 12 2ZM12 4C7.58172 4 4 7.58172 4 12 4 16.4183 7.58172 20 12 20 16.4183 20 20 16.4183 20 12 20 7.58172 16.4183 4 12 4Z'/%3E%3C/svg%3E")
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M5 11H13V13H5V16L0 12L5 8V11ZM3.99927 18H6.70835C8.11862 19.2447 9.97111 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C9.97111 4 8.11862 4.75527 6.70835 6H3.99927C5.82368 3.57111 8.72836 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C8.72836 22 5.82368 20.4289 3.99927 18Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 9.5C13.3807 9.5 14.5 10.6193 14.5 12 14.5 13.3807 13.3807 14.5 12 14.5 10.6193 14.5 9.5 13.3807 9.5 12 9.5 10.6193 10.6193 9.5 12 9.5ZM12 2C17.5228 2 22 6.47715 22 12 22 17.5228 17.5228 22 12 22 6.47715 22 2 17.5228 2 12 2 6.47715 6.47715 2 12 2ZM12 4C7.58172 4 4 7.58172 4 12 4 16.4183 7.58172 20 12 20 16.4183 20 20 16.4183 20 12 20 7.58172 16.4183 4 12 4Z'/%3E%3C/svg%3E")
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M5 11H13V13H5V16L0 12L5 8V11ZM3.99927 18H6.70835C8.11862 19.2447 9.97111 20 12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C9.97111 4 8.11862 4.75527 6.70835 6H3.99927C5.82368 3.57111 8.72836 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22C8.72836 22 5.82368 20.4289 3.99927 18Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
 
 .side-toggle-btn {
   min-width: 84rpx;
   gap: 8rpx;
-  white-space: nowrap;
-}
-
-.side-toggle-btn text {
   white-space: nowrap;
 }
 
@@ -756,8 +814,8 @@
 .input {
   background: var(--surface-soft);
   color: var(--text-secondary);
-  border-radius: 10rpx;
-  padding: 10rpx;
+  border-radius: 9999rpx;
+  padding: 10rpx 10rpx 10rpx 45rpx;
   font-size: 30rpx;
   height: 50rpx;
   line-height: 50rpx;
@@ -776,7 +834,7 @@
 
 .input.input-left {
   text-align: left;
-  padding-left: 16rpx;
+  padding-left: 45rpx;
 }
 
 .picker-value {
@@ -816,6 +874,19 @@
   opacity: 1;
 }
 
+.color-dot-slash {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 64rpx;
+  height: 6rpx;
+  background: var(--page-bg);
+  transform: translate(-50%, -50%) rotate(-45deg);
+  transform-origin: center;
+  pointer-events: none;
+  z-index: 2;
+}
+
 .color-dot {
   width: 100%;
   height: 100%;
@@ -839,18 +910,6 @@
 
 .color-option.active .color-dot {
   border-color: transparent;
-}
-
-.color-option.disabled .color-dot::after {
-  content: "";
-  position: absolute;
-  left: 50%;
-  top: 50%;
-  width: 64rpx;
-  height: 6rpx;
-  background: var(--page-bg);
-  transform: translate(-50%, -50%) rotate(-45deg);
-  transform-origin: center;
 }
 
 .team {
@@ -898,24 +957,25 @@
 
 .player-card {
   height: 104rpx;
-  border-radius: 20rpx;
+  border-radius: 9999rpx;
   position: relative;
   display: flex;
   align-items: center;
   justify-content: center;
   box-sizing: border-box;
+  font-family: "BebasNeue", "Anton", sans-serif;
 }
 
 .team-a .player-card {
   background-color: var(--page-bg);
   color: var(--team-a-color, #8a87d0);
-  border: 1px solid var(--team-a-color, #8a87d0);
+  border: 1.5px solid var(--team-a-color, #8a87d0);
 }
 
 .team-b .player-card {
   background-color: var(--page-bg);
   color: var(--team-b-color, #81c79e);
-  border: 1px solid var(--team-b-color, #81c79e);
+  border: 1.5px solid var(--team-b-color, #81c79e);
 }
 
 .team-a .player-card.libero {
@@ -934,6 +994,7 @@
   width: 100%;
   height: 100%;
   text-align: center;
+  font-family: "BebasNeue", "Anton", sans-serif;
   font-size: 40rpx;
   font-weight: 600;
   background: transparent;
@@ -941,6 +1002,7 @@
 }
 
 .player-placeholder {
+  font-family: "BebasNeue", "Anton", sans-serif;
   color: inherit;
   opacity: 1;
 }
@@ -950,6 +1012,7 @@
   left: 50%;
   top: 50%;
   transform: translate(-50%, -50%);
+  font-family: "BebasNeue", "Anton", sans-serif;
   font-size: 40rpx;
   font-weight: 600;
   line-height: 1;
@@ -963,6 +1026,7 @@
 }
 
 .num-text {
+  font-family: "BebasNeue", "Anton", sans-serif;
   font-size: 40rpx;
   font-weight: 600;
   color: inherit;
@@ -970,8 +1034,9 @@
 
 .sub-text {
   position: absolute;
-  left: 10rpx;
+  left: 28rpx;
   bottom: 8rpx;
+  font-family: "BebasNeue", "Anton", sans-serif;
   font-size: 24rpx;
   color: inherit;
 }
@@ -1017,7 +1082,7 @@
   text-align: center;
   font-size: 31rpx;
   line-height: 1.45;
-  color: var(--score-hot-red);
+  color: var(--text-secondary);
 }
 
 .create-actions .entry-btn {
@@ -1239,7 +1304,7 @@
   display: inline-block;
   line-height: 1;
   padding-bottom: 2px;
-  border-bottom: 2px solid currentColor;
+  border-bottom: 3px solid currentColor;
   transform: translateY(1px) scale(1.24);
   transform-origin: center;
   transition: transform 180ms ease;
@@ -1362,7 +1427,7 @@
 
   .create-head-input-wrap {
     height: 56px;
-    border-radius: 12px;
+    border-radius: 9999px;
     margin-bottom: 12px;
   }
 
@@ -1370,12 +1435,30 @@
   .create-head-input-native {
     font-size: 26px;
     letter-spacing: 6px;
-    padding: 0 16px;
+    padding: 0 16px 0 30px;
+    line-height: 56px;
   }
 
   .create-team-input-display {
     font-size: 22px;
     letter-spacing: 0;
+  }
+
+  .create-head-input-display-text,
+  .create-team-input-display-text,
+  .create-captain-input-display-text,
+  .room-pass-display-text,
+  .create-head-input-mode {
+    line-height: 56px;
+  }
+
+  .match-mode-char {
+    font-size: 26px;
+  }
+
+  .match-mode-char.digit {
+    font-size: 28px;
+    min-width: 14px;
   }
 
   .create-head-section-title {

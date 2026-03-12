@@ -1,6 +1,7 @@
 <view
-  class="match-page match-container"
+  class="match-page match-container {{matchFlowMode === 'between_sets' ? 'flow-between' : ''}} {{matchFlowMode === 'edit_players' ? 'flow-edit' : ''}} {{flowSwitchingOut ? 'flow-switch-out' : ''}} {{flowSwitchingIn ? 'flow-switch-in' : ''}} flow-switch-scope-{{flowSwitchScope}}"
   style="--team-a-color: {{teamAColor}}; --team-b-color: {{teamBColor}}; --team-a-rgb: {{teamARGB}}; --team-b-rgb: {{teamBRGB}}; --safe-pad-top: {{safePadTop}}; --safe-pad-right: {{safePadRight}}; --safe-pad-bottom: {{safePadBottom}}; --safe-pad-left: {{safePadLeft}};"
+  bindtap="onMatchBlankTap"
 >
   <view class="match-nav">
     <view class="match-nav-left">
@@ -25,7 +26,7 @@
       <view class="nav-fixed-gap"></view>
       <text>裁判团队编号 <text class="nav-code-mono">{{roomId}}</text></text>
       <view class="nav-fixed-gap"></view>
-      <text>密码 <text class="nav-code-mono">{{showRoomPassword ? roomPassword : '######'}}</text></text>
+      <text>密码 <text class="nav-code-mono">{{showRoomPassword ? roomPassword : '••••••'}}</text></text>
       <view
         class="password-eye-btn pressable {{passwordEyeFx ? 'fx' : ''}}"
         hover-class="tap-active"
@@ -36,7 +37,21 @@
     </view>
     <view class="match-nav-space"></view>
   </view>
-  <view class="top-control-row">
+  <view wx:if="{{matchFlowMode === 'between_sets'}}" class="between-flow-head">
+    <text class="between-flow-title">{{betweenHeadTitle}}</text>
+    <text class="between-flow-hint">{{betweenHeadHint}}</text>
+    <view
+      wx:if="{{hasOperationAuthority}}"
+      class="x-room-count-pill center-set-pill start-match-entry-pill pressable between-flow-confirm-btn"
+      hover-class="tap-active"
+      bindtap="onFlowConfirmTap"
+    >
+      <view class="start-match-entry-icon confirm"></view>
+      <text class="start-match-entry-text">确定</text>
+    </view>
+  </view>
+
+  <view wx:else class="top-control-row">
     <view class="x-zone">
       <view class="x-row">
         <view wx:if="{{hasOperationAuthority}}" class="action-btn icon-circle-btn pressable" hover-class="tap-active" bindtap="onSwitchSides">
@@ -54,6 +69,14 @@
         >
           <view class="btn-icon icon-undo"></view>
         </view>
+        <view
+          wx:if="{{hasOperationAuthority}}"
+          class="action-btn icon-circle-btn pressable"
+          hover-class="tap-active"
+          bindtap="onReconfigurePlayersTap"
+        >
+          <view class="btn-icon icon-reconfigure"></view>
+        </view>
         <view class="action-btn icon-circle-btn pressable" hover-class="tap-active" bindtap="onOpenLogPanel">
           <view class="btn-icon icon-log"></view>
         </view>
@@ -68,47 +91,73 @@
     </view>
 
     <view class="score-zone {{switchingOut ? 'switch-out' : ''}} {{switchingIn ? 'switch-in' : ''}}">
-      <view class="score-pill-row">
-        <view class="center-pill-switch">
-          <view class="x-room-count-pill center-set-pill stat-num-pill score-switch-pill {{(canStartMatch && hasOperationAuthority) ? 'pill-hidden' : 'pill-visible'}}">{{setWinsText}}</view>
-          <view wx:if="{{hasOperationAuthority}}" class="start-match-entry-row score-switch-pill {{canStartMatch ? 'pill-visible' : 'pill-hidden'}}">
-            <view
-              class="x-room-count-pill center-set-pill reconfigure-entry-pill pressable"
-              hover-class="tap-active"
-              bindtap="onReconfigurePlayersTap"
-            >
-              <view class="reconfigure-entry-icon"></view>
-              <text class="reconfigure-entry-text">重新配置球员</text>
+      <view class="score-normal-shell {{matchFlowMode === 'edit_players' ? 'ghost' : ''}}">
+        <view class="score-pill-row">
+          <view class="center-pill-switch">
+            <view class="x-room-count-pill center-set-pill stat-num-pill score-switch-pill {{(canStartMatch && hasOperationAuthority) ? 'pill-hidden' : 'pill-visible'}}">{{setWinsText}}</view>
+            <view wx:if="{{hasOperationAuthority}}" class="start-match-entry-row score-switch-pill {{canStartMatch ? 'pill-visible' : 'pill-hidden'}}">
+              <view
+                wx:if="{{!preStartCaptainConfirmed}}"
+                class="x-room-count-pill center-set-pill captain-select-entry-pill pressable"
+                hover-class="tap-active"
+                bindtap="onOpenCaptainConfirmModal"
+              >
+                <view class="captain-select-entry-icon"></view>
+                <text class="start-match-entry-text">确认场上队长</text>
+              </view>
+              <view
+                wx:else
+                class="x-room-count-pill center-set-pill start-match-entry-pill pressable"
+                hover-class="tap-active"
+                bindtap="onOpenStartMatchModal"
+              >
+                <view class="start-match-entry-icon"></view>
+                <text class="start-match-entry-text">开始比赛</text>
+              </view>
             </view>
+          </view>
+          <view class="timeout-live-pill {{timeoutActive ? 'active' : 'inactive'}} {{hasOperationAuthority ? '' : 'observer'}}">
+            <text class="timeout-live-text">{{timeoutLeftText}}</text>
             <view
-              class="x-room-count-pill center-set-pill start-match-entry-pill pressable"
+              wx:if="{{hasOperationAuthority}}"
+              class="timeout-live-end-btn pressable"
               hover-class="tap-active"
-              bindtap="onOpenStartMatchModal"
+              bindtap="onEndTimeoutTap"
             >
-              <view class="start-match-entry-icon"></view>
-              <text class="start-match-entry-text">开始比赛</text>
+              <text class="timeout-live-end-label">结束</text>
             </view>
           </view>
         </view>
-        <view class="timeout-live-pill {{timeoutActive ? 'active' : 'inactive'}} {{hasOperationAuthority ? '' : 'observer'}}">
-          <text class="timeout-live-text">{{timeoutLeftText}}</text>
+        <score-board
+          aScore="{{aScore}}"
+          bScore="{{bScore}}"
+          lastScoringTeam="{{lastScoringTeam}}"
+          allowScore="{{hasOperationAuthority}}"
+          bind:scoreChange="onScoreChange"
+        />
+      </view>
+
+      <view wx:if="{{matchFlowMode === 'edit_players'}}" class="edit-flow-center">
+        <text class="edit-flow-title">编辑球员模式</text>
+        <text class="edit-flow-hint">仅用于修正录入错误，非局中换人，不计入换人记录</text>
+        <view wx:if="{{hasOperationAuthority}}" class="start-match-entry-row edit-flow-action-row">
           <view
-            wx:if="{{hasOperationAuthority}}"
-            class="timeout-live-end-btn pressable"
+            class="x-room-count-pill center-set-pill reconfigure-entry-pill pressable edit-flow-cancel-btn"
             hover-class="tap-active"
-            bindtap="onEndTimeoutTap"
+            bindtap="onFlowCancelTap"
           >
-            <text class="timeout-live-end-label">结束</text>
+            <text class="reconfigure-entry-text">取消</text>
+          </view>
+          <view
+            class="x-room-count-pill center-set-pill start-match-entry-pill pressable edit-flow-confirm-btn"
+            hover-class="tap-active"
+            bindtap="onFlowConfirmTap"
+          >
+            <view class="start-match-entry-icon confirm"></view>
+            <text class="start-match-entry-text">确认修改</text>
           </view>
         </view>
       </view>
-      <score-board
-        aScore="{{aScore}}"
-        bScore="{{bScore}}"
-        lastScoringTeam="{{lastScoringTeam}}"
-        allowScore="{{hasOperationAuthority}}"
-        bind:scoreChange="onScoreChange"
-      />
     </view>
 
     <view class="y-zone">
@@ -130,6 +179,19 @@
             <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
+            <block wx:if="{{matchFlowMode === 'between_sets' && hasOperationAuthority}}">
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="A" bindtap="onToggleServeTeam">
+                <view class="serve-toggle-icon {{servingTeam === 'A' ? 'serve' : 'receive'}}"></view>
+                <text class="team-toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
+              </view>
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+                <text class="team-toggle-text">{{teamASideText}}</text>
+              </view>
+              <view wx:else class="rotate-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+              </view>
+            </block>
             <view
               wx:if="{{hasOperationAuthority}}"
               class="timeout-btn timeout-btn-extra pressable"
@@ -161,6 +223,19 @@
             <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="A" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
+            <block wx:if="{{matchFlowMode === 'between_sets' && hasOperationAuthority}}">
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="A" bindtap="onToggleServeTeam">
+                <view class="serve-toggle-icon {{servingTeam === 'A' ? 'serve' : 'receive'}}"></view>
+                <text class="team-toggle-text">{{servingTeam === 'A' ? '发球' : '接发'}}</text>
+              </view>
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+                <text class="team-toggle-text">{{teamASideText}}</text>
+              </view>
+              <view wx:else class="rotate-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+              </view>
+            </block>
             <view
               wx:if="{{hasOperationAuthority}}"
               class="timeout-btn timeout-btn-extra pressable"
@@ -196,13 +271,39 @@
             wx:key="pos"
             data-team="A"
             data-pos="{{item.pos}}"
-            catchtouchstart="onSwapCardTouchStart"
-            catchtouchmove="onSwapCardTouchMove"
-            catchtouchend="onSwapCardTouchEnd"
-            catchtouchcancel="onSwapCardTouchEnd"
-            catchtap="onPlayerCardTapQuickSub"
+            data-focus-key="{{'A-' + item.pos}}"
+            bindtouchstart="onSwapCardTouchStart"
+            bindtouchmove="onSwapCardTouchMove"
+            bindtouchend="onSwapCardTouchEnd"
+            bindtouchcancel="onSwapCardTouchEnd"
+            catchtap="onAdjustFieldWrapTap"
           >
-            <text class="num {{item.number === teamACaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+            <input
+              adjust-position="false"
+              always-embed="true"
+              hold-keyboard="false"
+              cursor-spacing="0"
+              class="player-input pos-{{item.pos}} {{item.number === teamAInitialCaptainNo ? 'captain-input' : ''}}"
+              placeholder-class="player-placeholder"
+              type="number"
+              maxlength="2"
+              value="{{item.number === '?' ? '' : item.number}}"
+              focus="{{activeAdjustInputKey === ('A-' + item.pos)}}"
+              placeholder="?"
+              data-team="A"
+              data-pos="{{item.pos}}"
+              data-focus-key="{{'A-' + item.pos}}"
+              bindfocus="onPlayerInputFocus"
+              bindinput="onPlayerNumberInput"
+              bindblur="onPlayerNumberBlur"
+            />
+            <view class="player-edit-content">
+              <text class="adjust-fake-caret before {{activeAdjustInputKey === ('A-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
+              <text class="num {{activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode !== 'edit_players' && activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamACaptainNo ? 'current-captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+              <view wx:if="{{matchFlowMode !== 'edit_players' && activeAdjustInputKey !== ('A-' + item.pos) && item.number !== '?' && item.number === teamACaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamAMainNumbers && rotateFlyItemsA.length > 0))}}" class="current-captain-mark"></view>
+              <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+              <text class="adjust-fake-caret {{activeAdjustInputKey === ('A-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
+            </view>
             <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
           </view>
         </view>
@@ -216,18 +317,45 @@
               wx:key="pos"
               data-team="A"
               data-pos="{{item.pos}}"
-              catchtouchstart="onSwapCardTouchStart"
-              catchtouchmove="onSwapCardTouchMove"
-              catchtouchend="onSwapCardTouchEnd"
-              catchtouchcancel="onSwapCardTouchEnd"
-              catchtap="onPlayerCardTapQuickSub"
+              data-focus-key="{{'A-' + item.pos}}"
+              bindtouchstart="onSwapCardTouchStart"
+              bindtouchmove="onSwapCardTouchMove"
+              bindtouchend="onSwapCardTouchEnd"
+              bindtouchcancel="onSwapCardTouchEnd"
+              catchtap="onAdjustFieldWrapTap"
             >
-              <text
-                class="num pos-{{item.pos}} {{item.number === teamACaptainNo ? 'captain-num' : ''}} {{hideTeamAMainNumbers ? 'num-hidden' : ''}}"
-              >{{item.number}}</text>
+              <input
+                adjust-position="false"
+                always-embed="true"
+                hold-keyboard="false"
+                cursor-spacing="0"
+                class="player-input pos-{{item.pos}} {{item.number === teamAInitialCaptainNo ? 'captain-input' : ''}} {{(hideTeamAMainNumbers && rotateFlyItemsA.length > 0) ? 'player-input-hidden' : ''}}"
+                placeholder-class="player-placeholder"
+                type="number"
+                maxlength="2"
+                value="{{item.number === '?' ? '' : item.number}}"
+                focus="{{activeAdjustInputKey === ('A-' + item.pos)}}"
+                placeholder="?"
+                data-team="A"
+                data-pos="{{item.pos}}"
+                data-focus-key="{{'A-' + item.pos}}"
+                bindfocus="onPlayerInputFocus"
+                bindinput="onPlayerNumberInput"
+                bindblur="onPlayerNumberBlur"
+              />
+              <view class="player-edit-content {{(hideTeamAMainNumbers && rotateFlyItemsA.length > 0) ? 'player-input-hidden' : ''}}">
+                <text class="adjust-fake-caret before {{activeAdjustInputKey === ('A-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
+                <text
+                  class="num pos-{{item.pos}} {{activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode !== 'edit_players' && activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamACaptainNo ? 'current-captain-num' : ''}} {{(hideTeamAMainNumbers && rotateFlyItemsA.length > 0) ? 'num-hidden' : ''}}"
+                  wx:if="{{item.number !== '?'}}"
+                >{{item.number}}</text>
+                <view wx:if="{{matchFlowMode !== 'edit_players' && activeAdjustInputKey !== ('A-' + item.pos) && item.number !== '?' && item.number === teamACaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamAMainNumbers && rotateFlyItemsA.length > 0))}}" class="current-captain-mark"></view>
+                <text class="player-qmark {{(hideTeamAMainNumbers && rotateFlyItemsA.length > 0) ? 'num-hidden' : ''}}" wx:if="{{item.number === '?'}}">?</text>
+                <text class="adjust-fake-caret {{activeAdjustInputKey === ('A-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
+              </view>
               <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
               <text class="sub-text">{{item.pos}}</text>
-              <text class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}">发</text>
+              <view class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}"></view>
             </view>
           </view>
         </view>
@@ -242,6 +370,19 @@
             <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
+            <block wx:if="{{matchFlowMode === 'between_sets' && hasOperationAuthority}}">
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="B" bindtap="onToggleServeTeam">
+                <view class="serve-toggle-icon {{servingTeam === 'B' ? 'serve' : 'receive'}}"></view>
+                <text class="team-toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
+              </view>
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+                <text class="team-toggle-text">{{teamBSideText}}</text>
+              </view>
+              <view wx:else class="rotate-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+              </view>
+            </block>
             <view
               wx:if="{{hasOperationAuthority}}"
               class="timeout-btn timeout-btn-extra pressable"
@@ -271,6 +412,19 @@
             <view wx:if="{{hasOperationAuthority}}" class="rotate-btn pressable" hover-class="tap-active" data-team="B" bindtap="onRotateTeam">
               <view class="rotate-icon"></view>
             </view>
+            <block wx:if="{{matchFlowMode === 'between_sets' && hasOperationAuthority}}">
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" data-team="B" bindtap="onToggleServeTeam">
+                <view class="serve-toggle-icon {{servingTeam === 'B' ? 'serve' : 'receive'}}"></view>
+                <text class="team-toggle-text">{{servingTeam === 'B' ? '发球' : '接发'}}</text>
+              </view>
+              <view wx:if="{{isDecidingSet}}" class="team-toggle-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+                <text class="team-toggle-text">{{teamBSideText}}</text>
+              </view>
+              <view wx:else class="rotate-btn pressable" hover-class="tap-active" bindtap="onToggleCourtSide">
+                <view class="side-toggle-icon"></view>
+              </view>
+            </block>
             <view
               wx:if="{{hasOperationAuthority}}"
               class="timeout-btn timeout-btn-extra pressable"
@@ -308,18 +462,45 @@
               wx:key="pos"
               data-team="B"
               data-pos="{{item.pos}}"
-              catchtouchstart="onSwapCardTouchStart"
-              catchtouchmove="onSwapCardTouchMove"
-              catchtouchend="onSwapCardTouchEnd"
-              catchtouchcancel="onSwapCardTouchEnd"
-              catchtap="onPlayerCardTapQuickSub"
+              data-focus-key="{{'B-' + item.pos}}"
+              bindtouchstart="onSwapCardTouchStart"
+              bindtouchmove="onSwapCardTouchMove"
+              bindtouchend="onSwapCardTouchEnd"
+              bindtouchcancel="onSwapCardTouchEnd"
+              catchtap="onAdjustFieldWrapTap"
             >
-              <text
-                class="num pos-{{item.pos}} {{item.number === teamBCaptainNo ? 'captain-num' : ''}} {{hideTeamBMainNumbers ? 'num-hidden' : ''}}"
-              >{{item.number}}</text>
+              <input
+                adjust-position="false"
+                always-embed="true"
+                hold-keyboard="false"
+                cursor-spacing="0"
+                class="player-input pos-{{item.pos}} {{item.number === teamBInitialCaptainNo ? 'captain-input' : ''}} {{(hideTeamBMainNumbers && rotateFlyItemsB.length > 0) ? 'player-input-hidden' : ''}}"
+                placeholder-class="player-placeholder"
+                type="number"
+                maxlength="2"
+                value="{{item.number === '?' ? '' : item.number}}"
+                focus="{{activeAdjustInputKey === ('B-' + item.pos)}}"
+                placeholder="?"
+                data-team="B"
+                data-pos="{{item.pos}}"
+                data-focus-key="{{'B-' + item.pos}}"
+                bindfocus="onPlayerInputFocus"
+                bindinput="onPlayerNumberInput"
+                bindblur="onPlayerNumberBlur"
+              />
+              <view class="player-edit-content {{(hideTeamBMainNumbers && rotateFlyItemsB.length > 0) ? 'player-input-hidden' : ''}}">
+                <text class="adjust-fake-caret before {{activeAdjustInputKey === ('B-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
+                <text
+                  class="num pos-{{item.pos}} {{activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode !== 'edit_players' && activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBCaptainNo ? 'current-captain-num' : ''}} {{(hideTeamBMainNumbers && rotateFlyItemsB.length > 0) ? 'num-hidden' : ''}}"
+                  wx:if="{{item.number !== '?'}}"
+                >{{item.number}}</text>
+                <view wx:if="{{matchFlowMode !== 'edit_players' && activeAdjustInputKey !== ('B-' + item.pos) && item.number !== '?' && item.number === teamBCaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamBMainNumbers && rotateFlyItemsB.length > 0))}}" class="current-captain-mark"></view>
+                <text class="player-qmark {{(hideTeamBMainNumbers && rotateFlyItemsB.length > 0) ? 'num-hidden' : ''}}" wx:if="{{item.number === '?'}}">?</text>
+                <text class="adjust-fake-caret {{activeAdjustInputKey === ('B-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
+              </view>
               <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
               <text class="sub-text">{{item.pos}}</text>
-              <text class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}">发</text>
+              <view class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}"></view>
             </view>
           </view>
         </view>
@@ -332,13 +513,39 @@
             wx:key="pos"
             data-team="B"
             data-pos="{{item.pos}}"
-            catchtouchstart="onSwapCardTouchStart"
-            catchtouchmove="onSwapCardTouchMove"
-            catchtouchend="onSwapCardTouchEnd"
-            catchtouchcancel="onSwapCardTouchEnd"
-            catchtap="onPlayerCardTapQuickSub"
+            data-focus-key="{{'B-' + item.pos}}"
+            bindtouchstart="onSwapCardTouchStart"
+            bindtouchmove="onSwapCardTouchMove"
+            bindtouchend="onSwapCardTouchEnd"
+            bindtouchcancel="onSwapCardTouchEnd"
+            catchtap="onAdjustFieldWrapTap"
           >
-            <text class="num {{item.number === teamBCaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+            <input
+              adjust-position="false"
+              always-embed="true"
+              hold-keyboard="false"
+              cursor-spacing="0"
+              class="player-input pos-{{item.pos}} {{item.number === teamBInitialCaptainNo ? 'captain-input' : ''}}"
+              placeholder-class="player-placeholder"
+              type="number"
+              maxlength="2"
+              value="{{item.number === '?' ? '' : item.number}}"
+              focus="{{activeAdjustInputKey === ('B-' + item.pos)}}"
+              placeholder="?"
+              data-team="B"
+              data-pos="{{item.pos}}"
+              data-focus-key="{{'B-' + item.pos}}"
+              bindfocus="onPlayerInputFocus"
+              bindinput="onPlayerNumberInput"
+              bindblur="onPlayerNumberBlur"
+            />
+            <view class="player-edit-content">
+              <text class="adjust-fake-caret before {{activeAdjustInputKey === ('B-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
+              <text class="num {{activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode !== 'edit_players' && activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBCaptainNo ? 'current-captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+              <view wx:if="{{matchFlowMode !== 'edit_players' && activeAdjustInputKey !== ('B-' + item.pos) && item.number !== '?' && item.number === teamBCaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamBMainNumbers && rotateFlyItemsB.length > 0))}}" class="current-captain-mark"></view>
+              <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
+              <text class="adjust-fake-caret {{activeAdjustInputKey === ('B-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
+            </view>
             <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
           </view>
         </view>
@@ -351,7 +558,8 @@
     class="swap-drag-ghost team-{{swapDragGhostTeam === 'B' ? 'b' : 'a'}} {{swapDragSourceIsLibero ? 'libero' : ''}}"
     style="{{swapDragGhostStyle}}"
   >
-    <text class="num {{swapDragGhostIsCaptain ? 'captain-num' : ''}}">{{swapDragGhostNumber}}</text>
+    <text class="num {{swapDragGhostIsInitialCaptain ? 'captain-num' : ''}} {{matchFlowMode !== 'edit_players' && swapDragGhostIsCurrentCaptain ? 'current-captain-num' : ''}}">{{swapDragGhostNumber}}</text>
+    <view wx:if="{{matchFlowMode !== 'edit_players' && swapDragGhostIsCurrentCaptain}}" class="current-captain-mark"></view>
     <text class="sub-text">{{swapDragGhostPos}}</text>
   </view>
 
@@ -363,7 +571,7 @@
       class="rotate-fly-item team-a"
       style="{{item.style}}"
     >
-      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+      <text class="num {{item.isInitialCaptain ? 'captain-num' : ''}} {{item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}}">{{item.number}}</text>
     </view>
     <view
       wx:for="{{rotateFlyItemsB}}"
@@ -372,12 +580,12 @@
       class="rotate-fly-item team-b"
       style="{{item.style}}"
     >
-      <text class="num {{item.isCaptain ? 'captain-num' : ''}}">{{item.number}}</text>
+      <text class="num {{item.isInitialCaptain ? 'captain-num' : ''}} {{item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}}">{{item.number}}</text>
     </view>
   </view>
 
-  <view class="set-end-mask" wx:if="{{showSetEndModal}}" bindtap="onSetEndModalTap">
-    <view class="set-end-modal" catchtap="onSetEndModalTap">
+  <view class="set-end-mask modal-mask {{showSetEndModal ? 'modal-enter' : 'modal-leave'}}" wx:if="{{showSetEndModal || setEndModalClosing}}" bindtap="onSetEndModalTap">
+    <view class="set-end-modal modal-panel {{showSetEndModal ? 'modal-panel-enter' : 'modal-panel-leave'}}" catchtap="onSetEndModalTap">
       <view class="set-end-title-top">{{setEndTitleTop}}</view>
       <view class="set-end-title-bottom" wx:if="{{setEndTitleBottom}}">{{setEndTitleBottom}}</view>
 
@@ -431,13 +639,13 @@
           </view>
         </block>
         <block wx:else>
-          <view class="set-end-btn-home outline pressable" hover-class="tap-active" bindtap="onSetEndUndo">
+          <view class="set-end-btn-home outline set-end-action-btn pressable" hover-class="tap-active" bindtap="onSetEndUndo">
             <view class="set-end-btn-content">
               <text class="set-end-btn-text">撤回最后一分</text>
               <view class="set-end-btn-icon undo"></view>
             </view>
           </view>
-          <view class="set-end-btn-home primary pressable" hover-class="tap-active" bindtap="onSetEndContinue">
+          <view class="set-end-btn-home primary set-end-action-btn pressable" hover-class="tap-active" bindtap="onSetEndContinue">
             <view class="set-end-btn-content">
               <text class="set-end-btn-text">{{setEndActionText}}</text>
               <view class="set-end-btn-icon {{setEndMatchFinished ? 'confirm' : ''}}"></view>
@@ -463,8 +671,8 @@
     </view>
   </view>
 
-  <view class="log-mask" wx:if="{{showLogPanel}}" bindtap="onCloseLogPanel">
-    <view class="log-panel" style="{{logPanelInlineStyle}}" catchtap="onLogPanelTap">
+  <view class="log-mask modal-mask {{showLogPanel ? 'modal-enter' : 'modal-leave'}}" wx:if="{{showLogPanel || logPanelClosing}}" bindtap="onCloseLogPanel">
+    <view class="log-panel modal-panel {{showLogPanel ? 'modal-panel-enter' : 'modal-panel-leave'}}" style="{{logPanelInlineStyle}}" catchtap="onLogPanelTap">
       <view class="log-head">
         <view class="sub-panel-title-row">
           <text class="log-title sub-panel-title">操作记录</text>
@@ -497,15 +705,15 @@
     </view>
   </view>
 
-  <view class="log-mask" wx:if="{{showSubstitutionPanel}}" bindtap="onCloseSubstitutionPanel">
-    <view class="log-panel substitution-panel" catchtap="onSubstitutionPanelTap">
+  <view class="log-mask modal-mask {{showSubstitutionPanel ? 'modal-enter' : 'modal-leave'}}" wx:if="{{showSubstitutionPanel || substitutionPanelClosing}}" bindtap="onCloseSubstitutionPanel">
+    <view class="log-panel substitution-panel modal-panel {{showSubstitutionPanel ? 'modal-panel-enter' : 'modal-panel-leave'}}" catchtap="onSubstitutionPanelTap">
       <view class="log-head">
         <view class="sub-panel-title-wrap">
           <view class="sub-panel-title-row">
             <text class="log-title sub-panel-title">局中换人</text>
             <text class="sub-panel-title popup-title-dot">.</text>
           </view>
-          <text class="sub-panel-tip">自由人常规换人可直接在比赛页拖拽自由人卡片到目标球员卡片完成</text>
+          <text class="sub-panel-tip">自由人常规换人（与场上6人之间交换）请直接在比赛页拖拽自由人到目标球员位置。</text>
         </view>
         <view class="log-head-right">
           <view class="sub-head-record-btn pressable" hover-class="tap-active" bindtap="onToggleSubMatchLogPopover">
@@ -518,7 +726,7 @@
 
       <view class="sub-main-layout">
         <view class="sub-op-players">
-          <text class="sub-editor-left-title">{{subTeamName}}队球员</text>
+          <text class="team-title align-left sub-editor-team-title">{{subTeamName}}</text>
           <view class="lineup-grid sub-player-grid {{subTeam === 'A' ? 'team-a' : 'team-b'}} {{subUseSwapLayout ? 'swap-layout' : ''}}">
             <view class="libero-col">
               <view
@@ -530,7 +738,10 @@
                 data-number="{{item.number}}"
                 bindtap="onSubSelectPlayer"
               >
-                <text class="num {{item.number === subCaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+                <view class="num-wrap">
+                  <text class="num {{item.number === subInitialCaptainNo ? 'captain-num' : ''}} {{item.number === subCaptainNo ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                  <view wx:if="{{item.number === subCaptainNo}}" class="current-captain-mark inline"></view>
+                </view>
                 <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
               </view>
             </view>
@@ -545,7 +756,10 @@
                   data-number="{{item.number}}"
                   bindtap="onSubSelectPlayer"
                 >
-                  <text class="num {{item.number === subCaptainNo ? 'captain-num' : ''}}">{{item.number}}</text>
+                  <view class="num-wrap">
+                    <text class="num {{item.number === subInitialCaptainNo ? 'captain-num' : ''}} {{item.number === subCaptainNo ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                    <view wx:if="{{item.number === subCaptainNo}}" class="current-captain-mark inline"></view>
+                  </view>
                   <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
                   <text class="sub-text">{{item.pos}}</text>
                 </view>
@@ -558,7 +772,7 @@
           <view class="sub-op-controls-fields">
             <view class="sub-field">
               <text class="sub-field-label">换人类型</text>
-              <view class="sub-seg">
+              <view class="sub-seg {{subModeSwitching ? 'seg-switching' : ''}}">
                 <view class="sub-seg-item {{subMode === 'normal' ? 'active' : ''}}" data-mode="normal" bindtap="onSubSelectMode">普通 ({{subNormalCount}}/6)</view>
                 <view class="sub-seg-item {{subMode === 'special' ? 'active' : ''}}" data-mode="special" bindtap="onSubSelectMode">特殊 ({{subSpecialCount}}/∞)</view>
                 <view class="sub-seg-item {{subMode === 'special_libero' ? 'active' : ''}}" data-mode="special_libero" bindtap="onSubSelectMode">自由人特殊 ({{subSpecialLiberoRecords.length}}/∞)</view>
@@ -583,7 +797,7 @@
 
             <view class="sub-field sub-special-reason-field {{(subMode === 'special' || subMode === 'special_libero') ? 'visible' : 'hidden'}}">
               <text class="sub-field-label">换人原因</text>
-              <view class="sub-seg">
+              <view class="sub-seg {{subReasonSwitching ? 'seg-switching' : ''}}">
                 <view class="sub-seg-item {{subReason === 'injury' ? 'active' : ''}}" data-reason="injury" bindtap="onSubSelectReason">伤病</view>
                 <view class="sub-seg-item {{subReason === 'penalty_set' ? 'active' : ''}}" data-reason="penalty_set" bindtap="onSubSelectReason">处罚 (本局禁赛)</view>
                 <view class="sub-seg-item {{subReason === 'penalty_match' ? 'active' : ''}}" data-reason="penalty_match" bindtap="onSubSelectReason">处罚 (全场禁赛)</view>
@@ -594,6 +808,7 @@
             <view class="sub-confirm-wrap">
               <view class="set-end-btn-home sub-confirm-btn pressable" hover-class="tap-active" bindtap="onSubConfirmTap">
                 <view class="set-end-btn-content sub-confirm-btn-content">
+                  <view class="start-match-entry-icon confirm sub-confirm-btn-icon"></view>
                   <text class="sub-confirm-btn-text">确认换人</text>
                 </view>
               </view>
@@ -602,20 +817,20 @@
         </view>
       </view>
 
-      <view class="sub-log-popover-mask" wx:if="{{showSubMatchLogPopover}}" bindtap="onCloseSubMatchLogPopover">
-        <view class="sub-log-popover" style="{{subLogPopoverInlineStyle}}" catchtap="onSubMatchLogPopoverTap">
+      <view class="sub-log-popover-mask {{showSubMatchLogPopover ? 'popover-enter' : 'popover-leave'}}" wx:if="{{showSubMatchLogPopover || subMatchLogPopoverClosing}}" bindtap="onCloseSubMatchLogPopover">
+        <view class="sub-log-popover {{showSubMatchLogPopover ? 'popover-enter' : 'popover-leave'}}" style="{{subLogPopoverInlineStyle}}" catchtap="onSubMatchLogPopoverTap">
           <view class="log-head sub-log-popover-head">
             <text class="log-title">换人记录</text>
           </view>
           <view class="sub-record-tabbar">
-            <view class="sub-seg" id="sub-log-tab-seg">
+            <view class="sub-seg {{subRecordTabSwitching ? 'seg-switching' : ''}}" id="sub-log-tab-seg">
               <view class="sub-seg-item {{subRecordTab === 'normal' ? 'active' : ''}}" data-tab="normal" bindtap="onSelectSubRecordTab">普通</view>
               <view class="sub-seg-item {{subRecordTab === 'special' ? 'active' : ''}}" data-tab="special" bindtap="onSelectSubRecordTab">特殊</view>
               <view class="sub-seg-item {{subRecordTab === 'libero' ? 'active' : ''}}" data-tab="libero" bindtap="onSelectSubRecordTab">自由人常规</view>
               <view class="sub-seg-item {{subRecordTab === 'special_libero' ? 'active' : ''}}" data-tab="special_libero" bindtap="onSelectSubRecordTab">自由人特殊</view>
             </view>
           </view>
-          <scroll-view class="log-list sub-log-popover-list" scroll-y="true">
+          <scroll-view class="log-list sub-log-popover-list {{subRecordTabSwitching ? 'sub-record-list-switching' : ''}}" scroll-y="true">
             <view class="log-item" wx:if="{{subRecordTab === 'normal'}}" wx:for="{{subNormalRecords}}" wx:key="index" wx:for-item="item">
               <text class="log-time">{{item.index}}</text>
               <text class="log-note">{{item.text}}</text>
@@ -637,6 +852,119 @@
             <view class="log-empty" wx:if="{{subRecordTab === 'libero' && !subLiberoRecords.length}}">暂无自由人常规换人记录</view>
             <view class="log-empty" wx:if="{{subRecordTab === 'special_libero' && !subSpecialLiberoRecords.length}}">暂无自由人特殊换人记录</view>
           </scroll-view>
+        </view>
+      </view>
+    </view>
+  </view>
+
+  <view class="log-mask modal-mask {{showCaptainConfirmModal ? 'modal-enter' : 'modal-leave'}}" wx:if="{{showCaptainConfirmModal || captainConfirmModalClosing}}" bindtap="onCloseCaptainConfirmModal">
+    <view class="log-panel captain-confirm-panel modal-panel {{showCaptainConfirmModal ? 'modal-panel-enter' : 'modal-panel-leave'}} {{captainConfirmContentSwitching ? 'captain-confirm-content-switching' : ''}}" style="{{captainConfirmPanelInlineStyle}}" catchtap="onCaptainConfirmModalTap">
+      <view class="log-head">
+        <view class="sub-panel-title-wrap">
+          <view class="sub-panel-title-row">
+            <text class="log-title sub-panel-title">确认场上队长</text>
+          </view>
+          <text class="sub-panel-tip">点击球员以设定其为本场场上队长。若球队队长在场上6人中，其必须为本场场上队长。</text>
+        </view>
+      </view>
+      <view class="captain-confirm-body">
+        <view class="captain-confirm-layout {{isSwapped ? 'swapped' : ''}}">
+          <view class="captain-confirm-team team-a-panel {{captainConfirmReadonlyA ? 'captain-confirm-team-readonly' : ''}}">
+            <view class="captain-confirm-team-head captain-confirm-team-head-a">
+              <text class="team-title observer-center captain-confirm-team-name">{{teamAName}}</text>
+            </view>
+            <view class="lineup-grid sub-player-grid team-a {{isSwapped ? 'swap-layout' : ''}}">
+              <view class="libero-col">
+                <view
+                  class="player-card {{item.isLibero ? 'libero' : ''}} {{captainConfirmSelectedA === item.number ? 'sub-player-selected' : ''}} captain-libero-disabled"
+                  wx:for="{{captainConfirmTeamALibero}}"
+                  wx:key="pos"
+                  wx:for-item="item"
+                >
+                  <text class="num {{item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedA ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                  <view wx:if="{{item.number === captainConfirmSelectedA}}" class="current-captain-mark"></view>
+                  <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
+                </view>
+              </view>
+              <view class="main-col">
+                <view class="player-row row-two" wx:for="{{captainConfirmTeamAMainGrid}}" wx:key="index" wx:for-item="row">
+                  <view
+                    class="player-card {{item.isLibero ? 'libero' : ''}} {{captainConfirmSelectedA === item.number ? 'sub-player-selected' : ''}} {{captainConfirmReadonlyA ? 'captain-confirm-readonly-card' : ''}} {{item.number === '?' || (!captainConfirmReadonlyA && captainConfirmLockA && captainConfirmSelectedA !== item.number) ? 'sub-player-disabled' : ''}}"
+                    wx:for="{{row}}"
+                    wx:key="pos"
+                    wx:for-item="item"
+                    data-team="A"
+                    data-number="{{item.number}}"
+                    data-pos="{{item.pos}}"
+                    bindtap="onCaptainConfirmSelect"
+                  >
+                    <text class="num {{item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedA ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                    <view wx:if="{{item.number === captainConfirmSelectedA}}" class="current-captain-mark"></view>
+                    <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
+                    <text class="sub-text">{{item.pos}}</text>
+                  </view>
+                </view>
+              </view>
+            </view>
+          </view>
+          <view class="captain-confirm-team team-b-panel {{captainConfirmReadonlyB ? 'captain-confirm-team-readonly' : ''}}">
+            <view class="captain-confirm-team-head captain-confirm-team-head-b">
+              <text class="team-title observer-center captain-confirm-team-name">{{teamBName}}</text>
+            </view>
+            <view class="lineup-grid reverse sub-player-grid team-b {{isSwapped ? 'swap-layout' : ''}}">
+              <view class="main-col">
+                <view class="player-row row-two" wx:for="{{captainConfirmTeamBMainGrid}}" wx:key="index" wx:for-item="row">
+                  <view
+                    class="player-card {{item.isLibero ? 'libero' : ''}} {{captainConfirmSelectedB === item.number ? 'sub-player-selected' : ''}} {{captainConfirmReadonlyB ? 'captain-confirm-readonly-card' : ''}} {{item.number === '?' || (!captainConfirmReadonlyB && captainConfirmLockB && captainConfirmSelectedB !== item.number) ? 'sub-player-disabled' : ''}}"
+                    wx:for="{{row}}"
+                    wx:key="pos"
+                    wx:for-item="item"
+                    data-team="B"
+                    data-number="{{item.number}}"
+                    data-pos="{{item.pos}}"
+                    bindtap="onCaptainConfirmSelect"
+                  >
+                    <text class="num {{item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedB ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                    <view wx:if="{{item.number === captainConfirmSelectedB}}" class="current-captain-mark"></view>
+                    <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
+                    <text class="sub-text">{{item.pos}}</text>
+                  </view>
+                </view>
+              </view>
+              <view class="libero-col">
+                <view
+                  class="player-card {{item.isLibero ? 'libero' : ''}} {{captainConfirmSelectedB === item.number ? 'sub-player-selected' : ''}} captain-libero-disabled"
+                  wx:for="{{captainConfirmTeamBLibero}}"
+                  wx:key="pos"
+                  wx:for-item="item"
+                >
+                  <text class="num {{item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedB ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                  <view wx:if="{{item.number === captainConfirmSelectedB}}" class="current-captain-mark"></view>
+                  <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
+                </view>
+              </view>
+            </view>
+          </view>
+        </view>
+      </view>
+      <view class="captain-confirm-footer">
+        <view class="captain-confirm-actions {{captainConfirmShowCancel ? 'with-cancel' : ''}}">
+          <view
+            wx:if="{{captainConfirmShowCancel}}"
+            class="set-end-btn-home outline captain-confirm-cancel-btn pressable"
+            hover-class="tap-active"
+            bindtap="onCaptainConfirmCancel"
+          >
+            <view class="set-end-btn-content captain-confirm-cancel-content">
+              <text class="set-end-btn-text">取消</text>
+            </view>
+          </view>
+          <view class="captain-confirm-entry-btn pressable" hover-class="captain-confirm-entry-hover" bindtap="onCaptainConfirmContinue">
+            <view class="captain-confirm-entry-content">
+              <text class="captain-confirm-entry-text">继续</text>
+              <view class="captain-confirm-entry-icon"></view>
+            </view>
+          </view>
         </view>
       </view>
     </view>

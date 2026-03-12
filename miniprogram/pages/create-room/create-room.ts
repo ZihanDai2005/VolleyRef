@@ -1,10 +1,13 @@
 import {
   createRoomAsync,
   getRoomAsync,
+  hasRoomLock,
   updateRoomAsync,
   heartbeatRoomAsync,
   leaveRoomAsync,
   hasRoomLockAsync,
+  reserveRoomId,
+  reserveRoomIdAsync,
   releaseRoomIdAsync,
   subscribeRoomWatch,
   TEAM_COLOR_OPTIONS,
@@ -23,6 +26,11 @@ type MatchModeOption = {
   maxScore: number;
   tiebreakScore: number;
 };
+type MatchModeChar = {
+  char: string;
+  kind: "digit" | "text";
+  offsetY: number;
+};
 
 const MATCH_MODE_OPTIONS: MatchModeOption[] = [
   { label: "5局3胜", sets: 5, wins: 3, maxScore: 25, tiebreakScore: 15 },
@@ -30,6 +38,13 @@ const MATCH_MODE_OPTIONS: MatchModeOption[] = [
   { label: "1局1胜（15分）", sets: 1, wins: 1, maxScore: 15, tiebreakScore: 15 },
   { label: "1局1胜（25分）", sets: 1, wins: 1, maxScore: 25, tiebreakScore: 25 },
 ];
+const MATCH_MODE_CHAR_OFFSET_Y: Record<string, number> = {
+  局: 2,
+  胜: 2,
+  分: 2,
+  "（": 1,
+  "）": 1,
+};
 
 const PLAYER_INDEX_BY_POS: Record<Position, number> = {
   I: 0,
@@ -135,6 +150,17 @@ function getMatchModeIndexBySettings(
   return 0;
 }
 
+function buildMatchModeChars(label: string): MatchModeChar[] {
+  return Array.from(String(label || "")).map(function (char) {
+    const isDigit = /[0-9]/.test(char);
+    return {
+      char: char,
+      kind: isDigit ? "digit" : "text",
+      offsetY: isDigit ? 0 : MATCH_MODE_CHAR_OFFSET_Y[char] || 0,
+    };
+  });
+}
+
 function validateTeamPlayers(players: PlayerSlot[], teamName: string): string | null {
   const main = players.slice(0, 6);
   const missingMain = main.find(function (p) {
@@ -204,6 +230,19 @@ function hexToRgbString(hex: string): string {
   return r + ", " + g + ", " + b;
 }
 
+async function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T): Promise<T> {
+  try {
+    return await Promise.race<T>([
+      promise,
+      new Promise<T>((resolve) => {
+        setTimeout(() => resolve(fallback), Math.max(200, Number(timeoutMs) || 0));
+      }),
+    ]);
+  } catch (e) {
+    return fallback;
+  }
+}
+
 Page({
   data: {
     roomId: "",
@@ -217,6 +256,7 @@ Page({
     editMode: false,
     matchModes: MATCH_MODE_OPTIONS,
     matchModeIndex: 0,
+    matchModeChars: buildMatchModeChars(MATCH_MODE_OPTIONS[0].label),
     passwordFocused: false,
     teamANameFocused: false,
     teamBNameFocused: false,
@@ -260,6 +300,19 @@ Page({
   captainPickerResolver: null as null | ((value: string | null) => void),
   saveInFlight: false as boolean,
   copyInviteInFlight: false as boolean,
+  roomLoadInFlight: false as boolean,
+  roomLoadPending: false as boolean,
+  roomLoadPendingForce: false as boolean,
+  pageActive: false as boolean,
+  statusRouteRedirecting: false as boolean,
+  roomIdReassigning: false as boolean,
+
+  isCreateRoomPageTop(): boolean {
+    const pages = getCurrentPages();
+    const top = pages.length ? pages[pages.length - 1] : null;
+    const route = String((top && (top as any).route) || "");
+    return route === "pages/create-room/create-room";
+  },
 
   enterMatchPage(roomId: string) {
     const id = String(roomId || "");
@@ -276,6 +329,11 @@ Page({
   },
 
   onLoad(query: Record<string, string>) {
+    this.pageActive = true;
+    this.statusRouteRedirecting = false;
+    this.roomLoadInFlight = false;
+    this.roomLoadPending = false;
+    this.roomLoadPendingForce = false;
     this.applyNavigationTheme();
     this.syncCustomNavTop();
     if (!this.themeOff) {
@@ -318,6 +376,7 @@ Page({
         teamALibero: buildLibero(initialA, "A"),
         teamBMainGrid: buildMainGrid(initialB, getMainOrderForTeam("B", "A"), "B"),
         teamBLibero: buildLibero(initialB, "B"),
+        matchModeChars: buildMatchModeChars(MATCH_MODE_OPTIONS[0].label),
       });
       return;
     }
@@ -325,6 +384,8 @@ Page({
   },
 
   onShow() {
+    this.pageActive = true;
+    this.statusRouteRedirecting = false;
     this.applyNavigationTheme();
     this.syncCustomNavTop();
     if (this.data.createMode) {
@@ -337,12 +398,18 @@ Page({
   },
 
   onHide() {
+    this.pageActive = false;
+    this.roomLoadPendingForce = false;
     this.stopRoomWatch();
     this.stopPolling();
     this.stopHeartbeat();
   },
 
   onUnload() {
+    this.pageActive = false;
+    this.roomLoadPending = false;
+    this.roomLoadInFlight = false;
+    this.roomLoadPendingForce = false;
     if (this.themeOff) {
       this.themeOff();
       this.themeOff = null;
@@ -415,6 +482,69 @@ Page({
       showCancel: false,
       confirmText: "我知道了",
     });
+  },
+
+  generateRoomIdCandidate(): string {
+    return Math.floor(100000 + Math.random() * 900000).toString();
+  },
+
+  async reserveRoomIdWithTimeout(roomId: string, clientId: string, timeoutMs = 2500): Promise<boolean> {
+    try {
+      const result = await Promise.race<boolean>([
+        reserveRoomIdAsync(roomId, clientId),
+        new Promise<boolean>((resolve) => {
+          setTimeout(() => resolve(false), Math.max(300, Number(timeoutMs) || 0));
+        }),
+      ]);
+      return !!result;
+    } catch (_e) {
+      return false;
+    }
+  },
+
+  async allocateReplacementRoomId(clientId: string): Promise<string> {
+    const deadline = Date.now() + 12000;
+    let attempts = 0;
+    while (attempts < 120 && Date.now() < deadline) {
+      const candidate = this.generateRoomIdCandidate();
+      attempts += 1;
+      if (await this.reserveRoomIdWithTimeout(candidate, clientId, 2500)) {
+        return candidate;
+      }
+    }
+    return "";
+  },
+
+  async reassignExpiredRoomId(clientId: string) {
+    if (this.roomIdReassigning) {
+      return;
+    }
+    this.roomIdReassigning = true;
+    const oldRoomId = String(this.data.roomId || "");
+    wx.showLoading({
+      title: "重新分配中",
+      mask: true,
+    });
+    try {
+      if (oldRoomId) {
+        await releaseRoomIdAsync(oldRoomId, clientId);
+      }
+      const newRoomId = await this.allocateReplacementRoomId(clientId);
+      if (!newRoomId) {
+        showBlockHint("房间号分配失败，请稍后重试");
+        return;
+      }
+      this.setData({
+        roomId: newRoomId,
+        roomIdSpaced: newRoomId.split("").join(" "),
+      });
+      showToastHint("已重新分配房间号");
+    } finally {
+      wx.hideLoading({
+        fail: () => {},
+      });
+      this.roomIdReassigning = false;
+    }
   },
 
   handleRoomClosed() {
@@ -501,65 +631,120 @@ Page({
   },
 
   async loadRoom(roomId: string, force: boolean) {
-    const room = await getRoomAsync(roomId);
-    if (!room) {
-      if (force) {
-        this.handleRoomClosed();
+    if (!roomId || !this.pageActive) {
+      return;
+    }
+    if (this.roomLoadInFlight) {
+      this.roomLoadPending = true;
+      this.roomLoadPendingForce = this.roomLoadPendingForce || !!force;
+      return;
+    }
+    this.roomLoadInFlight = true;
+    try {
+      const room = await getRoomAsync(roomId);
+      if (!room) {
+        if (force) {
+          this.handleRoomClosed();
+        }
+        return;
       }
-      return;
-    }
-    const currentUpdatedAt = Number(this.data.updatedAt || 0);
-    const incomingUpdatedAt = Number(room.updatedAt || 0);
-    if (!force && incomingUpdatedAt < currentUpdatedAt) {
-      return;
-    }
+      const currentUpdatedAt = Number(this.data.updatedAt || 0);
+      const incomingUpdatedAt = Number(room.updatedAt || 0);
+      if (!force && incomingUpdatedAt < currentUpdatedAt) {
+        return;
+      }
 
-    if (room.status === "result" && !this.data.editMode) {
-      wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
-      return;
-    }
+      if (room.status === "result" && !this.data.editMode) {
+        if (!this.pageActive || !this.isCreateRoomPageTop()) {
+          return;
+        }
+        if (!this.statusRouteRedirecting) {
+          this.statusRouteRedirecting = true;
+          wx.reLaunch({
+            url: "/pages/result/result?roomId=" + roomId,
+            fail: () => {
+              this.statusRouteRedirecting = false;
+            },
+          });
+        }
+        return;
+      }
 
-    if (room.status === "match" && !this.data.editMode) {
-      wx.redirectTo({ url: "/pages/match/match?roomId=" + roomId });
-      return;
-    }
+      if (room.status === "match" && !this.data.editMode) {
+        if (!this.pageActive || !this.isCreateRoomPageTop()) {
+          return;
+        }
+        if (!this.statusRouteRedirecting) {
+          this.statusRouteRedirecting = true;
+          wx.redirectTo({
+            url: "/pages/match/match?roomId=" + roomId,
+            fail: () => {
+              this.statusRouteRedirecting = false;
+              wx.reLaunch({ url: "/pages/match/match?roomId=" + roomId });
+            },
+          });
+        }
+        return;
+      }
 
-    if (!force && incomingUpdatedAt === currentUpdatedAt) {
-      this.setData({ participantCount: Object.keys((room as any).participants || {}).length });
-      return;
-    }
+      if (!force && incomingUpdatedAt === currentUpdatedAt) {
+        this.setData({ participantCount: Object.keys((room as any).participants || {}).length });
+        return;
+      }
 
-    const teamAPlayers = room.teamA.players;
-    const teamBPlayers = room.teamB.players;
-    this.setData({
-      roomIdSpaced: roomId.split("").join(" "),
-      participantCount: Object.keys((room as any).participants || {}).length,
-      roomPassword: room.password,
-      roomPasswordSpaced: String(room.password || "").split("").join(" "),
-      matchModeIndex: getMatchModeIndexBySettings(
-        room.settings.sets,
-        room.settings.wins,
-        room.settings.maxScore,
-        room.settings.tiebreakScore
-      ),
-      teamAName: room.teamA.name,
-      teamBName: room.teamB.name,
-      teamACaptainNo: String((room.teamA as any).captainNo || ""),
-      teamBCaptainNo: String((room.teamB as any).captainNo || ""),
-      servingTeam: room.match.servingTeam === "B" ? "B" : "A",
-      teamASide: room.match.isSwapped ? "B" : "A",
-      teamAColor: room.teamA.color || TEAM_COLOR_OPTIONS[0].value,
-      teamBColor: room.teamB.color || TEAM_COLOR_OPTIONS[1].value,
-      teamARGB: hexToRgbString(room.teamA.color || TEAM_COLOR_OPTIONS[0].value),
-      teamBRGB: hexToRgbString(room.teamB.color || TEAM_COLOR_OPTIONS[1].value),
-      teamAPlayers: teamAPlayers,
-      teamBPlayers: teamBPlayers,
-      teamAMainGrid: buildMainGrid(teamAPlayers, getMainOrderForTeam("A", room.match.isSwapped ? "B" : "A"), "A"),
-      teamALibero: buildLibero(teamAPlayers, "A"),
-      teamBMainGrid: buildMainGrid(teamBPlayers, getMainOrderForTeam("B", room.match.isSwapped ? "B" : "A"), "B"),
-      teamBLibero: buildLibero(teamBPlayers, "B"),
-      updatedAt: room.updatedAt,
-    });
+      const teamAPlayers = room.teamA.players;
+      const teamBPlayers = room.teamB.players;
+      this.setData({
+        roomIdSpaced: roomId.split("").join(" "),
+        participantCount: Object.keys((room as any).participants || {}).length,
+        roomPassword: room.password,
+        roomPasswordSpaced: String(room.password || "").split("").join(" "),
+        matchModeIndex: getMatchModeIndexBySettings(
+          room.settings.sets,
+          room.settings.wins,
+          room.settings.maxScore,
+          room.settings.tiebreakScore
+        ),
+        matchModeChars: buildMatchModeChars(
+          (MATCH_MODE_OPTIONS[
+            getMatchModeIndexBySettings(
+              room.settings.sets,
+              room.settings.wins,
+              room.settings.maxScore,
+              room.settings.tiebreakScore
+            )
+          ] || MATCH_MODE_OPTIONS[0]).label
+        ),
+        teamAName: room.teamA.name,
+        teamBName: room.teamB.name,
+        teamACaptainNo: String((room.teamA as any).captainNo || ""),
+        teamBCaptainNo: String((room.teamB as any).captainNo || ""),
+        servingTeam: room.match.servingTeam === "B" ? "B" : "A",
+        teamASide: room.match.isSwapped ? "B" : "A",
+        teamAColor: room.teamA.color || TEAM_COLOR_OPTIONS[0].value,
+        teamBColor: room.teamB.color || TEAM_COLOR_OPTIONS[1].value,
+        teamARGB: hexToRgbString(room.teamA.color || TEAM_COLOR_OPTIONS[0].value),
+        teamBRGB: hexToRgbString(room.teamB.color || TEAM_COLOR_OPTIONS[1].value),
+        teamAPlayers: teamAPlayers,
+        teamBPlayers: teamBPlayers,
+        teamAMainGrid: buildMainGrid(teamAPlayers, getMainOrderForTeam("A", room.match.isSwapped ? "B" : "A"), "A"),
+        teamALibero: buildLibero(teamAPlayers, "A"),
+        teamBMainGrid: buildMainGrid(teamBPlayers, getMainOrderForTeam("B", room.match.isSwapped ? "B" : "A"), "B"),
+        teamBLibero: buildLibero(teamBPlayers, "B"),
+        updatedAt: room.updatedAt,
+      });
+    } finally {
+      this.roomLoadInFlight = false;
+      if (this.roomLoadPending && this.pageActive) {
+        const pendingForce = this.roomLoadPendingForce || !!force;
+        this.roomLoadPending = false;
+        this.roomLoadPendingForce = false;
+        void this.loadRoom(roomId, pendingForce);
+      } else {
+        this.roomLoadPending = false;
+        this.roomLoadPendingForce = false;
+      }
+    }
   },
 
   onInputChange(e: WechatMiniprogram.Input) {
@@ -598,7 +783,10 @@ Page({
     const idx = Number(e.detail.value);
     const maxIdx = this.data.matchModes.length - 1;
     const nextIdx = Number.isFinite(idx) ? Math.max(0, Math.min(maxIdx, idx)) : 0;
-    this.setData({ matchModeIndex: nextIdx });
+    this.setData({
+      matchModeIndex: nextIdx,
+      matchModeChars: buildMatchModeChars((this.data.matchModes[nextIdx] || this.data.matchModes[0]).label),
+    });
     this.persistDraft();
   },
 
@@ -774,13 +962,19 @@ Page({
         showToastHint("甲/乙队颜色不能相同");
         return;
       }
-      this.setData({ teamAColor: color });
+      this.setData({
+        teamAColor: color,
+        teamARGB: hexToRgbString(color),
+      });
     } else {
       if (color === this.data.teamAColor) {
         showToastHint("甲/乙队颜色不能相同");
         return;
       }
-      this.setData({ teamBColor: color });
+      this.setData({
+        teamBColor: color,
+        teamBRGB: hexToRgbString(color),
+      });
     }
     this.persistDraft();
   },
@@ -1091,16 +1285,42 @@ Page({
     const editMode = !!this.data.editMode;
     const createMode = !!this.data.createMode;
     if (createMode) {
-      const clientId = String(getApp<IAppOption>().globalData.clientId || "");
-      const lockValid = await hasRoomLockAsync(roomId, clientId);
+      const app = getApp<IAppOption>();
+      let clientId = String(app.globalData.clientId || wx.getStorageSync("volleyball.clientId") || "");
+      if (!clientId) {
+        clientId = "c_" + Date.now().toString(36) + "_" + Math.floor(Math.random() * 1e6).toString(36);
+        app.globalData.clientId = clientId;
+        wx.setStorageSync("volleyball.clientId", clientId);
+      }
+      // Prefer local lock verification to avoid long cloud round-trip blocking on tap.
+      let lockValid = hasRoomLock(roomId, clientId);
+      if (!lockValid) {
+        lockValid = await withTimeout<boolean>(hasRoomLockAsync(roomId, clientId), 2500, false);
+      }
+      if (!lockValid) {
+        // Network jitter / eventual consistency can cause a false-negative lock check.
+        // Try to re-reserve once for the same owner before treating it as recycled.
+        const localReReserved = reserveRoomId(roomId, clientId);
+        const reReserved = await withTimeout<boolean>(
+          reserveRoomIdAsync(roomId, clientId),
+          2500,
+          localReReserved
+        );
+        if (reReserved) {
+          lockValid = true;
+        }
+      }
       if (!lockValid) {
         wx.showModal({
-          title: "房间号已回收",
-          content: "该房间号保留已超时，请返回首页重新创建房间。",
+          title: "房间号已过期",
+          content: "房间号已超时，系统将重新分配。已填信息会保留，如需邀请他人请重新复制邀请信息。",
           showCancel: false,
-          confirmText: "返回首页",
-          success: () => {
-            wx.reLaunch({ url: "/pages/home/home" });
+          confirmText: "重新分配",
+          success: async (res) => {
+            if (!res.confirm) {
+              return;
+            }
+            await this.reassignExpiredRoomId(clientId);
           },
         });
         return;
@@ -1112,8 +1332,6 @@ Page({
     const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
     const permanentTeamACaptainNo = normalizeNumberInput(this.data.teamACaptainNo);
     const permanentTeamBCaptainNo = normalizeNumberInput(this.data.teamBCaptainNo);
-    let onCourtTeamACaptainNo = permanentTeamACaptainNo;
-    let onCourtTeamBCaptainNo = permanentTeamBCaptainNo;
 
     if (roomPassword.length !== 6) {
       showBlockHint("房间密码需6位数字");
@@ -1154,15 +1372,6 @@ Page({
       return;
     }
 
-    if (!editMode) {
-      const captainResolved = await this.ensureOnCourtCaptains(this.data.teamAPlayers, this.data.teamBPlayers);
-      if (!captainResolved) {
-        return;
-      }
-      onCourtTeamACaptainNo = captainResolved.teamACaptainNo;
-      onCourtTeamBCaptainNo = captainResolved.teamBCaptainNo;
-    }
-
     showCreatingLoading = !!createMode && !editMode;
     if (showCreatingLoading) {
       wx.showLoading({
@@ -1172,10 +1381,6 @@ Page({
     }
 
     if (createMode) {
-      if (await getRoomAsync(roomId)) {
-        showBlockHint("房间号已存在");
-        return;
-      }
       const created = await createRoomAsync({
         roomId: roomId,
         creatorClientId: getApp<IAppOption>().globalData.clientId,
@@ -1209,8 +1414,10 @@ Page({
         if (!(room as any).matchEnteredAt) {
           (room as any).matchEnteredAt = nowTs;
         }
-        (room.match as any).teamACurrentCaptainNo = onCourtTeamACaptainNo;
-        (room.match as any).teamBCurrentCaptainNo = onCourtTeamBCaptainNo;
+        delete (room.match as any).teamACurrentCaptainNo;
+        delete (room.match as any).teamBCurrentCaptainNo;
+        (room.match as any).preStartCaptainConfirmed = false;
+        (room.match as any).preStartCaptainConfirmSetNo = 0;
         room.match.servingTeam = this.data.servingTeam;
         room.match.isSwapped = this.data.teamASide === "B";
         return room;
@@ -1257,8 +1464,10 @@ Page({
         color: this.data.teamBColor,
         players: this.data.teamBPlayers.slice(),
       };
-      (room.match as any).teamACurrentCaptainNo = onCourtTeamACaptainNo;
-      (room.match as any).teamBCurrentCaptainNo = onCourtTeamBCaptainNo;
+      delete (room.match as any).teamACurrentCaptainNo;
+      delete (room.match as any).teamBCurrentCaptainNo;
+      (room.match as any).preStartCaptainConfirmed = false;
+      (room.match as any).preStartCaptainConfirmSetNo = 0;
       room.match.servingTeam = this.data.servingTeam;
       room.match.isSwapped = this.data.teamASide === "B";
       return room;
