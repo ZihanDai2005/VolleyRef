@@ -2684,27 +2684,43 @@
   animation: sub-popover-out 180ms ease;
 }
 
-.sub-log-popover .sub-record-tabbar .sub-seg {
-  flex-wrap: nowrap;
+.sub-log-popover-head {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
 }
 
-.sub-log-popover .sub-seg-item {
+.sub-record-picker {
+  height: 30px;
+  min-width: 122px;
+  padding: 0 10px;
+  border-radius: 999px;
+  box-sizing: border-box;
+  background: var(--surface-soft);
+  border: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--text-secondary);
+}
+
+.sub-record-picker-text {
+  font-size: 12px;
+  line-height: 1;
+  color: inherit;
   white-space: nowrap;
 }
 
-.sub-log-popover .sub-seg-item.active {
-  background: var(--ink-base);
-  color: var(--ink-on-base);
-  border: 0;
-}
-
-.sub-log-popover-head {
-  flex: 0 0 auto;
-}
-
-.sub-record-tabbar {
-  margin-top: 8px;
-  flex: 0 0 auto;
+.sub-record-picker-icon {
+  width: 14px;
+  height: 14px;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 14L7 9H17L12 14Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 14L7 9H17L12 14Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
 }
 
 .sub-log-popover-list {
@@ -2726,8 +2742,13 @@
 }
 
 .sub-confirm-wrap {
-  margin-top: auto;
-  padding-top: 2px;
+  margin-top: 8px;
+  flex-shrink: 0;
+}
+
+.sub-confirm-wrap-bottom {
+  margin-top: 10px;
+  padding-top: 0;
 }
 
 .sub-field {

@@ -105,6 +105,7 @@ type MatchFlowMode = "normal" | "edit_players" | "between_sets";
 type MatchFlowReturnState = "prestart" | "playing";
 type FlowSwitchScope = "none" | "top_all" | "score_only";
 type CaptainConfirmReason = "prestart" | "post_edit" | "post_sub";
+type SubRecordTab = "normal" | "special" | "libero" | "special_libero";
 type CaptainConfirmOpenOptions = {
   showCancel?: boolean;
   scopedTeam?: "" | TeamCode;
@@ -149,6 +150,23 @@ const MODAL_ANIM_MS = 180;
 const SEG_SWITCH_ANIM_MS = 180;
 const LOCAL_OP_ID_TTL_MS = 10 * 60 * 1000;
 const localOpIdSeenAt = new Map<string, number>();
+const SUB_RECORD_TAB_OPTIONS: Array<{ label: string; value: SubRecordTab }> = [
+  { label: "普通", value: "normal" },
+  { label: "特殊", value: "special" },
+  { label: "自由人常规", value: "libero" },
+  { label: "自由人特殊", value: "special_libero" },
+];
+
+function getSubRecordTabIndex(tabRaw: string): number {
+  const tab = (tabRaw === "special" || tabRaw === "libero" || tabRaw === "special_libero" ? tabRaw : "normal") as SubRecordTab;
+  const idx = SUB_RECORD_TAB_OPTIONS.findIndex((item) => item.value === tab);
+  return idx >= 0 ? idx : 0;
+}
+
+function getSubRecordTabByIndex(indexRaw: number): SubRecordTab {
+  const idx = Math.max(0, Math.min(SUB_RECORD_TAB_OPTIONS.length - 1, Number(indexRaw) || 0));
+  return SUB_RECORD_TAB_OPTIONS[idx].value;
+}
 
 function rememberLocalOpId(opIdRaw: string): void {
   const opId = String(opIdRaw || "");
@@ -1680,7 +1698,9 @@ Page({
     showSubMatchLogPopover: false,
     subMatchLogPopoverClosing: false,
     subLogPopoverInlineStyle: "",
-    subRecordTab: "normal" as "normal" | "special" | "libero" | "special_libero",
+    subRecordTab: "normal" as SubRecordTab,
+    subRecordTabOptions: SUB_RECORD_TAB_OPTIONS.map((item) => item.label),
+    subRecordTabIndex: 0,
     subModeSwitching: false,
     subReasonSwitching: false,
     subRecordTabSwitching: false,
@@ -2464,11 +2484,19 @@ Page({
 
   getTeamCurrentCaptainNoFromRoom(room: any, team: TeamCode): string {
     if (!room || !room.match) {
-      return "";
+      return normalizeNumberInput(String(team === "A" ? this.data.teamACaptainNo || "" : this.data.teamBCaptainNo || ""));
     }
     const key = team === "A" ? "teamACurrentCaptainNo" : "teamBCurrentCaptainNo";
     const teamObj = team === "A" ? room.teamA : room.teamB;
-    return normalizeNumberInput(String((room.match as any)[key] || (teamObj && (teamObj as any).captainNo) || ""));
+    const captainFromMatch = normalizeNumberInput(String((room.match as any)[key] || ""));
+    if (captainFromMatch) {
+      return captainFromMatch;
+    }
+    const captainFromData = normalizeNumberInput(String(team === "A" ? this.data.teamACaptainNo || "" : this.data.teamBCaptainNo || ""));
+    if (captainFromData) {
+      return captainFromData;
+    }
+    return normalizeNumberInput(String((teamObj && (teamObj as any).captainNo) || ""));
   },
 
   resolveCaptainConfirmReadonlyToast(team: TeamCode): string {
@@ -2881,6 +2909,7 @@ Page({
           subMatchLogPopoverClosing: false,
           subLogPopoverInlineStyle: "",
           subRecordTab: "normal",
+          subRecordTabIndex: getSubRecordTabIndex("normal"),
           subSelectedPos: "",
           subIncomingNoInput: "",
           subIncomingNo: "",
@@ -2982,6 +3011,7 @@ Page({
         subMatchLogPopoverClosing: false,
         subLogPopoverInlineStyle: "",
         subRecordTab: nextMode === "special" ? "special" : "normal",
+        subRecordTabIndex: getSubRecordTabIndex(nextMode === "special" ? "special" : "normal"),
         subMode: nextMode,
         subReason: "injury",
         subSelectedPos: selectedPos,
@@ -5196,6 +5226,9 @@ Page({
         subMatchLogPopoverClosing: false,
         subLogPopoverInlineStyle: "",
         subRecordTab: draft.mode === "special" ? "special" : draft.mode === "special_libero" ? "special_libero" : "normal",
+        subRecordTabIndex: getSubRecordTabIndex(
+          draft.mode === "special" ? "special" : draft.mode === "special_libero" ? "special_libero" : "normal"
+        ),
         subModeSwitching: false,
         subReasonSwitching: false,
         subRecordTabSwitching: false,
@@ -8093,6 +8126,7 @@ Page({
         subMatchLogPopoverClosing: false,
         subLogPopoverInlineStyle: "",
         subRecordTab: "normal",
+        subRecordTabIndex: getSubRecordTabIndex("normal"),
         subMode: "normal",
         subReason: "injury",
         subIncomingNoInput: "",
@@ -8120,16 +8154,18 @@ Page({
       return;
     }
     this.clearSubMatchLogPopoverCloseTimer();
+    const nextTab: SubRecordTab =
+      this.data.subMode === "special"
+        ? "special"
+        : this.data.subMode === "special_libero"
+          ? "special_libero"
+          : "normal";
     this.setData({
       showSubMatchLogPopover: opening,
       subMatchLogPopoverClosing: false,
       subRecordTabSwitching: false,
-      subRecordTab:
-        this.data.subMode === "special"
-          ? "special"
-          : this.data.subMode === "special_libero"
-            ? "special_libero"
-            : "normal",
+      subRecordTab: nextTab,
+      subRecordTabIndex: getSubRecordTabIndex(nextTab),
     }, () => {
       this.syncSubMatchLogPopoverSize();
     });
@@ -8187,7 +8223,24 @@ Page({
     if (tab === this.data.subRecordTab) {
       return;
     }
-    this.setData({ subRecordTab: tab as "normal" | "special" | "libero" | "special_libero" }, () => {
+    this.setData({
+      subRecordTab: tab as SubRecordTab,
+      subRecordTabIndex: getSubRecordTabIndex(tab),
+    }, () => {
+      this.triggerSubRecordTabSwitchAnimation();
+    });
+  },
+
+  onSubRecordTabPickerChange(e: WechatMiniprogram.PickerChange) {
+    const index = Number((e && e.detail && (e.detail as any).value) || 0);
+    const tab = getSubRecordTabByIndex(index);
+    if (tab === this.data.subRecordTab) {
+      return;
+    }
+    this.setData({
+      subRecordTab: tab,
+      subRecordTabIndex: getSubRecordTabIndex(tab),
+    }, () => {
       this.triggerSubRecordTabSwitchAnimation();
     });
   },

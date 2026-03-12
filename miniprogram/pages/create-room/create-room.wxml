@@ -65,12 +65,7 @@
       >
         <view class="create-head-input-wrap create-head-mode-wrap">
           <view class="create-head-input create-head-input-mode">
-            <text
-              wx:for="{{matchModeChars}}"
-              wx:key="index"
-              class="match-mode-char {{item.kind}}"
-              style="transform: translateY({{item.offsetY}}rpx);"
-            >{{item.char}}</text>
+            <text class="create-head-mode-text">{{(matchModes[matchModeIndex] || matchModes[0]).label}}</text>
           </view>
           <view class="create-head-mode-arrow"></view>
         </view>

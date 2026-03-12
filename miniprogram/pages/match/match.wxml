@@ -804,15 +804,14 @@
                 <view class="sub-seg-item {{subReason === 'other' ? 'active' : ''}}" data-reason="other" bindtap="onSubSelectReason">其他</view>
               </view>
             </view>
-
-            <view class="sub-confirm-wrap">
-              <view class="set-end-btn-home sub-confirm-btn pressable" hover-class="tap-active" bindtap="onSubConfirmTap">
-                <view class="set-end-btn-content sub-confirm-btn-content">
-                  <view class="start-match-entry-icon confirm sub-confirm-btn-icon"></view>
-                  <text class="sub-confirm-btn-text">确认换人</text>
-                </view>
-              </view>
-            </view>
+          </view>
+        </view>
+      </view>
+      <view class="sub-confirm-wrap sub-confirm-wrap-bottom">
+        <view class="set-end-btn-home sub-confirm-btn pressable" hover-class="tap-active" bindtap="onSubConfirmTap">
+          <view class="set-end-btn-content sub-confirm-btn-content">
+            <view class="start-match-entry-icon confirm sub-confirm-btn-icon"></view>
+            <text class="sub-confirm-btn-text">确认换人</text>
           </view>
         </view>
       </view>
@@ -821,14 +820,17 @@
         <view class="sub-log-popover {{showSubMatchLogPopover ? 'popover-enter' : 'popover-leave'}}" style="{{subLogPopoverInlineStyle}}" catchtap="onSubMatchLogPopoverTap">
           <view class="log-head sub-log-popover-head">
             <text class="log-title">换人记录</text>
-          </view>
-          <view class="sub-record-tabbar">
-            <view class="sub-seg {{subRecordTabSwitching ? 'seg-switching' : ''}}" id="sub-log-tab-seg">
-              <view class="sub-seg-item {{subRecordTab === 'normal' ? 'active' : ''}}" data-tab="normal" bindtap="onSelectSubRecordTab">普通</view>
-              <view class="sub-seg-item {{subRecordTab === 'special' ? 'active' : ''}}" data-tab="special" bindtap="onSelectSubRecordTab">特殊</view>
-              <view class="sub-seg-item {{subRecordTab === 'libero' ? 'active' : ''}}" data-tab="libero" bindtap="onSelectSubRecordTab">自由人常规</view>
-              <view class="sub-seg-item {{subRecordTab === 'special_libero' ? 'active' : ''}}" data-tab="special_libero" bindtap="onSelectSubRecordTab">自由人特殊</view>
-            </view>
+            <picker
+              mode="selector"
+              range="{{subRecordTabOptions}}"
+              value="{{subRecordTabIndex}}"
+              bindchange="onSubRecordTabPickerChange"
+            >
+              <view class="sub-record-picker pressable" hover-class="tap-active">
+                <text class="sub-record-picker-text">{{subRecordTabOptions[subRecordTabIndex]}}</text>
+                <view class="sub-record-picker-icon"></view>
+              </view>
+            </picker>
           </view>
           <scroll-view class="log-list sub-log-popover-list {{subRecordTabSwitching ? 'sub-record-list-switching' : ''}}" scroll-y="true">
             <view class="log-item" wx:if="{{subRecordTab === 'normal'}}" wx:for="{{subNormalRecords}}" wx:key="index" wx:for-item="item">

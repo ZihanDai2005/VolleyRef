@@ -314,45 +314,40 @@
 }
 
 .create-head-mode-wrap {
-  padding-right: 64rpx;
+  height: 50rpx;
+  padding-right: 48rpx;
 }
 
 .create-head-input-mode {
   display: flex;
   align-items: center;
   height: 100%;
-  line-height: 1;
+  line-height: 50rpx;
+  font-size: 30rpx;
   letter-spacing: 0;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
 }
 
-.match-mode-char {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
+.create-head-mode-wrap .create-head-input {
+  font-size: 30rpx;
+  line-height: 50rpx;
+  letter-spacing: 0;
+  padding: 0 18rpx 0 45rpx;
+}
+
+.create-head-mode-text {
+  display: inline-block;
   line-height: 1;
-  white-space: pre;
-  font-size: 50rpx;
-}
-
-.match-mode-char.text {
+  font-size: 30rpx;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
-  margin: 0 1rpx;
-}
-
-.match-mode-char.digit {
-  font-family: "BebasNeue", "Anton", sans-serif;
-  font-size: 52rpx;
-  min-width: 22rpx;
-  margin: 0 1rpx;
 }
 
 .create-head-mode-arrow {
   position: absolute;
-  right: 22rpx;
+  right: 16rpx;
   top: 50%;
-  width: 44rpx;
-  height: 44rpx;
+  width: 30rpx;
+  height: 30rpx;
   transform: translateY(-50%);
   background: var(--text-tertiary);
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M13.1717 12.0007L8.22192 7.05093L9.63614 5.63672L16.0001 12.0007L9.63614 18.3646L8.22192 16.9504L13.1717 12.0007Z'/%3E%3C/svg%3E")
