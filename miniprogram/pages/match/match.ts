@@ -1808,6 +1808,7 @@ Page({
   observerPerspectiveTargetSide: "" as "" | "A" | "B",
   observerViewSideLocal: "" as "" | "A" | "B",
   observerPerspectiveFreezeUntil: 0 as number,
+  betweenSetSideToggleToken: 0 as number,
   swapDragStart: null as
     | null
     | {
@@ -2179,7 +2180,15 @@ Page({
     this.clearActiveAdjustInput();
   },
 
-  async persistFlowLineupDraftNow() {
+  async persistFlowLineupDraftNow(overrides?: {
+    teamAPlayers?: PlayerSlot[];
+    teamBPlayers?: PlayerSlot[];
+    servingTeam?: TeamCode;
+    isSwapped?: boolean;
+    flowMode?: MatchFlowMode;
+    flowReturnState?: MatchFlowReturnState;
+    debounceMs?: number;
+  }) {
     if (!this.isPlayerCardsEditable()) {
       return;
     }
@@ -2197,12 +2206,13 @@ Page({
       });
       return normalizeLiberoSlots(normalized);
     };
-    const teamAPlayers = sanitizePlayersForFlowDraft(this.data.teamAPlayers || []);
-    const teamBPlayers = sanitizePlayersForFlowDraft(this.data.teamBPlayers || []);
-    const servingTeam: TeamCode = this.data.servingTeam === "B" ? "B" : "A";
-    const isSwapped = !!this.data.isSwapped;
-    const flowMode = this.data.matchFlowMode;
-    const flowReturnState = this.data.matchFlowReturnState;
+    const teamAPlayers = sanitizePlayersForFlowDraft(overrides && overrides.teamAPlayers ? overrides.teamAPlayers : this.data.teamAPlayers || []);
+    const teamBPlayers = sanitizePlayersForFlowDraft(overrides && overrides.teamBPlayers ? overrides.teamBPlayers : this.data.teamBPlayers || []);
+    const servingTeam: TeamCode = overrides && overrides.servingTeam ? overrides.servingTeam : this.data.servingTeam === "B" ? "B" : "A";
+    const isSwapped = overrides && typeof overrides.isSwapped === "boolean" ? !!overrides.isSwapped : !!this.data.isSwapped;
+    const flowMode = overrides && overrides.flowMode ? overrides.flowMode : this.data.matchFlowMode;
+    const flowReturnState = overrides && overrides.flowReturnState ? overrides.flowReturnState : this.data.matchFlowReturnState;
+    const debounceMs = overrides && typeof overrides.debounceMs === "number" ? Math.max(0, Number(overrides.debounceMs) || 0) : 60;
     if (this.flowDraftPersistTimer) {
       clearTimeout(this.flowDraftPersistTimer);
       this.flowDraftPersistTimer = 0;
@@ -2230,7 +2240,7 @@ Page({
         },
         { awaitCloud: false }
       );
-    }, 60) as unknown as number;
+    }, debounceMs) as unknown as number;
   },
 
   async setFlowMode(mode: MatchFlowMode, returnState?: MatchFlowReturnState) {
@@ -4064,16 +4074,24 @@ Page({
       return;
     }
 
-    await updateRoomAsync(
+    const nextTeamAPlayers = clonePlayerList(this.data.teamAPlayers || []);
+    const nextTeamBPlayers = clonePlayerList(this.data.teamBPlayers || []);
+    const nextIsSwapped = !!this.data.isSwapped;
+    const nextServingTeam: TeamCode = this.data.servingTeam === "B" ? "B" : "A";
+    const flowChanged = true;
+    if (flowChanged) {
+      await this.startFlowModeSwitchOutIfNeeded("normal");
+    }
+    void updateRoomAsync(
       roomId,
       (room) => {
         if (!room || !room.match || !room.teamA || !room.teamB || room.match.isFinished) {
           return room;
         }
-        room.teamA.players = clonePlayerList(this.data.teamAPlayers || []);
-        room.teamB.players = clonePlayerList(this.data.teamBPlayers || []);
-        room.match.isSwapped = !!this.data.isSwapped;
-        room.match.servingTeam = this.data.servingTeam === "B" ? "B" : "A";
+        room.teamA.players = clonePlayerList(nextTeamAPlayers);
+        room.teamB.players = clonePlayerList(nextTeamBPlayers);
+        room.match.isSwapped = nextIsSwapped;
+        room.match.servingTeam = nextServingTeam;
         (room.match as any).setTimerStartAt = 0;
         (room.match as any).setTimerElapsedMs = 0;
         (room.match as any).timeoutActive = false;
@@ -4081,6 +4099,9 @@ Page({
         (room.match as any).timeoutEndAt = 0;
         (room.match as any).teamATimeoutCount = 0;
         (room.match as any).teamBTimeoutCount = 0;
+        // 局间配置确认后进入“待确认场上队长”状态：清空本场场上队长。
+        (room.match as any).teamACurrentCaptainNo = "";
+        (room.match as any).teamBCurrentCaptainNo = "";
         (room.match as any).preStartCaptainConfirmed = false;
         (room.match as any).preStartCaptainConfirmSetNo = 0;
         (room.match as any).flowMode = "normal";
@@ -4094,6 +4115,18 @@ Page({
     );
     this.clearActiveAdjustInput();
     this.flowPlayersDirty = false;
+    this.editDisplayRoleMapA = null;
+    this.editDisplayRoleMapB = null;
+    this.setData({
+      matchFlowMode: "normal",
+      matchFlowReturnState: "prestart",
+      playerCardsEditable: false,
+      preStartCaptainConfirmed: false,
+      preStartCaptainConfirmSetNo: 0,
+      teamACaptainNo: "",
+      teamBCaptainNo: "",
+    });
+    this.finishFlowModeSwitchIn(flowChanged);
     void this.loadRoom(roomId, false, true);
   },
 
@@ -4203,9 +4236,23 @@ Page({
             if (!room || !room.match || room.match.isFinished) {
               return room;
             }
+            const nextSetNo = Math.max(1, Number(room.match.setNo || 1));
+            const wins = Math.max(1, Number((room.settings && room.settings.wins) || 1));
+            const prevSetNo = Math.max(1, nextSetNo - 1);
+            const lineupMap = getSetStartLineupsMap(room);
+            const prevSnapshot = lineupMap[String(prevSetNo)] || null;
+            if (prevSnapshot && Array.isArray(prevSnapshot.teamAPlayers) && Array.isArray(prevSnapshot.teamBPlayers)) {
+              // 局间配置必须沿用上一局“首发快照”，不带入局中换人结果。
+              room.teamA.players = clonePlayerList(prevSnapshot.teamAPlayers || []);
+              room.teamB.players = clonePlayerList(prevSnapshot.teamBPlayers || []);
+              // 非决胜局：按上一局结束场区自动换边；决胜局：不自动换边（保留到局间配置手动调整）。
+              room.match.isSwapped = isDecidingSetByRule(nextSetNo, wins) ? !!prevSnapshot.endIsSwapped : !prevSnapshot.endIsSwapped;
+            }
             (room.match as any).flowMode = "between_sets";
             (room.match as any).flowReturnState = "prestart";
             (room.match as any).flowUpdatedAt = Date.now();
+            (room.match as any).teamACurrentCaptainNo = "";
+            (room.match as any).teamBCurrentCaptainNo = "";
             (room.match as any).preStartCaptainConfirmed = false;
             (room.match as any).preStartCaptainConfirmSetNo = 0;
             delete (room.match as any).setEndState;
@@ -4287,11 +4334,15 @@ Page({
     if (!this.data.hasOperationAuthority || !this.isBetweenSetMode()) {
       return;
     }
-    const nextSwapped = !this.data.isSwapped;
-    const patch = this.buildLineupDisplayPatch(this.data.teamAPlayers || [], this.data.teamBPlayers || [], nextSwapped);
-    this.setData(patch);
-    this.flowPlayersDirty = true;
-    void this.persistFlowLineupDraftNow();
+    if (this.switchConfirming || this.data.switchingOut || this.data.switchingIn) {
+      return;
+    }
+    this.switchConfirming = true;
+    void this.enqueueAction(async () => {
+      await this.switchSidesWithAnimation("局间配置换边");
+    }).finally(() => {
+      this.switchConfirming = false;
+    });
   },
 
   onToggleServeTeam(e: WechatMiniprogram.TouchEvent) {
@@ -4300,14 +4351,21 @@ Page({
     }
     const dataset = (e.currentTarget && e.currentTarget.dataset) as { team?: string } | undefined;
     const team: TeamCode = dataset && dataset.team === "B" ? "B" : "A";
-    if (this.data.servingTeam === team) {
-      return;
-    }
+    // 同一按钮支持来回切：当前已发球时再点一次，切为接发（即另一队发球）。
+    const nextServingTeam: TeamCode = this.data.servingTeam === team ? (team === "A" ? "B" : "A") : team;
     this.setData({
-      servingTeam: team,
+      servingTeam: nextServingTeam,
     });
     this.flowPlayersDirty = true;
-    void this.persistFlowLineupDraftNow();
+    void this.persistFlowLineupDraftNow({
+      teamAPlayers: clonePlayerList(this.data.teamAPlayers || []),
+      teamBPlayers: clonePlayerList(this.data.teamBPlayers || []),
+      servingTeam: nextServingTeam,
+      isSwapped: !!this.data.isSwapped,
+      flowMode: "between_sets",
+      flowReturnState: this.data.matchFlowReturnState as MatchFlowReturnState,
+      debounceMs: 0,
+    });
   },
 
   onAdjustFieldWrapTap(e: WechatMiniprogram.TouchEvent) {
@@ -6048,15 +6106,9 @@ Page({
       await this.delayAsync(340);
       // 先恢复底层数字，再下一帧移除飞行层，避免结束瞬间出现空白闪烁。
       if (team === "A") {
-        this.setData({ hideTeamAMainNumbers: false });
-        await this.nextTickAsync();
-        await this.delayAsync(16);
-        this.setData({ rotateFlyItemsA: [] });
+        this.setData({ hideTeamAMainNumbers: false, rotateFlyItemsA: [] });
       } else {
-        this.setData({ hideTeamBMainNumbers: false });
-        await this.nextTickAsync();
-        await this.delayAsync(16);
-        this.setData({ rotateFlyItemsB: [] });
+        this.setData({ hideTeamBMainNumbers: false, rotateFlyItemsB: [] });
       }
       this.scheduleRectCacheWarmup(50);
     } finally {
@@ -6633,8 +6685,6 @@ Page({
           const tempBDisplayPlayers = markDisplayPlayersByLiberoRoster(tempBPlayers, teamBLiberoRosterNos);
           const tempARows = buildTeamRows(tempADisplayPlayers);
           const tempBRows = buildTeamRows(tempBDisplayPlayers);
-          const hideAForStep = step.team === "A" || (!!nextStep && nextStep.team === "A");
-          const hideBForStep = step.team === "B" || (!!nextStep && nextStep.team === "B");
           this.setData({
             teamAPlayers: tempAPlayers,
             teamBPlayers: tempBPlayers,
@@ -6642,8 +6692,6 @@ Page({
             teamAMainGrid: buildMainGridByOrder(tempADisplayPlayers, getMainOrderForTeam("A", teamASide)),
             teamBLibero: tempBRows.libero,
             teamBMainGrid: buildMainGridByOrder(tempBDisplayPlayers, getMainOrderForTeam("B", teamASide)),
-            hideTeamAMainNumbers: hideAForStep,
-            hideTeamBMainNumbers: hideBForStep,
           });
 
           if (canParallel && nextStep && beforeRects2 && beforeNoMap2) {
