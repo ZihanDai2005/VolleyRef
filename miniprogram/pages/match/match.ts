@@ -2055,6 +2055,9 @@ Page({
         if (String(item.action || "") === "next_set") {
           return false;
         }
+        if (String(item.action || "") === "score_reset") {
+          return false;
+        }
         const noteSetNo = extractSetNoFromNote(String(item.note || ""));
         const itemSetNo = Math.max(1, Number((item as any).setNo || noteSetNo || 1));
         return itemSetNo === targetSet;
@@ -3985,6 +3988,14 @@ Page({
       return;
     }
     this.clearActiveAdjustInput();
+    const editedChangedA = !arePlayersSameByPos(
+      this.flowBaseTeamAPlayers || this.data.teamAPlayers,
+      this.data.teamAPlayers || []
+    );
+    const editedChangedB = !arePlayersSameByPos(
+      this.flowBaseTeamBPlayers || this.data.teamBPlayers,
+      this.data.teamBPlayers || []
+    );
     this.normalizeEditablePlayersBeforeConfirm();
     const teamAName = String(this.data.teamAName || "甲");
     const teamBName = String(this.data.teamBName || "乙");
@@ -4025,9 +4036,17 @@ Page({
       clearTimeout(this.flowDraftPersistTimer);
       this.flowDraftPersistTimer = 0;
     }
-    const changed =
-      !arePlayersSameByPos(this.flowBaseTeamAPlayers || this.data.teamAPlayers, this.data.teamAPlayers || []) ||
-      !arePlayersSameByPos(this.flowBaseTeamBPlayers || this.data.teamBPlayers, this.data.teamBPlayers || []);
+    const changedA = !arePlayersSameByPos(
+      this.flowBaseTeamAPlayers || this.data.teamAPlayers,
+      this.data.teamAPlayers || []
+    );
+    const changedB = !arePlayersSameByPos(
+      this.flowBaseTeamBPlayers || this.data.teamBPlayers,
+      this.data.teamBPlayers || []
+    );
+    const changed = changedA || changedB;
+    const scopedTeamAfterEdit: "" | TeamCode =
+      editedChangedA && !editedChangedB ? "A" : editedChangedB && !editedChangedA ? "B" : "";
     const shouldRequireCaptainReconfirmAfterEdit =
       changed &&
       (
@@ -4078,7 +4097,10 @@ Page({
       });
       this.finishFlowModeSwitchIn(flowChanged);
       if (shouldRequireCaptainReconfirmAfterEdit) {
-        this.openCaptainConfirmModal("post_edit");
+        this.openCaptainConfirmModal("post_edit", {
+          scopedTeam: scopedTeamAfterEdit,
+          showCancel: false,
+        });
       }
       return;
     }
@@ -7580,7 +7602,6 @@ Page({
       (room.match as any).timeoutEndAt = 0;
       room.match.isFinished = false;
       (room.match as any).setStartLineupsBySet = {};
-      appendMatchLog(room, "score_reset", "比分清零（0:0）", undefined, opId);
       (room.match as any).lastActionOpId = opId;
       return room;
     });

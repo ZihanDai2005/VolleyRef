@@ -13,7 +13,67 @@ type MatchLogItem = {
   revertedOpId?: string;
 };
 
-type DisplayLogItem = MatchLogItem & { timeText: string };
+type DisplayLogRow = {
+  id: string;
+  rowKey: string;
+  timeText: string;
+  setTimeText: string;
+  leftNote: string;
+  leftSubNote: string;
+  rightNote: string;
+  rightSubNote: string;
+  leftScoreBadgeText: string;
+  leftScoreBadgeRgb: string;
+  leftScoreBadgeAlpha: string;
+  rightScoreBadgeText: string;
+  rightScoreBadgeRgb: string;
+  rightScoreBadgeAlpha: string;
+  leftScoreBadgeNeutral: boolean;
+  rightScoreBadgeNeutral: boolean;
+  hasLeftNote: boolean;
+  hasRightNote: boolean;
+  hasLeftSub: boolean;
+  hasRightSub: boolean;
+  hasLeftPlaceholder: boolean;
+  hasRightPlaceholder: boolean;
+  showLeftBadge: boolean;
+  showRightBadge: boolean;
+  leftPillClass: string;
+  rightPillClass: string;
+  leftTextClass: string;
+  rightTextClass: string;
+  leftBadgeClass: string;
+  rightBadgeClass: string;
+  leftBadgeStyle: string;
+  rightBadgeStyle: string;
+  leftSubSwap: boolean;
+  rightSubSwap: boolean;
+  leftSubType: string;
+  rightSubType: string;
+  leftSubUpNo: string;
+  rightSubUpNo: string;
+  leftSubDownNo: string;
+  rightSubDownNo: string;
+};
+
+type ScoreProgressData = {
+  a: number[];
+  b: number[];
+  cols: number;
+  hasData: boolean;
+};
+
+type ScoreProgressCellView = {
+  cellKey: string;
+  cellStyle: string;
+};
+
+type ScoreProgressRowView = {
+  rowKey: string;
+  teamName: string;
+  trackStyle: string;
+  cells: ScoreProgressCellView[];
+};
 
 type SetSummaryItem = {
   setNo: number;
@@ -112,9 +172,34 @@ function pad2(n: number): string {
   return n < 10 ? "0" + String(n) : String(n);
 }
 
+function hexToRgbTriplet(hex: string, fallback = "81, 125, 209"): string {
+  const normalized = String(hex || "").trim();
+  const m = normalized.match(/^#?([0-9a-fA-F]{6})$/);
+  if (!m) {
+    return fallback;
+  }
+  const c = m[1];
+  const r = parseInt(c.slice(0, 2), 16);
+  const g = parseInt(c.slice(2, 4), 16);
+  const b = parseInt(c.slice(4, 6), 16);
+  return String(r) + ", " + String(g) + ", " + String(b);
+}
+
 function formatLogTime(ts: number): string {
   const d = new Date(Number(ts) || 0);
   return pad2(d.getHours()) + ":" + pad2(d.getMinutes()) + ":" + pad2(d.getSeconds());
+}
+
+function formatSetElapsedTime(setStartTs: number, itemTs: number): string {
+  const startTs = Math.max(0, Number(setStartTs) || 0);
+  const ts = Math.max(0, Number(itemTs) || 0);
+  if (!startTs || !ts || ts < startTs) {
+    return "局时 --";
+  }
+  const elapsedSec = Math.max(0, Math.floor((ts - startTs) / 1000));
+  const mm = Math.floor(elapsedSec / 60);
+  const ss = elapsedSec % 60;
+  return "局时 " + String(mm) + "'" + pad2(ss) + "\"";
 }
 
 function escapeRegExp(input: string): string {
@@ -226,6 +311,150 @@ function withTeamSuffixForDisplay(noteRaw: string, teamANameRaw: string, teamBNa
 
 function normalizeWinnerName(name: string): string {
   return String(name || "").replace(/\s+/g, "").replace(/队$/u, "");
+}
+
+function stripFullScoreForAddOneNote(note: string): string {
+  return String(note || "")
+    .replace(/\s*[（(]\s*\d+\s*[:：]\s*\d+\s*[）)]/g, "")
+    .replace(/\s{2,}/g, " ")
+    .trim();
+}
+
+function isSubstitutionAction(action: string, noteRaw: string): boolean {
+  const actionText = String(action || "");
+  const note = String(noteRaw || "");
+  return (
+    actionText === "libero_swap" ||
+    actionText.indexOf("sub_") === 0 ||
+    actionText.indexOf("substitution_") === 0 ||
+    note.indexOf("换人") >= 0
+  );
+}
+
+function getSubstitutionTypeLabel(noteRaw: string): string {
+  const note = String(noteRaw || "");
+  if (note.indexOf("自由人前排自动换回") >= 0) {
+    return "自由人普通";
+  }
+  if (note.indexOf("自由人特殊换人") >= 0) {
+    const reason = extractSpecialReasonLabel(note);
+    if (reason === "伤病") {
+      return "自由人伤病";
+    }
+    if (reason === "本局禁赛") {
+      return "自由人本局禁";
+    }
+    if (reason === "全场禁赛") {
+      return "自由人全场禁";
+    }
+    return "自由人其他";
+  }
+  if (note.indexOf("自由人常规换人") >= 0) {
+    return "自由人普通";
+  }
+  if (note.indexOf("特殊换人") >= 0) {
+    const reason = extractSpecialReasonLabel(note);
+    if (reason === "伤病") {
+      return "伤病";
+    }
+    if (reason === "本局禁赛") {
+      return "本局禁赛";
+    }
+    if (reason === "全场禁赛") {
+      return "全场禁赛";
+    }
+    return "其他";
+  }
+  if (note.indexOf("普通换人") >= 0) {
+    return "普通";
+  }
+  return "普通";
+}
+
+function normalizeSwapToken(raw: string): string {
+  return String(raw || "")
+    .replace(/[（(]\s*([^）)]+?)\s*[）)]/g, " $1")
+    .replace(/\s+/g, " ")
+    .trim();
+}
+
+function parseSubstitutionSwap(noteRaw: string): { typeLabel: string; upNo: string; downNo: string; hideType: boolean } | null {
+  const note = String(noteRaw || "");
+  const typeLabel = getSubstitutionTypeLabel(note);
+  const hideType = true;
+  const upMatch = note.match(/↑\s*([0-9?]{1,2}(?:\s*[（(][^）)]+[）)])?)/);
+  const downMatch = note.match(/↓\s*([0-9?]{1,2}(?:\s*[（(][^）)]+[）)])?)/);
+  if (upMatch && upMatch[1] && downMatch && downMatch[1]) {
+    return {
+      typeLabel,
+      upNo: normalizeSwapToken(upMatch[1]),
+      downNo: normalizeSwapToken(downMatch[1]),
+      hideType,
+    };
+  }
+  const pairMatch = note.match(
+    /([0-9?]{1,2}(?:\s*[（(][^）)]+[）)])?)\s*↔\s*([0-9?]{1,2}(?:\s*[（(][^）)]+[）)])?)/
+  );
+  if (pairMatch && pairMatch[1] && pairMatch[2]) {
+    return {
+      typeLabel,
+      upNo: normalizeSwapToken(pairMatch[1]),
+      downNo: normalizeSwapToken(pairMatch[2]),
+      hideType,
+    };
+  }
+  return null;
+}
+
+function stripTeamPrefix(noteRaw: string, teamNameRaw: string): string {
+  const note = String(noteRaw || "").trim();
+  const teamName = String(teamNameRaw || "").trim();
+  if (!teamName) {
+    return note;
+  }
+  const esc = escapeRegExp(teamName);
+  return note.replace(new RegExp("^\\s*" + esc + "队?\\s*"), "").trim();
+}
+
+function extractTimeoutCountFromText(text: string): string {
+  const raw = String(text || "");
+  const wrap = raw.match(/暂停[（(]\s*([0-9]+)\s*\/\s*2\s*[）)]/);
+  if (wrap && wrap[1]) {
+    return String(Number(wrap[1]));
+  }
+  return "";
+}
+
+function extractResultWinnerFromText(text: string, teamAName: string, teamBName: string): string {
+  const raw = String(text || "");
+  const m = raw.match(/结果确认[:：]\s*(.+?)\s+以\s*\d+\s*[:：]\s*\d+\s*获胜/);
+  if (m && m[1]) {
+    return String(m[1]).trim();
+  }
+  if (raw.indexOf(teamAName) >= 0) {
+    return teamAName;
+  }
+  if (raw.indexOf(teamBName) >= 0) {
+    return teamBName;
+  }
+  return "";
+}
+
+function extractSpecialReasonLabel(noteRaw: string): string {
+  const note = String(noteRaw || "");
+  if (note.indexOf("本局禁赛") >= 0) {
+    return "本局禁赛";
+  }
+  if (note.indexOf("全场禁赛") >= 0) {
+    return "全场禁赛";
+  }
+  if (note.indexOf("伤病") >= 0) {
+    return "伤病";
+  }
+  if (note.indexOf("其他") >= 0) {
+    return "其他";
+  }
+  return "";
 }
 
 function hasSetResult(summary?: SetSummaryItem): boolean {
@@ -390,6 +619,9 @@ Page({
     clearCountdownText: "",
     teamAName: "甲",
     teamBName: "乙",
+    teamARGB: "131, 122, 229",
+    teamBRGB: "76, 135, 222",
+    winnerRGB: "81, 125, 209",
     bigScoreA: "0",
     bigScoreB: "0",
     setOptions: [1] as number[],
@@ -398,7 +630,11 @@ Page({
     selectedSmallScoreB: "--",
     selectedSetWinnerText: "",
     selectedSetDurationText: "",
-    logs: [] as DisplayLogItem[],
+    scoreProgressRows: [] as ScoreProgressRowView[],
+    scoreProgressHasData: false,
+    scoreProgressEmpty: true,
+    scoreProgressGapRpx: 5,
+    logs: [] as DisplayLogRow[],
   },
   themeOff: null as null | (() => void),
   countdownTimer: 0 as number,
@@ -498,10 +734,12 @@ Page({
     return Array.from({ length: count }).map((_, i) => i + 1);
   },
 
-  getDisplayLogsBySet(logs: MatchLogItem[], setNo: number): DisplayLogItem[] {
+  getDisplayLogsBySet(logs: MatchLogItem[], setNo: number): DisplayLogRow[] {
     const targetSet = toSetNo(setNo, 1);
     const teamAName = String(this.data.teamAName || "甲");
     const teamBName = String(this.data.teamBName || "乙");
+    const teamARGB = String(this.data.teamARGB || "131, 122, 229");
+    const teamBRGB = String(this.data.teamBRGB || "76, 135, 222");
     let setStartTs = 0;
     (logs || []).forEach((item) => {
       const action = String(item && item.action ? item.action : "");
@@ -542,8 +780,17 @@ Page({
           action === "timeout_end" ||
           action === "next_set" ||
           action === "score_undo" ||
-          action === "switch_sides_prompt"
+          action === "switch_sides_prompt" ||
+          action === "score_reset"
         ) {
+          return false;
+        }
+        if (action === "rotate" && noteText.indexOf("手动轮转") < 0) {
+          // 自动轮转不展示；仅保留手动轮转。
+          return false;
+        }
+        if (action === "switch_sides" && noteText.indexOf("局间配置换边") >= 0) {
+          // 局间配置换边不展示。
           return false;
         }
         const opId = String((item as any).opId || "");
@@ -566,13 +813,327 @@ Page({
       })
       .slice()
       .reverse()
-      .map((item) => {
+      .map((item, idx) => {
+        const rawNote = String(item.note || "");
+        const normalizedNote = withTeamSuffixForDisplay(rawNote, teamAName, teamBName);
+        const action = String(item.action || "");
+        const teamADisplayName = String(teamAName || "甲");
+        const teamBDisplayName = String(teamBName || "乙");
+        const isSwitchSides = action.indexOf("switch_sides") === 0 || action === "switch_sides";
+        const isSetEnd = action === "set_end";
+        const isResultLocked = action === "result_locked" || rawNote.indexOf("比赛结束") >= 0;
+        const isMatchStart = action === "timer_start" || rawNote.indexOf("比赛开始") >= 0;
+        const isManualSwitchSides = action === "switch_sides" && rawNote.indexOf("手动换边") >= 0;
+        const isDecidingAutoSwitchSides = action === "switch_sides" && rawNote.indexOf("自动换边（决胜局）") >= 0;
+        const isTimeoutStart = action === "timeout" || rawNote.indexOf("暂停（") >= 0 || rawNote.indexOf("暂停(") >= 0;
+        const isManualRotate = action === "rotate" && rawNote.indexOf("手动轮转") >= 0;
+        const isTeamAOnly = item.team === "A";
+        const isTeamBOnly = item.team === "B";
+        const isSharedEvent = !isTeamAOnly && !isTeamBOnly;
+        const isScoreAdd = action === "score_add" || normalizedNote.indexOf("+1") >= 0;
+        const scoreFromNote = extractScoreFromText(String(item.note || ""));
+        const setScoreFromNote = isSetEnd ? extractScoreFromText(rawNote) : null;
+        const resultScoreFromNote = isResultLocked ? extractScoreFromText(rawNote) : null;
+        const renderedNote = isScoreAdd ? stripFullScoreForAddOneNote(normalizedNote) : normalizedNote;
+        const winnerRaw = isSetEnd ? extractWinnerFromText(String(item.note || ""), teamAName, teamBName) : "";
+        const winnerNormalized = normalizeWinnerName(winnerRaw);
+        const resultWinnerRaw = isResultLocked ? extractResultWinnerFromText(rawNote, teamAName, teamBName) : "";
+        const resultWinnerNormalized = normalizeWinnerName(resultWinnerRaw);
+        const teamANormalized = normalizeWinnerName(teamAName);
+        const teamBNormalized = normalizeWinnerName(teamBName);
+        const winnerIsA = !!winnerNormalized && winnerNormalized === teamANormalized;
+        const winnerIsB = !!winnerNormalized && winnerNormalized === teamBNormalized;
+        const resultWinnerIsA = !!resultWinnerNormalized && resultWinnerNormalized === teamANormalized;
+        const resultWinnerIsB = !!resultWinnerNormalized && resultWinnerNormalized === teamBNormalized;
+        let leftNote = "";
+        let leftSubNote = "";
+        let rightNote = "";
+        let rightSubNote = "";
+        let leftSubSwap = false;
+        let rightSubSwap = false;
+        let leftSubType = "";
+        let rightSubType = "";
+        let leftSubUpNo = "";
+        let rightSubUpNo = "";
+        let leftSubDownNo = "";
+        let rightSubDownNo = "";
+        let leftScoreBadgeText = "";
+        let leftScoreBadgeRgb = "";
+        let leftScoreBadgeAlpha = "1";
+        let rightScoreBadgeText = "";
+        let rightScoreBadgeRgb = "";
+        let rightScoreBadgeAlpha = "1";
+        let leftScoreBadgeNeutral = false;
+        let rightScoreBadgeNeutral = false;
+        if (isSetEnd) {
+          const setScoreText = setScoreFromNote ? String(setScoreFromNote.a) + " : " + String(setScoreFromNote.b) : "";
+          if (winnerIsA || (!winnerIsB && isTeamAOnly)) {
+            leftNote = "本局胜利";
+            leftSubNote = setScoreText;
+          } else if (winnerIsB || (!winnerIsA && isTeamBOnly)) {
+            rightNote = "本局胜利";
+            rightSubNote = setScoreText;
+          } else if (winnerRaw) {
+            leftNote = "本局胜利";
+            leftSubNote = setScoreText;
+          } else {
+            leftNote = renderedNote;
+            leftSubNote = "";
+          }
+        } else if (isMatchStart) {
+          leftNote = "比赛开始";
+          leftSubNote = "";
+          rightNote = "比赛开始";
+          rightSubNote = "";
+        } else if (isResultLocked) {
+          const resultScoreText = resultScoreFromNote ? String(resultScoreFromNote.a) + " : " + String(resultScoreFromNote.b) : "";
+          if (resultWinnerIsA || (!resultWinnerIsB && isTeamAOnly)) {
+            leftNote = "比赛胜利";
+            leftSubNote = resultScoreText;
+          } else if (resultWinnerIsB || (!resultWinnerIsA && isTeamBOnly)) {
+            rightNote = "比赛胜利";
+            rightSubNote = resultScoreText;
+          } else if (resultWinnerRaw) {
+            leftNote = "比赛胜利";
+            leftSubNote = resultScoreText;
+          } else {
+            leftNote = renderedNote;
+            leftSubNote = "";
+          }
+        } else if (isManualSwitchSides) {
+          leftNote = "手动换边";
+          leftSubNote = "";
+          rightNote = "手动换边";
+          rightSubNote = "";
+        } else if (isDecidingAutoSwitchSides) {
+          leftNote = "自动换边";
+          leftSubNote = "决胜局";
+          rightNote = "自动换边";
+          rightSubNote = "决胜局";
+        } else if (isSwitchSides || isSharedEvent) {
+          leftNote = renderedNote;
+          leftSubNote = "";
+          rightNote = renderedNote;
+          rightSubNote = "";
+        } else if (isTeamAOnly) {
+          if (isScoreAdd && scoreFromNote) {
+            leftNote = "得分 +1";
+            leftSubNote = "";
+            leftScoreBadgeText = String(scoreFromNote.a || "");
+            leftScoreBadgeRgb = teamARGB;
+            leftScoreBadgeAlpha = "1";
+            rightScoreBadgeText = String(scoreFromNote.b || "");
+            rightScoreBadgeRgb = teamBRGB;
+            rightScoreBadgeAlpha = "0.25";
+            rightScoreBadgeNeutral = true;
+          } else if (isTimeoutStart) {
+            const timeoutCount = extractTimeoutCountFromText(rawNote);
+            leftNote = timeoutCount ? "暂停 (" + timeoutCount + "/2)" : "暂停";
+            leftSubNote = "";
+          } else if (isManualRotate) {
+            leftNote = "手动轮转";
+            leftSubNote = "";
+          } else if (isSubstitutionAction(action, renderedNote)) {
+            const sub = parseSubstitutionSwap(renderedNote);
+            leftNote = getSubstitutionTypeLabel(renderedNote);
+            if (sub) {
+              leftSubSwap = true;
+              leftSubType = sub.hideType ? "" : sub.typeLabel;
+              leftSubUpNo = sub.upNo;
+              leftSubDownNo = sub.downNo;
+              leftSubNote = "";
+            } else {
+              leftSubNote = "";
+            }
+          } else {
+            leftNote = renderedNote;
+            leftSubNote = "";
+          }
+        } else if (isTeamBOnly) {
+          if (isScoreAdd && scoreFromNote) {
+            rightNote = "得分 +1";
+            rightSubNote = "";
+            rightScoreBadgeText = String(scoreFromNote.b || "");
+            rightScoreBadgeRgb = teamBRGB;
+            rightScoreBadgeAlpha = "1";
+            leftScoreBadgeText = String(scoreFromNote.a || "");
+            leftScoreBadgeRgb = teamARGB;
+            leftScoreBadgeAlpha = "0.25";
+            leftScoreBadgeNeutral = true;
+          } else if (isTimeoutStart) {
+            const timeoutCount = extractTimeoutCountFromText(rawNote);
+            rightNote = timeoutCount ? "暂停 (" + timeoutCount + "/2)" : "暂停";
+            rightSubNote = "";
+          } else if (isManualRotate) {
+            rightNote = "手动轮转";
+            rightSubNote = "";
+          } else if (isSubstitutionAction(action, renderedNote)) {
+            const sub = parseSubstitutionSwap(renderedNote);
+            rightNote = getSubstitutionTypeLabel(renderedNote);
+            if (sub) {
+              rightSubSwap = true;
+              rightSubType = sub.hideType ? "" : sub.typeLabel;
+              rightSubUpNo = sub.upNo;
+              rightSubDownNo = sub.downNo;
+              rightSubNote = "";
+            } else {
+              rightSubNote = "";
+            }
+          } else {
+            rightNote = renderedNote;
+            rightSubNote = "";
+          }
+        } else {
+          leftNote = renderedNote;
+          leftSubNote = "";
+        }
+        const hasLeftNote = !!leftNote;
+        const hasRightNote = !!rightNote;
+        const hasLeftSub = !!leftSubNote || leftSubSwap;
+        const hasRightSub = !!rightSubNote || rightSubSwap;
+        const hasLeftPlaceholder = !hasLeftNote;
+        const hasRightPlaceholder = !hasRightNote;
+        const showLeftBadge = !!leftScoreBadgeText;
+        const showRightBadge = !!rightScoreBadgeText;
+        const leftPillClass = "result-log-pill result-log-pill-left" + (showLeftBadge ? " has-badge" : "");
+        const rightPillClass = "result-log-pill result-log-pill-right" + (showRightBadge ? " has-badge" : "");
+        const leftTextClass = "result-log-pill-text " + (hasLeftSub ? "has-sub" : "single-line");
+        const rightTextClass = "result-log-pill-text " + (hasRightSub ? "has-sub" : "single-line");
+        const leftBadgeClass =
+          "result-log-score-badge result-log-score-badge-left" + (leftScoreBadgeNeutral ? " is-neutral" : "");
+        const rightBadgeClass =
+          "result-log-score-badge result-log-score-badge-right" + (rightScoreBadgeNeutral ? " is-neutral" : "");
+        const leftBadgeStyle =
+          "background: rgba(" + String(leftScoreBadgeRgb || "var(--gray-500-rgb)") + ", " + String(leftScoreBadgeAlpha || "1") + ");";
+        const rightBadgeStyle =
+          "background: rgba(" + String(rightScoreBadgeRgb || "var(--gray-500-rgb)") + ", " + String(rightScoreBadgeAlpha || "1") + ");";
         return {
-          ...item,
-          note: withTeamSuffixForDisplay(String(item.note || ""), teamAName, teamBName),
+          id: String(item.id || ""),
+          rowKey: "set-" + String(targetSet) + "-" + String(idx) + "-" + String(Math.max(0, Number(item.ts) || 0)),
+          leftNote,
+          leftSubNote,
+          rightNote,
+          rightSubNote,
+          leftScoreBadgeText,
+          leftScoreBadgeRgb,
+          leftScoreBadgeAlpha,
+          rightScoreBadgeText,
+          rightScoreBadgeRgb,
+          rightScoreBadgeAlpha,
+          leftScoreBadgeNeutral,
+          rightScoreBadgeNeutral,
+          hasLeftNote,
+          hasRightNote,
+          hasLeftSub,
+          hasRightSub,
+          hasLeftPlaceholder,
+          hasRightPlaceholder,
+          showLeftBadge,
+          showRightBadge,
+          leftPillClass,
+          rightPillClass,
+          leftTextClass,
+          rightTextClass,
+          leftBadgeClass,
+          rightBadgeClass,
+          leftBadgeStyle,
+          rightBadgeStyle,
+          leftSubSwap,
+          rightSubSwap,
+          leftSubType,
+          rightSubType,
+          leftSubUpNo,
+          rightSubUpNo,
+          leftSubDownNo,
+          rightSubDownNo,
           timeText: formatLogTime(item.ts),
+          setTimeText: formatSetElapsedTime(setStartTs, item.ts),
         };
       });
+  },
+
+  buildScoreProgressBySet(logs: MatchLogItem[], setNo: number): ScoreProgressData {
+    const targetSet = toSetNo(setNo, 1);
+    const hiddenOpIds = new Set<string>();
+    (logs || []).forEach((item) => {
+      if (String(item && item.action ? item.action : "") !== "score_undo") {
+        return;
+      }
+      const revertedOpId = String((item as any).revertedOpId || "");
+      if (revertedOpId) {
+        hiddenOpIds.add(revertedOpId);
+      }
+    });
+
+    const seq: ("A" | "B")[] = [];
+    (logs || []).forEach((item) => {
+      const action = String(item && item.action ? item.action : "");
+      const note = String(item && item.note ? item.note : "");
+      const opId = String((item as any).opId || "");
+      if (opId && hiddenOpIds.has(opId)) {
+        return;
+      }
+      const isScoreAdd = action === "score_add" || note.indexOf("+1") >= 0;
+      if (!isScoreAdd) {
+        return;
+      }
+      const noteSetNo = extractSetNoFromText(note);
+      const itemSetNo = toSetNo(item && (item as any).setNo, noteSetNo || 1);
+      if (itemSetNo !== targetSet) {
+        return;
+      }
+      const team = item && (item.team === "A" || item.team === "B") ? item.team : "";
+      if (!team) {
+        return;
+      }
+      seq.push(team);
+    });
+
+    if (!seq.length) {
+      return { a: [], b: [], cols: 0, hasData: false };
+    }
+
+    return {
+      a: seq.map((team) => (team === "A" ? 1 : 0)),
+      b: seq.map((team) => (team === "B" ? 1 : 0)),
+      cols: seq.length,
+      hasData: true,
+    };
+  },
+
+  buildScoreProgressRows(
+    teamAName: string,
+    teamBName: string,
+    teamARGB: string,
+    teamBRGB: string,
+    progress: ScoreProgressData,
+    gapRpx: number
+  ): ScoreProgressRowView[] {
+    if (!progress || !progress.hasData || progress.cols <= 0) {
+      return [];
+    }
+    const buildRow = (rowKey: string, teamName: string, rowData: number[], teamRgb: string): ScoreProgressRowView => {
+      const trackStyle =
+        "grid-template-columns: repeat(" +
+        String(progress.cols) +
+        ", minmax(0, 1fr)); column-gap: " +
+        String(Math.max(0, Number(gapRpx) || 0)) +
+        "rpx;";
+      const cells: ScoreProgressCellView[] = (rowData || []).map((cell, idx) => {
+        const isOn = Number(cell) > 0;
+        return {
+          cellKey: rowKey + "-" + String(idx),
+          cellStyle: isOn ? "background: rgba(" + String(teamRgb) + ", 1);" : "background: rgba(var(--gray-500-rgb), 0.05);",
+        };
+      });
+      return {
+        rowKey,
+        teamName,
+        trackStyle,
+        cells,
+      };
+    };
+    return [buildRow("A", teamAName, progress.a, teamARGB), buildRow("B", teamBName, progress.b, teamBRGB)];
   },
 
   applySetView(setNo: number) {
@@ -580,13 +1141,27 @@ Page({
     const summary = this.setSummaryMap[targetSet];
     const winnerText = summary && summary.winnerName ? "本局" + summary.winnerName + "队胜" : "";
     const durationText = summary && summary.durationText && summary.durationText !== "00:00" ? "局时间 " + summary.durationText : "";
+    const displayLogs = this.getDisplayLogsBySet(this.allLogs, targetSet);
+    const scoreProgress = this.buildScoreProgressBySet(this.allLogs, targetSet);
+    const gapRpx = Math.max(0, Number(this.data.scoreProgressGapRpx) || 0);
+    const scoreProgressRows = this.buildScoreProgressRows(
+      String(this.data.teamAName || "甲"),
+      String(this.data.teamBName || "乙"),
+      String(this.data.teamARGB || "131, 122, 229"),
+      String(this.data.teamBRGB || "76, 135, 222"),
+      scoreProgress,
+      gapRpx
+    );
     this.setData({
       selectedSetNo: targetSet,
       selectedSmallScoreA: summary ? summary.smallScoreA : "--",
       selectedSmallScoreB: summary ? summary.smallScoreB : "--",
       selectedSetWinnerText: winnerText,
       selectedSetDurationText: durationText,
-      logs: this.getDisplayLogsBySet(this.allLogs, targetSet),
+      scoreProgressRows,
+      scoreProgressHasData: scoreProgress.hasData,
+      scoreProgressEmpty: !scoreProgress.hasData,
+      logs: Array.isArray(displayLogs) ? displayLogs : [],
     });
   },
 
@@ -648,8 +1223,16 @@ Page({
 
       const teamAName = String(room.teamA && room.teamA.name ? room.teamA.name : "甲");
       const teamBName = String(room.teamB && room.teamB.name ? room.teamB.name : "乙");
-      const bigScoreA = String(Math.max(0, Number(room.match && room.match.aSetWins) || 0));
-      const bigScoreB = String(Math.max(0, Number(room.match && room.match.bSetWins) || 0));
+      const aSetWins = Math.max(0, Number(room.match && room.match.aSetWins) || 0);
+      const bSetWins = Math.max(0, Number(room.match && room.match.bSetWins) || 0);
+      const bigScoreA = String(aSetWins);
+      const bigScoreB = String(bSetWins);
+      const teamAColor = String((room.teamA && (room.teamA as any).color) || "#837ae5");
+      const teamBColor = String((room.teamB && (room.teamB as any).color) || "#4c87de");
+      const teamARGB = hexToRgbTriplet(teamAColor, "131, 122, 229");
+      const teamBRGB = hexToRgbTriplet(teamBColor, "76, 135, 222");
+      const winnerColor = aSetWins >= bSetWins ? teamAColor : teamBColor;
+      const winnerRGB = hexToRgbTriplet(winnerColor);
 
       const incomingLogs = Array.isArray(room.match && room.match.logs)
         ? ((room.match && room.match.logs) as MatchLogItem[])
@@ -741,7 +1324,10 @@ Page({
       this.setData({
         teamAName,
         teamBName,
+        teamARGB,
+        teamBRGB,
         roomPassword: String((room as any).password || ""),
+        winnerRGB,
         bigScoreA,
         bigScoreB,
         setOptions: this.buildSetOptions(playedSets),

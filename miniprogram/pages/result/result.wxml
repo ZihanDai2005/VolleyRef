@@ -1,4 +1,7 @@
-<view class="result-page" style="--custom-nav-offset: {{customNavOffset}};">
+<view
+  class="result-page"
+  style="--custom-nav-offset: {{customNavOffset}};"
+>
   <view class="custom-nav-bg result-custom-nav-bg" style="height: {{customNavOffset}};"></view>
   <view class="custom-nav result-custom-nav" style="top: {{customNavTop}}; left: 64rpx; right: 64rpx;">
     <view class="custom-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
@@ -44,7 +47,6 @@
     </view>
 
     <view class="result-score-panel">
-      <text class="result-section-label">第{{selectedSetNo}}局比分</text>
       <view class="result-compare-line">
         <text class="result-compare-left">{{teamAName}}</text>
         <text class="result-compare-colon">:</text>
@@ -59,12 +61,103 @@
       <text class="result-duration" wx:if="{{selectedSetDurationText}}">{{selectedSetDurationText}}</text>
     </view>
 
+    <view class="result-progress-card">
+      <view class="result-progress-head">得分进程</view>
+      <view class="result-progress-body">
+        <view class="result-progress-grid" wx:if="{{scoreProgressHasData}}">
+          <block wx:for="{{scoreProgressRows}}" wx:key="rowKey" wx:for-item="row">
+            <text class="result-progress-team">{{row.teamName}}</text>
+            <view class="result-progress-track" style="{{row.trackStyle}}">
+              <view
+                wx:for="{{row.cells}}"
+                wx:key="cellKey"
+                wx:for-item="cell"
+                class="result-progress-cell"
+                style="{{cell.cellStyle}}"
+              ></view>
+            </view>
+          </block>
+        </view>
+        <view class="result-progress-empty" wx:if="{{scoreProgressEmpty}}">本局暂无得分进程</view>
+      </view>
+    </view>
+
     <view class="result-log-card">
-      <view class="result-log-head">第{{selectedSetNo}}局操作记录</view>
+      <view class="result-log-head">比赛记录</view>
       <view class="result-log-list">
-        <view class="result-log-item" wx:for="{{logs}}" wx:key="id" wx:for-item="item">
-          <text class="result-log-time">{{item.timeText}}</text>
-          <text class="result-log-note">{{item.note}}</text>
+        <view class="result-log-row" wx:for="{{logs}}" wx:key="rowKey" wx:for-item="item">
+          <view class="result-log-col result-log-col-left">
+            <view class="{{item.leftPillClass}}" wx:if="{{item.hasLeftNote}}">
+              <view class="{{item.leftTextClass}}">
+                <text class="result-log-pill-main">{{item.leftNote}}</text>
+                <view class="result-log-pill-sub-row" wx:if="{{item.leftSubSwap}}">
+                  <view class="result-log-pill-sub-action">
+                    <view class="result-log-sub-arrow result-log-sub-arrow-up"></view>
+                    <text class="result-log-pill-sub-num">{{item.leftSubUpNo}}</text>
+                  </view>
+                  <view class="result-log-pill-sub-action">
+                    <view class="result-log-sub-arrow result-log-sub-arrow-down"></view>
+                    <text class="result-log-pill-sub-num">{{item.leftSubDownNo}}</text>
+                  </view>
+                </view>
+                <text class="result-log-pill-sub" wx:elif="{{item.hasLeftSub}}">{{item.leftSubNote}}</text>
+              </view>
+              <view
+                class="{{item.leftBadgeClass}}"
+                wx:if="{{item.showLeftBadge}}"
+                style="{{item.leftBadgeStyle}}"
+              >
+                <text class="result-log-score-badge-text">{{item.leftScoreBadgeText}}</text>
+              </view>
+            </view>
+            <view class="result-log-pill result-log-pill-left result-log-pill-placeholder" wx:if="{{item.hasLeftPlaceholder}}">
+              <view
+                class="{{item.leftBadgeClass}}"
+                wx:if="{{item.showLeftBadge}}"
+                style="{{item.leftBadgeStyle}}"
+              >
+                <text class="result-log-score-badge-text">{{item.leftScoreBadgeText}}</text>
+              </view>
+            </view>
+          </view>
+          <view class="result-log-col result-log-col-time">
+            <text class="result-log-time-main">{{item.timeText}}</text>
+            <text class="result-log-time-set">{{item.setTimeText}}</text>
+          </view>
+          <view class="result-log-col result-log-col-right">
+            <view class="{{item.rightPillClass}}" wx:if="{{item.hasRightNote}}">
+              <view class="{{item.rightTextClass}}">
+                <text class="result-log-pill-main">{{item.rightNote}}</text>
+                <view class="result-log-pill-sub-row" wx:if="{{item.rightSubSwap}}">
+                  <view class="result-log-pill-sub-action">
+                    <view class="result-log-sub-arrow result-log-sub-arrow-up"></view>
+                    <text class="result-log-pill-sub-num">{{item.rightSubUpNo}}</text>
+                  </view>
+                  <view class="result-log-pill-sub-action">
+                    <view class="result-log-sub-arrow result-log-sub-arrow-down"></view>
+                    <text class="result-log-pill-sub-num">{{item.rightSubDownNo}}</text>
+                  </view>
+                </view>
+                <text class="result-log-pill-sub" wx:elif="{{item.hasRightSub}}">{{item.rightSubNote}}</text>
+              </view>
+              <view
+                class="{{item.rightBadgeClass}}"
+                wx:if="{{item.showRightBadge}}"
+                style="{{item.rightBadgeStyle}}"
+              >
+                <text class="result-log-score-badge-text">{{item.rightScoreBadgeText}}</text>
+              </view>
+            </view>
+            <view class="result-log-pill result-log-pill-right result-log-pill-placeholder" wx:if="{{item.hasRightPlaceholder}}">
+              <view
+                class="{{item.rightBadgeClass}}"
+                wx:if="{{item.showRightBadge}}"
+                style="{{item.rightBadgeStyle}}"
+              >
+                <text class="result-log-score-badge-text">{{item.rightScoreBadgeText}}</text>
+              </view>
+            </view>
+          </view>
         </view>
         <view class="result-log-empty" wx:if="{{!logs.length}}">暂无记录</view>
       </view>
