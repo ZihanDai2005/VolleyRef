@@ -294,9 +294,15 @@
   position: absolute;
   inset: 0;
   border-radius: inherit;
-  background: var(--brand-white);
+  background: var(--gray-500);
   opacity: 0.05;
   pointer-events: none;
+}
+
+@media (prefers-color-scheme: dark) {
+  .quick-resume-entry::before {
+    opacity: 0.2;
+  }
 }
 
 .quick-resume-entry.is-visible {

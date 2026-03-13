@@ -2,6 +2,7 @@ import { getRoomAsync, verifyRoomPasswordAsync } from "../../utils/room-service"
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { saveLastRoomEntry } from "../../utils/last-room-entry";
+import { buildJoinSharePath, buildShareCardTitle, normalizeShareDigits, SHARE_IMAGE_URL, showMiniProgramShareMenu } from "../../utils/share";
 
 const JOIN_ROOM_KEY = "room";
 const JOIN_PASSWORD_KEY = "password";
@@ -23,10 +24,11 @@ Page({
   themeBound: false,
   joining: false as boolean,
 
-  onLoad() {
+  onLoad(query: Record<string, string>) {
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
     this.syncCustomNavTop();
+    showMiniProgramShareMenu();
     if (!this.themeBound) {
       this.themeOff = bindThemeChange(() => {
         this.applyNavigationTheme();
@@ -34,9 +36,11 @@ Page({
       });
       this.themeBound = true;
     }
+    this.tryAutoJoinFromShareQuery(query);
   },
 
   onShow() {
+    showMiniProgramShareMenu();
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
     this.syncCustomNavTop();
@@ -190,6 +194,29 @@ Page({
     };
   },
 
+  tryAutoJoinFromShareQuery(query: Record<string, string>) {
+    const roomId = normalizeShareDigits(query && query.roomId);
+    const password = normalizeShareDigits((query && query.password) || (query && query.pwd));
+    const auto = String((query && query.auto) || "1") !== "0";
+    if (!roomId || !password) {
+      return;
+    }
+    this.setData({
+      joinRoomId: roomId,
+      joinPassword: password,
+      joinRoomIdSpaced: roomId.split("").join(" "),
+      joinPasswordSpaced: password.split("").join(" "),
+    });
+    if (!auto) {
+      return;
+    }
+    setTimeout(() => {
+      if (!this.joining) {
+        void this.onJoinRoomSubmit();
+      }
+    }, 40);
+  },
+
   async onJoinRoomSubmit() {
     if (this.joining) {
       return;
@@ -282,5 +309,16 @@ Page({
         showBlockHint("读取剪贴板失败，请检查小程序剪贴板权限");
       },
     });
+  },
+
+  onShareAppMessage() {
+    const roomId = String(this.data.joinRoomId || "");
+    const password = String(this.data.joinPassword || "");
+    const hasInvitePayload = /^\d{6}$/.test(roomId) && /^\d{6}$/.test(password);
+    return {
+      title: buildShareCardTitle(hasInvitePayload),
+      path: hasInvitePayload ? buildJoinSharePath(roomId, password) : "/pages/home/home",
+      imageUrl: SHARE_IMAGE_URL,
+    };
   },
 });

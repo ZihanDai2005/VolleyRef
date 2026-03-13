@@ -568,79 +568,39 @@ function ensureOperatorByParticipants(room, clientId, participants, ts) {
   ensureCollaboration(room);
   const activeMap = participants && typeof participants === "object" ? participants : {};
   const seenMap = room.collaboration.presenceSeenAtMap || {};
+  let changed = false;
   Object.keys(seenMap).forEach((id) => {
-    if (ts - Number(seenMap[id] || 0) > AUTHORITY_PRESENCE_TTL_MS) {
+    if (!activeMap[id] || ts - Number(seenMap[id] || 0) > AUTHORITY_PRESENCE_TTL_MS) {
       delete seenMap[id];
+      changed = true;
     }
   });
-  seenMap[cid] = ts;
+  if (Number(seenMap[cid] || 0) !== ts) {
+    seenMap[cid] = ts;
+    changed = true;
+  }
   room.collaboration.presenceSeenAtMap = seenMap;
-  const activeIds = Object.keys(seenMap);
   const currentOperator = getRoomOperatorClientId(room);
   const currentOwner = getRoomOwnerClientId(room);
-  const autoClaimBy = String(room.collaboration.autoClaimBy || "").trim();
-  const autoClaimAt = Math.max(0, Number(room.collaboration.autoClaimAt || 0));
-  const autoClaimPrev = String(room.collaboration.autoClaimPrevOperatorId || "").trim();
-  const hasOtherActive = activeIds.some((id) => id !== cid);
-  const isOperatorActive = !!(currentOperator && seenMap[currentOperator]);
-  let changed = false;
-
-  if (autoClaimBy && currentOperator === autoClaimBy) {
-    const autoClaimFresh = ts - autoClaimAt <= AUTO_OPERATOR_CLAIM_PROBATION_MS;
-    if (autoClaimFresh) {
-      if (autoClaimPrev && autoClaimPrev !== autoClaimBy && !!seenMap[autoClaimPrev]) {
-        room.collaboration.operatorClientId = autoClaimPrev;
-        room.collaboration.operatorUpdatedAt = ts;
-        changed = true;
-        changed = clearAutoOperatorClaimMeta(room) || changed;
-        return changed;
-      }
-      if (currentOwner && currentOwner !== autoClaimBy && !!seenMap[currentOwner]) {
-        room.collaboration.operatorClientId = currentOwner;
-        room.collaboration.operatorUpdatedAt = ts;
-        changed = true;
-        changed = clearAutoOperatorClaimMeta(room) || changed;
-        return changed;
-      }
-      const fallbackOther = activeIds.find((id) => id !== autoClaimBy);
-      if (fallbackOther) {
-        room.collaboration.operatorClientId = fallbackOther;
-        room.collaboration.operatorUpdatedAt = ts;
-        changed = true;
-        changed = clearAutoOperatorClaimMeta(room) || changed;
-        return changed;
-      }
-    } else {
-      changed = clearAutoOperatorClaimMeta(room) || changed;
-    }
+  // 角色切换必须由显式“接管”触发。心跳仅维护 presence，不做自动抢权。
+  if (!currentOperator) {
+    const fallback = currentOwner || cid;
+    room.collaboration.operatorClientId = fallback;
+    room.collaboration.operatorUpdatedAt = ts;
+    changed = true;
   }
-
-  if (hasOtherActive || isOperatorActive) {
-    if (autoClaimBy && currentOperator !== autoClaimBy) {
-      changed = clearAutoOperatorClaimMeta(room) || changed;
-    }
-    return changed;
+  if (!room.collaboration.ownerClientId && (currentOwner || currentOperator || cid)) {
+    room.collaboration.ownerClientId = currentOwner || currentOperator || cid;
+    changed = true;
   }
-
-  if (currentOperator === cid) {
-    return changed;
-  }
-
-  room.collaboration.operatorClientId = cid;
-  room.collaboration.operatorUpdatedAt = ts;
-  if (!room.collaboration.ownerClientId) {
-    room.collaboration.ownerClientId = currentOperator || cid;
-  }
-  room.collaboration.autoClaimBy = cid;
-  room.collaboration.autoClaimAt = ts;
-  room.collaboration.autoClaimPrevOperatorId = currentOperator || "";
-  return true;
+  changed = clearAutoOperatorClaimMeta(room) || changed;
+  return changed;
 }
 
 function dedupeParticipantsByUid(room, participants, clientId, uid, ts) {
   const cid = String(clientId || "").trim();
   const userUid = String(uid || "").trim();
-  if (!cid || !userUid) {
+  if (!cid) {
     return false;
   }
   ensureCollaboration(room);
@@ -656,18 +616,7 @@ function dedupeParticipantsByUid(room, participants, clientId, uid, ts) {
       changed = true;
     }
   });
-  Object.keys(participants).forEach((id) => {
-    const mappedUid = String(uidMap[id] || "").trim();
-    if (id !== cid && mappedUid && mappedUid === userUid) {
-      delete participants[id];
-      delete uidMap[id];
-      if (collab.presenceSeenAtMap && collab.presenceSeenAtMap[id]) {
-        delete collab.presenceSeenAtMap[id];
-      }
-      changed = true;
-    }
-  });
-  if (uidMap[cid] !== userUid) {
+  if (userUid && uidMap[cid] !== userUid) {
     uidMap[cid] = userUid;
     changed = true;
   }

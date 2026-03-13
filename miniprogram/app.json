@@ -4,7 +4,6 @@
     "pages/join-match/join-match",
     "pages/create-room/create-room",
     "pages/match/match",
-    "pages/lineup-adjust/lineup-adjust",
     "pages/result/result"
   ],
   "window": {

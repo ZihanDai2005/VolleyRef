@@ -1,5 +1,6 @@
 import { getRoomAsync } from "../../utils/room-service";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
+import { buildJoinSharePath, buildShareCardTitle, SHARE_IMAGE_URL, showMiniProgramShareMenu } from "../../utils/share";
 
 type MatchLogItem = {
   id: string;
@@ -383,6 +384,7 @@ function getMatchTimeStats(
 Page({
   data: {
     roomId: "",
+    roomPassword: "",
     customNavTop: "10px",
     customNavOffset: "54px",
     clearCountdownText: "",
@@ -424,6 +426,7 @@ Page({
     this.roomEnsureInFlight = false;
     this.roomEnsurePending = false;
     this.applyNavigationTheme();
+    showMiniProgramShareMenu();
     wx.setNavigationBarTitle({ title: "" });
     this.syncCustomNavTop();
     [80, 220, 420, 1000].forEach((delay) => {
@@ -450,6 +453,7 @@ Page({
   onShow() {
     this.pageActive = true;
     this.statusRouteRedirecting = false;
+    showMiniProgramShareMenu();
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
     this.syncCustomNavTop();
@@ -737,6 +741,7 @@ Page({
       this.setData({
         teamAName,
         teamBName,
+        roomPassword: String((room as any).password || ""),
         bigScoreA,
         bigScoreB,
         setOptions: this.buildSetOptions(playedSets),
@@ -762,6 +767,17 @@ Page({
       return;
     }
     this.applySetView(setNo);
+  },
+
+  onShareAppMessage() {
+    const roomId = String(this.data.roomId || "");
+    const roomPassword = String(this.data.roomPassword || "");
+    const hasInvitePayload = /^\d{6}$/.test(roomId) && /^\d{6}$/.test(roomPassword);
+    return {
+      title: buildShareCardTitle(hasInvitePayload),
+      path: hasInvitePayload ? buildJoinSharePath(roomId, roomPassword) : "/pages/result/result?roomId=" + roomId,
+      imageUrl: SHARE_IMAGE_URL,
+    };
   },
 
   onScoreSheetTap() {

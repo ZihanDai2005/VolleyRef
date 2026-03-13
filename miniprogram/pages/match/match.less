@@ -82,7 +82,7 @@
 
 .takeover-btn {
   position: relative;
-  z-index: 32;
+  z-index: 96;
   height: 32px;
   padding: 0 14px;
   border-radius: 999px;
@@ -98,6 +98,10 @@
 }
 
 .takeover-btn.set-end-open {
+  position: fixed;
+  top: calc(var(--safe-pad-top, 0px) + 4px);
+  left: calc(var(--safe-pad-left, 0px) + 30px);
+  z-index: 160;
   background: var(--theme-accent);
 }
 
@@ -1316,13 +1320,9 @@
   border: none;
 }
 
-.swap-drag-ghost.libero .captain-num {
-  border-bottom-color: var(--page-bg);
-}
-
 .num {
   display: inline-block;
-  font-size: 24px;
+  font-size: 23px;
   font-weight: 600;
   font-family: "BebasNeue", "Anton", sans-serif;
   color: inherit;
@@ -1428,10 +1428,23 @@
 }
 
 .captain-num {
+  position: relative;
   display: inline-block;
   line-height: 1;
-  padding-bottom: 2px;
-  border-bottom: 3px solid currentColor;
+  padding-bottom: 3px;
+}
+
+.captain-num::before {
+  content: "";
+  position: absolute;
+  left: 50%;
+  bottom: -2px;
+  transform: translateX(-50%);
+  width: calc((var(--captain-digit-count, 1) + 0.5) * 1ch);
+  height: 3px;
+  border-radius: 2px;
+  background: currentColor;
+  pointer-events: none;
 }
 
 .current-captain-num {
@@ -1462,8 +1475,10 @@
   display: none !important;
 }
 
-.player-card.libero .captain-num {
-  border-bottom-color: var(--page-bg);
+.swap-drag-ghost.libero .captain-num::before,
+.player-card.libero .captain-num::before,
+.rotate-fly-item .num.libero-num.captain-num::before {
+  background: var(--page-bg);
 }
 
 .sub-text {
@@ -1528,10 +1543,6 @@
 
 .rotate-fly-item .num.libero-num {
   color: var(--white-ink);
-}
-
-.rotate-fly-item .num.libero-num.captain-num {
-  border-bottom-color: var(--page-bg);
 }
 
 .rotate-fly-item.team-a {
@@ -2026,6 +2037,13 @@
     box-shadow:
       0 0 0 2.2px rgba(var(--team-b-rgb, 129, 199, 158), 0.78) inset,
       0 6px 16px rgba(var(--team-b-rgb, 129, 199, 158), 0.2);
+  }
+
+  /* Dark mode: libero number + corner labels use same reference as home VOLLEY text. */
+  .player-card.libero,
+  .swap-drag-ghost.libero,
+  .rotate-fly-item .num.libero-num {
+    color: var(--gray-900);
   }
 }
 
@@ -3034,5 +3052,21 @@
     box-shadow:
       0 0 0 2.2px rgba(var(--team-b-rgb, 129, 199, 158), 0.78) inset,
       0 6px 16px rgba(var(--team-b-rgb, 129, 199, 158), 0.2);
+  }
+
+  /* Final dark-mode override: libero text uses home "VOLLEY" reference color. */
+  .player-card.libero,
+  .player-card.libero .num,
+  .player-card.libero .sub-text,
+  .player-card.libero .libero-tag,
+  .player-card.libero .player-qmark,
+  .player-card.libero .player-input,
+  .swap-drag-ghost.libero,
+  .swap-drag-ghost.libero .num,
+  .swap-drag-ghost.libero .sub-text,
+  .swap-drag-ghost.libero .libero-tag,
+  .swap-drag-ghost.libero .player-qmark,
+  .rotate-fly-item .num.libero-num {
+    color: var(--gray-900) !important;
   }
 }

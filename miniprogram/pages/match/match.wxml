@@ -299,7 +299,7 @@
             />
             <view class="player-edit-content">
               <text class="adjust-fake-caret before {{activeAdjustInputKey === ('A-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
-              <text class="num {{activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamACaptainNo ? 'current-captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+              <text class="num {{activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamACaptainNo ? 'current-captain-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
               <view wx:if="{{matchFlowMode === 'normal' && activeAdjustInputKey !== ('A-' + item.pos) && item.number !== '?' && item.number === teamACaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamAMainNumbers && rotateFlyItemsA.length > 0))}}" class="current-captain-mark"></view>
               <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
               <text class="adjust-fake-caret {{activeAdjustInputKey === ('A-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
@@ -347,6 +347,7 @@
                 <text class="adjust-fake-caret before {{activeAdjustInputKey === ('A-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
                 <text
                   class="num pos-{{item.pos}} {{activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamACaptainNo ? 'current-captain-num' : ''}}"
+                  style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};"
                   wx:if="{{item.number !== '?'}}"
                 >{{item.number}}</text>
                 <view wx:if="{{matchFlowMode === 'normal' && activeAdjustInputKey !== ('A-' + item.pos) && item.number !== '?' && item.number === teamACaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamAMainNumbers && rotateFlyItemsA.length > 0))}}" class="current-captain-mark"></view>
@@ -492,6 +493,7 @@
                 <text class="adjust-fake-caret before {{activeAdjustInputKey === ('B-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
                 <text
                   class="num pos-{{item.pos}} {{activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBCaptainNo ? 'current-captain-num' : ''}}"
+                  style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};"
                   wx:if="{{item.number !== '?'}}"
                 >{{item.number}}</text>
                 <view wx:if="{{matchFlowMode === 'normal' && activeAdjustInputKey !== ('B-' + item.pos) && item.number !== '?' && item.number === teamBCaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamBMainNumbers && rotateFlyItemsB.length > 0))}}" class="current-captain-mark"></view>
@@ -541,7 +543,7 @@
             />
             <view class="player-edit-content">
               <text class="adjust-fake-caret before {{activeAdjustInputKey === ('B-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
-              <text class="num {{activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBCaptainNo ? 'current-captain-num' : ''}}" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
+              <text class="num {{activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBCaptainNo ? 'current-captain-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};" wx:if="{{item.number !== '?'}}">{{item.number}}</text>
               <view wx:if="{{matchFlowMode === 'normal' && activeAdjustInputKey !== ('B-' + item.pos) && item.number !== '?' && item.number === teamBCaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamBMainNumbers && rotateFlyItemsB.length > 0))}}" class="current-captain-mark"></view>
               <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
               <text class="adjust-fake-caret {{activeAdjustInputKey === ('B-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
@@ -558,7 +560,7 @@
     class="swap-drag-ghost team-{{swapDragGhostTeam === 'B' ? 'b' : 'a'}} {{swapDragSourceIsLibero ? 'libero' : ''}}"
     style="{{swapDragGhostStyle}}"
   >
-    <text class="num {{swapDragGhostIsInitialCaptain ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && swapDragGhostIsCurrentCaptain ? 'current-captain-num' : ''}}">{{swapDragGhostNumber}}</text>
+    <text class="num {{swapDragGhostIsInitialCaptain ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && swapDragGhostIsCurrentCaptain ? 'current-captain-num' : ''}}" style="--captain-digit-count: {{swapDragGhostNumber && swapDragGhostNumber.length > 1 ? 2 : 1}};">{{swapDragGhostNumber}}</text>
     <view wx:if="{{matchFlowMode === 'normal' && swapDragGhostIsCurrentCaptain}}" class="current-captain-mark"></view>
     <text class="sub-text">{{swapDragGhostPos}}</text>
   </view>
@@ -571,7 +573,7 @@
       class="rotate-fly-item team-a"
       style="{{item.style}}"
     >
-      <text class="num {{item.isInitialCaptain ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}}">{{item.number}}</text>
+      <text class="num {{item.isInitialCaptain ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};">{{item.number}}</text>
     </view>
     <view
       wx:for="{{rotateFlyItemsB}}"
@@ -580,7 +582,7 @@
       class="rotate-fly-item team-b"
       style="{{item.style}}"
     >
-      <text class="num {{item.isInitialCaptain ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}}">{{item.number}}</text>
+      <text class="num {{item.isInitialCaptain ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && item.isCurrentCaptain ? 'current-captain-num' : ''}} {{item.isLibero ? 'libero-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};">{{item.number}}</text>
     </view>
   </view>
 
@@ -739,7 +741,7 @@
                 bindtap="onSubSelectPlayer"
               >
                 <view class="num-wrap">
-                  <text class="num {{item.number === subInitialCaptainNo ? 'captain-num' : ''}} {{item.number === subCaptainNo ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                  <text class="num {{item.number === subInitialCaptainNo ? 'captain-num' : ''}} {{item.number === subCaptainNo ? 'current-captain-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};">{{item.number}}</text>
                   <view wx:if="{{item.number === subCaptainNo}}" class="current-captain-mark inline"></view>
                 </view>
                 <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
@@ -757,7 +759,7 @@
                   bindtap="onSubSelectPlayer"
                 >
                   <view class="num-wrap">
-                    <text class="num {{item.number === subInitialCaptainNo ? 'captain-num' : ''}} {{item.number === subCaptainNo ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                    <text class="num {{item.number === subInitialCaptainNo ? 'captain-num' : ''}} {{item.number === subCaptainNo ? 'current-captain-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};">{{item.number}}</text>
                     <view wx:if="{{item.number === subCaptainNo}}" class="current-captain-mark inline"></view>
                   </view>
                   <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
@@ -883,7 +885,7 @@
                   wx:key="pos"
                   wx:for-item="item"
                 >
-                  <text class="num {{item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedA ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                  <text class="num {{item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedA ? 'current-captain-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};">{{item.number}}</text>
                   <view wx:if="{{item.number === captainConfirmSelectedA}}" class="current-captain-mark"></view>
                   <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
                 </view>
@@ -900,7 +902,7 @@
                     data-pos="{{item.pos}}"
                     bindtap="onCaptainConfirmSelect"
                   >
-                    <text class="num {{item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedA ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                    <text class="num {{item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedA ? 'current-captain-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};">{{item.number}}</text>
                     <view wx:if="{{item.number === captainConfirmSelectedA}}" class="current-captain-mark"></view>
                     <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
                     <text class="sub-text">{{item.pos}}</text>
@@ -926,7 +928,7 @@
                     data-pos="{{item.pos}}"
                     bindtap="onCaptainConfirmSelect"
                   >
-                    <text class="num {{item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedB ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                    <text class="num {{item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedB ? 'current-captain-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};">{{item.number}}</text>
                     <view wx:if="{{item.number === captainConfirmSelectedB}}" class="current-captain-mark"></view>
                     <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
                     <text class="sub-text">{{item.pos}}</text>
@@ -940,7 +942,7 @@
                   wx:key="pos"
                   wx:for-item="item"
                 >
-                  <text class="num {{item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedB ? 'current-captain-num' : ''}}">{{item.number}}</text>
+                  <text class="num {{item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{item.number === captainConfirmSelectedB ? 'current-captain-num' : ''}}" style="--captain-digit-count: {{item.number && item.number.length > 1 ? 2 : 1}};">{{item.number}}</text>
                   <view wx:if="{{item.number === captainConfirmSelectedB}}" class="current-captain-mark"></view>
                   <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
                 </view>

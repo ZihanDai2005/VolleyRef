@@ -16,6 +16,7 @@ import { showBlockHint, showToastHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
 import { saveLastRoomEntry } from "../../utils/last-room-entry";
+import { buildJoinSharePath, buildShareCardTitle, SHARE_IMAGE_URL, showMiniProgramShareMenu } from "../../utils/share";
 
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
@@ -249,6 +250,7 @@ Page({
     roomId: "",
     roomIdSpaced: "",
     roomPasswordSpaced: "",
+    inviteShareReady: false,
     focusCreatePasswordInput: false,
     participantCount: 0,
     roomPassword: "",
@@ -300,7 +302,6 @@ Page({
   themeOff: null as null | (() => void),
   captainPickerResolver: null as null | ((value: string | null) => void),
   saveInFlight: false as boolean,
-  copyInviteInFlight: false as boolean,
   roomLoadInFlight: false as boolean,
   roomLoadPending: false as boolean,
   roomLoadPendingForce: false as boolean,
@@ -361,6 +362,7 @@ Page({
         participantCount: 0,
         roomPassword: "",
         roomPasswordSpaced: "",
+        inviteShareReady: false,
         teamAName: "",
         teamBName: "",
         teamACaptainNo: "",
@@ -387,6 +389,7 @@ Page({
   onShow() {
     this.pageActive = true;
     this.statusRouteRedirecting = false;
+    showMiniProgramShareMenu();
     this.applyNavigationTheme();
     this.syncCustomNavTop();
     if (this.data.createMode) {
@@ -464,6 +467,12 @@ Page({
       customNavTop: String(roundedTop) + "px",
       customNavOffset: String(roundedTop + 44) + "px",
     });
+  },
+
+  isInviteShareReady(roomIdRaw: unknown, passwordRaw: unknown): boolean {
+    const roomId = String(roomIdRaw || "").trim();
+    const password = String(passwordRaw || "").trim();
+    return /^\d{6}$/.test(roomId) && /^\d{6}$/.test(password);
   },
 
   onBackTap() {
@@ -700,6 +709,7 @@ Page({
         participantCount: Object.keys((room as any).participants || {}).length,
         roomPassword: room.password,
         roomPasswordSpaced: String(room.password || "").split("").join(" "),
+        inviteShareReady: this.isInviteShareReady(roomId, room.password),
         matchModeIndex: getMatchModeIndexBySettings(
           room.settings.sets,
           room.settings.wins,
@@ -770,6 +780,7 @@ Page({
       this.setData({
         roomPassword: pwd,
         roomPasswordSpaced: pwd.split("").join(" "),
+        inviteShareReady: this.isInviteShareReady(this.data.roomId, pwd),
       });
     }
     setTimeout(() => {
@@ -1497,7 +1508,11 @@ Page({
   onCreateInviteTap() {
     this.setData({ createInviteBtnFx: true });
     setTimeout(() => this.setData({ createInviteBtnFx: false }), 260);
-    this.onCopyInviteAndStart();
+    const roomPassword = this.data.roomPassword.trim();
+    if (!/^\d{6}$/.test(roomPassword)) {
+      showBlockHint("房间密码需6位数字");
+      return;
+    }
   },
 
   onCreateContinueTap() {
@@ -1509,38 +1524,14 @@ Page({
     this.onSaveAndStart();
   },
 
-  buildInviteText() {
-    return (
-      "[排球裁判小助手] 裁判团队编号 " +
-      this.data.roomId +
-      "，密码 " +
-      this.data.roomPassword +
-      "，打开小程序粘贴即可加入房间，请确认邀请人已完成比赛设置并进入比赛页面后再加入"
-    );
-  },
-
-  async onCopyInviteAndStart() {
-    if (this.copyInviteInFlight) {
-      return;
-    }
-    const roomPassword = this.data.roomPassword.trim();
-    if (!/^\d{6}$/.test(roomPassword)) {
-      showBlockHint("房间密码需6位数字");
-      return;
-    }
-    this.copyInviteInFlight = true;
-    const inviteText = this.buildInviteText();
-    wx.setClipboardData({
-      data: inviteText,
-      success: () => {
-        showToastHint("邀请信息已复制");
-      },
-      fail: () => {
-        showBlockHint("复制失败，请重试");
-      },
-      complete: () => {
-        this.copyInviteInFlight = false;
-      },
-    });
+  onShareAppMessage() {
+    const roomId = String(this.data.roomId || "");
+    const password = String(this.data.roomPassword || "");
+    const hasInvitePayload = /^\d{6}$/.test(roomId) && /^\d{6}$/.test(password);
+    return {
+      title: buildShareCardTitle(hasInvitePayload),
+      path: hasInvitePayload ? buildJoinSharePath(roomId, password) : "/pages/home/home",
+      imageUrl: SHARE_IMAGE_URL,
+    };
   },
 });

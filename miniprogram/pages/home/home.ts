@@ -2,6 +2,9 @@ import { getRoomAsync, isRoomIdBlockedAsync, reserveRoomIdAsync, verifyRoomPassw
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { clearLastRoomEntry, readLastRoomEntry } from "../../utils/last-room-entry";
+import { buildShareCardTitle, SHARE_IMAGE_URL, showMiniProgramShareMenu } from "../../utils/share";
+
+const LOGIN_AUTH_CACHE_KEY = "volleyball.loginAuthorized";
 
 Page({
   data: {
@@ -18,6 +21,11 @@ Page({
   themeOff: null as null | (() => void),
   creating: false as boolean,
   quickResumeCheckToken: 0 as number,
+  loginAuthorizing: false as boolean,
+  navBusy: false as boolean,
+  pageAlive: true as boolean,
+  createTapTimer: null as null | ReturnType<typeof setTimeout>,
+  joinTapTimer: null as null | ReturnType<typeof setTimeout>,
 
   onLoad() {
     this.applyNavigationTheme();
@@ -33,9 +41,12 @@ Page({
   },
 
   onShow() {
+    this.pageAlive = true;
+    this.navBusy = false;
     wx.hideLoading({
       fail: () => {},
     });
+    showMiniProgramShareMenu();
     this.applyNavigationTheme();
     wx.setNavigationBarTitle({ title: "" });
     this.syncCustomNavTop();
@@ -47,11 +58,37 @@ Page({
     void this.refreshQuickResumeEntry();
   },
 
+  onHide() {
+    this.pageAlive = false;
+    this.clearEntryTapTimers();
+  },
+
   onUnload() {
+    this.pageAlive = false;
+    this.clearEntryTapTimers();
     if (this.themeOff) {
       this.themeOff();
       this.themeOff = null;
     }
+  },
+
+  clearEntryTapTimers() {
+    if (this.createTapTimer) {
+      clearTimeout(this.createTapTimer);
+      this.createTapTimer = null;
+    }
+    if (this.joinTapTimer) {
+      clearTimeout(this.joinTapTimer);
+      this.joinTapTimer = null;
+    }
+  },
+
+  onShareAppMessage() {
+    return {
+      title: buildShareCardTitle(false),
+      path: "/pages/home/home",
+      imageUrl: SHARE_IMAGE_URL,
+    };
   },
 
   applyNavigationTheme() {
@@ -116,7 +153,7 @@ Page({
   },
 
   async onCreateRoomSubmit() {
-    if (this.creating) {
+    if (this.creating || this.navBusy || !this.pageAlive) {
       return;
     }
     this.creating = true;
@@ -128,8 +165,16 @@ Page({
         showBlockHint("系统繁忙，请重试");
         return;
       }
+      if (!this.pageAlive) {
+        return;
+      }
+      this.navBusy = true;
       wx.navigateTo({
         url: "/pages/create-room/create-room?roomId=" + roomId + "&create=1",
+        fail: () => {
+          this.navBusy = false;
+          showBlockHint("页面打开失败，请重试");
+        },
       });
     } finally {
       this.creating = false;
@@ -137,24 +182,106 @@ Page({
     }
   },
 
+  hasLoginAuthorization() {
+    return !!wx.getStorageSync(LOGIN_AUTH_CACHE_KEY);
+  },
+
+  markLoginAuthorized() {
+    wx.setStorageSync(LOGIN_AUTH_CACHE_KEY, 1);
+  },
+
+  async ensureUserLoggedIn() {
+    if (this.hasLoginAuthorization()) {
+      return true;
+    }
+    if (this.loginAuthorizing) {
+      showBlockHint("登录处理中，请稍后");
+      return false;
+    }
+    if (typeof wx.getUserProfile !== "function") {
+      showBlockHint("当前微信版本不支持登录授权");
+      return false;
+    }
+    this.loginAuthorizing = true;
+    try {
+      const ok = await new Promise<boolean>((resolve) => {
+        wx.getUserProfile({
+          desc: "用于身份确认并进入比赛",
+          success: () => {
+            resolve(true);
+          },
+          fail: () => {
+            resolve(false);
+          },
+        });
+      });
+      if (ok) {
+        this.markLoginAuthorized();
+        return true;
+      }
+      showBlockHint("未登录授权，无法继续");
+      return false;
+    } finally {
+      this.loginAuthorizing = false;
+    }
+  },
+
   onCreateEntryTap() {
+    if (this.navBusy || this.creating || this.loginAuthorizing) {
+      return;
+    }
     this.setData({ createBtnFx: true });
-    setTimeout(() => {
+    if (this.createTapTimer) {
+      clearTimeout(this.createTapTimer);
+    }
+    this.createTapTimer = setTimeout(async () => {
+      this.createTapTimer = null;
+      if (!this.pageAlive) {
+        return;
+      }
       this.setData({ createBtnFx: false });
+      const loggedIn = await this.ensureUserLoggedIn();
+      if (!loggedIn || !this.pageAlive) {
+        return;
+      }
       this.onCreateRoomSubmit();
     }, 150);
   },
 
   onJoinEntryTap() {
+    if (this.navBusy || this.creating || this.loginAuthorizing) {
+      return;
+    }
     this.setData({ joinBtnFx: true });
-    setTimeout(() => {
+    if (this.joinTapTimer) {
+      clearTimeout(this.joinTapTimer);
+    }
+    this.joinTapTimer = setTimeout(async () => {
+      this.joinTapTimer = null;
+      if (!this.pageAlive) {
+        return;
+      }
       this.setData({ joinBtnFx: false });
+      const loggedIn = await this.ensureUserLoggedIn();
+      if (!loggedIn || !this.pageAlive) {
+        return;
+      }
       this.onGoJoinPage();
     }, 150);
   },
 
   onGoJoinPage() {
-    wx.navigateTo({ url: "/pages/join-match/join-match" });
+    if (this.navBusy || !this.pageAlive) {
+      return;
+    }
+    this.navBusy = true;
+    wx.navigateTo({
+      url: "/pages/join-match/join-match",
+      fail: () => {
+        this.navBusy = false;
+        showBlockHint("页面打开失败，请重试");
+      },
+    });
   },
 
   async refreshQuickResumeEntry() {
@@ -218,7 +345,7 @@ Page({
   },
 
   async onQuickResumeTap() {
-    if (this.data.quickResumeBusy || this.creating) {
+    if (this.data.quickResumeBusy || this.creating || this.navBusy || !this.pageAlive) {
       return;
     }
     const cached = readLastRoomEntry();
@@ -261,6 +388,7 @@ Page({
         status === "result"
           ? "/pages/result/result?roomId=" + cached.roomId
           : "/pages/match/match?roomId=" + cached.roomId;
+      this.navBusy = true;
       wx.reLaunch({ url });
     } finally {
       wx.hideLoading({

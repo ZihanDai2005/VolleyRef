@@ -163,7 +163,6 @@ const RESULT_KEEP_MS = 24 * 60 * 60 * 1000;
 const PARTICIPANT_TTL_MS = 40 * 1000;
 const ROOM_LOCK_TTL_MS = 3 * 60 * 60 * 1000;
 const AUTHORITY_PRESENCE_TTL_MS = 5 * 60 * 1000;
-const AUTO_OPERATOR_CLAIM_PROBATION_MS = 10 * 60 * 1000;
 const CLOUD_PULL_INTERVAL_MS = 15000;
 const ROOM_API_FUNCTION = "roomApi";
 const ROOM_API_TIMEOUT_MS = 10000;
@@ -807,72 +806,32 @@ function ensureOperatorByParticipants(room: RoomState, clientId: string): boolea
   }
   const nowTs = now();
   const seenMap = collaboration.presenceSeenAtMap;
+  let changed = false;
   Object.keys(seenMap).forEach((id) => {
-    if (nowTs - Number(seenMap[id] || 0) > AUTHORITY_PRESENCE_TTL_MS) {
+    if (!room.participants[id] || nowTs - Number(seenMap[id] || 0) > AUTHORITY_PRESENCE_TTL_MS) {
       delete seenMap[id];
+      changed = true;
     }
   });
-  seenMap[cid] = nowTs;
-  const activeIds = Object.keys(seenMap);
+  if (Number(seenMap[cid] || 0) !== nowTs) {
+    seenMap[cid] = nowTs;
+    changed = true;
+  }
   const currentOperator = String(getRoomOperatorClientId(room) || "").trim();
   const currentOwner = String(getRoomOwnerClientId(room) || "").trim();
-  const autoClaimBy = String(collaboration.autoClaimBy || "").trim();
-  const autoClaimAt = Math.max(0, Number(collaboration.autoClaimAt) || 0);
-  const autoClaimPrev = String(collaboration.autoClaimPrevOperatorId || "").trim();
-  const hasOtherActive = activeIds.some((id) => id !== cid);
-  const isOperatorActive = !!(currentOperator && seenMap[currentOperator]);
-  let changed = false;
-
-  if (autoClaimBy && currentOperator === autoClaimBy) {
-    const autoClaimFresh = nowTs - autoClaimAt <= AUTO_OPERATOR_CLAIM_PROBATION_MS;
-    if (autoClaimFresh) {
-      if (autoClaimPrev && autoClaimPrev !== autoClaimBy && !!seenMap[autoClaimPrev]) {
-        collaboration.operatorClientId = autoClaimPrev;
-        collaboration.operatorUpdatedAt = nowTs;
-        changed = true;
-        changed = clearAutoOperatorClaimMeta(collaboration) || changed;
-        return changed;
-      }
-      if (currentOwner && currentOwner !== autoClaimBy && !!seenMap[currentOwner]) {
-        collaboration.operatorClientId = currentOwner;
-        collaboration.operatorUpdatedAt = nowTs;
-        changed = true;
-        changed = clearAutoOperatorClaimMeta(collaboration) || changed;
-        return changed;
-      }
-      const fallbackOther = activeIds.find((id) => id !== autoClaimBy);
-      if (fallbackOther) {
-        collaboration.operatorClientId = fallbackOther;
-        collaboration.operatorUpdatedAt = nowTs;
-        changed = true;
-        changed = clearAutoOperatorClaimMeta(collaboration) || changed;
-        return changed;
-      }
-    } else {
-      changed = clearAutoOperatorClaimMeta(collaboration) || changed;
-    }
+  // 角色切换只允许显式“接管”触发；心跳只维护在线状态，不自动抢权。
+  if (!currentOperator) {
+    const fallback = currentOwner || cid;
+    collaboration.operatorClientId = fallback;
+    collaboration.operatorUpdatedAt = nowTs;
+    changed = true;
   }
-
-  if (hasOtherActive || isOperatorActive) {
-    if (autoClaimBy && currentOperator !== autoClaimBy) {
-      changed = clearAutoOperatorClaimMeta(collaboration) || changed;
-    }
-    return changed;
+  if (!collaboration.ownerClientId && (currentOwner || currentOperator || cid)) {
+    collaboration.ownerClientId = currentOwner || currentOperator || cid;
+    changed = true;
   }
-
-  if (currentOperator === cid) {
-    return changed;
-  }
-
-  collaboration.operatorClientId = cid;
-  collaboration.operatorUpdatedAt = nowTs;
-  if (!collaboration.ownerClientId) {
-    collaboration.ownerClientId = currentOperator || cid;
-  }
-  collaboration.autoClaimBy = cid;
-  collaboration.autoClaimAt = nowTs;
-  collaboration.autoClaimPrevOperatorId = currentOperator || "";
-  return true;
+  changed = clearAutoOperatorClaimMeta(collaboration) || changed;
+  return changed;
 }
 
 function cleanupExpiredRooms(store: RoomStore): boolean {

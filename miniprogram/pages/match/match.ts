@@ -16,6 +16,7 @@ import { showBlockHint, showToastHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
 import { computeLandscapeSafePad } from "../../utils/safe-pad";
+import { buildJoinSharePath, buildShareCardTitle, SHARE_IMAGE_URL, showMiniProgramShareMenu } from "../../utils/share";
 
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = {
@@ -1801,8 +1802,6 @@ Page({
   allLogs: [] as MatchLogItem[],
   roomWatchOff: null as null | (() => void),
   clientId: "" as string,
-  openingLineup: false as boolean,
-  lineupNavigateLockUntil: 0 as number,
   lastAutoLineupOpenSign: "" as string,
   setEndActionInFlight: false as boolean,
   timeoutActionInFlight: false as boolean,
@@ -3403,6 +3402,7 @@ Page({
     this.statusRouteRedirecting = false;
     this.pageActive = true;
     this.applyNavigationTheme();
+    showMiniProgramShareMenu();
     if (!this.themeOff) {
       this.themeOff = bindThemeChange(() => {
         this.applyNavigationTheme();
@@ -3436,9 +3436,6 @@ Page({
   onShow() {
     this.pageActive = true;
     this.statusRouteRedirecting = false;
-    if (Date.now() >= this.lineupNavigateLockUntil) {
-      this.openingLineup = false;
-    }
     setKeepScreenOnSafe(true);
     this.syncSafePadding();
     setTimeout(() => {
@@ -3448,6 +3445,7 @@ Page({
       this.syncSafePadding();
     }, 260);
     this.applyNavigationTheme();
+    showMiniProgramShareMenu();
     this.refreshNetworkState();
     const roomId = String(this.data.roomId || "");
     if (roomId) {
@@ -3459,36 +3457,6 @@ Page({
     this.startRoomWatch();
     this.startPolling();
     this.scheduleRectCacheWarmup(320);
-  },
-
-  openLineupAdjustOnce(roomId: string, entry: "normal" | "reconfigure" = "normal"): boolean {
-    if (!this.pageActive) {
-      return false;
-    }
-    const now = Date.now();
-    const pages = getCurrentPages();
-    const top = pages[pages.length - 1];
-    const topRoute = String((top && (top as any).route) || "");
-    if (topRoute === "pages/lineup-adjust/lineup-adjust") {
-      return false;
-    }
-    if (this.openingLineup || now < this.lineupNavigateLockUntil) {
-      return false;
-    }
-    this.openingLineup = true;
-    this.lineupNavigateLockUntil = now + 4000;
-    wx.navigateTo({
-      url: "/pages/lineup-adjust/lineup-adjust?roomId=" + roomId + "&entry=" + entry,
-      fail: () => {
-        this.openingLineup = false;
-      },
-      complete: () => {
-        setTimeout(() => {
-          this.openingLineup = false;
-        }, 250);
-      },
-    });
-    return true;
   },
 
   onHide() {
@@ -3677,6 +3645,17 @@ Page({
     const roomId = this.data.roomId;
     const clientId = String(this.clientId || ensureClientId());
     leaveRoomAsync(roomId, clientId);
+  },
+
+  onShareAppMessage() {
+    const roomId = String(this.data.roomId || "");
+    const roomPassword = String(this.data.roomPassword || "");
+    const hasInvitePayload = /^\d{6}$/.test(roomId) && /^\d{6}$/.test(roomPassword);
+    return {
+      title: buildShareCardTitle(hasInvitePayload),
+      path: hasInvitePayload ? buildJoinSharePath(roomId, roomPassword) : "/pages/home/home",
+      imageUrl: SHARE_IMAGE_URL,
+    };
   },
 
   confirmBackToHome() {
@@ -6252,8 +6231,11 @@ Page({
         }
         return;
       }
-      // 操作者处于编辑/局间配置模式时，不吃远端回刷，避免焦点狂闪与输入中断。
-      if (this.data.hasOperationAuthority && this.isPlayerCardsEditable()) {
+      const currentClientId = String(this.clientId || getApp<IAppOption>().globalData.clientId || "");
+      const incomingControlRole = getRoomControlRole(room, currentClientId);
+      // 仅当“自己仍是操作者”时才忽略远端回刷，避免编辑输入中断；
+      // 若已被接管，则必须及时吃到远端快照并降为观赛态。
+      if (incomingControlRole === "operator" && this.data.hasOperationAuthority && this.isPlayerCardsEditable()) {
         return;
       }
       if (!force && incomingUpdatedAt === currentUpdatedAt) {
@@ -6262,10 +6244,9 @@ Page({
       const incomingRawLogs = Array.isArray(room.match.logs) ? (room.match.logs as MatchLogItem[]) : [];
       const incomingLogs = normalizeLogsBySet(incomingRawLogs);
       this.allLogs = incomingLogs.slice();
-      const currentClientId = String(this.clientId || getApp<IAppOption>().globalData.clientId || "");
       const roomOwnerClientId = getRoomOwnerClientId(room);
       const roomOperatorClientId = getRoomOperatorClientId(room);
-      const controlRole = getRoomControlRole(room, currentClientId);
+      const controlRole = incomingControlRole;
       if (controlRole === "operator") {
         this.observerViewSideLocal = "";
       }
@@ -6464,6 +6445,10 @@ Page({
               : "playing";
       let flowMode: MatchFlowMode =
         room.match.isFinished || effectiveSetEndActive ? "normal" : roomFlowMode;
+      if (controlRole !== "operator" && flowMode !== "normal") {
+        // 观赛端始终停留在比赛页 normal 视图，仅通过“接管”进入操作态。
+        flowMode = "normal";
+      }
       if (
         controlRole === "operator" &&
         this.data.hasOperationAuthority &&
@@ -6609,7 +6594,12 @@ Page({
         preStartCaptainConfirmed: preStartCaptainConfirmed,
         preStartCaptainConfirmSetNo: preStartCaptainConfirmSetNo,
         showCaptainConfirmModal: showCaptainConfirmModal,
-        captainConfirmModalClosing: showCaptainConfirmModal ? false : this.data.captainConfirmModalClosing,
+        captainConfirmModalClosing:
+          showCaptainConfirmModal ? false : controlRole === "operator" ? this.data.captainConfirmModalClosing : false,
+        showSubstitutionPanel: controlRole === "operator" ? this.data.showSubstitutionPanel : false,
+        substitutionPanelClosing: controlRole === "operator" ? this.data.substitutionPanelClosing : false,
+        showSubMatchLogPopover: controlRole === "operator" ? this.data.showSubMatchLogPopover : false,
+        subMatchLogPopoverClosing: controlRole === "operator" ? this.data.subMatchLogPopoverClosing : false,
         isMatchFinished: freezeSetEndDisplay ? !!this.data.isMatchFinished : !!room.match.isFinished,
         showSetEndModal: effectiveSetEndActive,
         setEndModalClosing: nextSetEndModalClosing,

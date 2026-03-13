@@ -1149,9 +1149,9 @@
 }
 
 .entry-btn-copy-icon {
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M6.9998 6V3C6.9998 2.44772 7.44752 2 7.9998 2H19.9998C20.5521 2 20.9998 2.44772 20.9998 3V17C20.9998 17.5523 20.5521 18 19.9998 18H16.9998V20.9991C16.9998 21.5519 16.5499 22 15.993 22H4.00666C3.45059 22 3 21.5554 3 20.9991L3.0026 7.00087C3.0027 6.44811 3.45264 6 4.00942 6H6.9998ZM5.00242 8L5.00019 20H14.9998V8H5.00242ZM8.9998 6H16.9998V16H18.9998V4H8.9998V6Z'/%3E%3C/svg%3E")
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M11 2.04938V4.06189C7.05369 4.55399 4 7.92038 4 12C4 16.4183 7.58172 20 12 20C16.0796 20 19.446 16.9463 19.9381 13H21.9506C21.4489 18.0533 17.1853 22 12 22C6.47715 22 2 17.5228 2 12C2 6.81465 5.94668 2.5511 11 2.04938ZM20 5.41421L12 13.4142L10.5858 12L18.5858 4H14V2H22V10H20V5.41421Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M6.9998 6V3C6.9998 2.44772 7.44752 2 7.9998 2H19.9998C20.5521 2 20.9998 2.44772 20.9998 3V17C20.9998 17.5523 20.5521 18 19.9998 18H16.9998V20.9991C16.9998 21.5519 16.5499 22 15.993 22H4.00666C3.45059 22 3 21.5554 3 20.9991L3.0026 7.00087C3.0027 6.44811 3.45264 6 4.00942 6H6.9998ZM5.00242 8L5.00019 20H14.9998V8H5.00242ZM8.9998 6H16.9998V16H18.9998V4H8.9998V6Z'/%3E%3C/svg%3E")
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M11 2.04938V4.06189C7.05369 4.55399 4 7.92038 4 12C4 16.4183 7.58172 20 12 20C16.0796 20 19.446 16.9463 19.9381 13H21.9506C21.4489 18.0533 17.1853 22 12 22C6.47715 22 2 17.5228 2 12C2 6.81465 5.94668 2.5511 11 2.04938ZM20 5.41421L12 13.4142L10.5858 12L18.5858 4H14V2H22V10H20V5.41421Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
 }
 
@@ -1371,6 +1371,22 @@
     --page-bg-rgb: 19, 20, 22;
     background-image: none;
   }
+
+  /* Keep libero card number/corner text in dark mode aligned with home VOLLEY text color. */
+  .create-head-lineup-grid.team-a .player-card.libero,
+  .create-head-lineup-grid.team-b .player-card.libero,
+  .team-a .player-card.libero,
+  .team-b .player-card.libero,
+  .captain-picker-grid .player-card.libero {
+    color: var(--gray-900);
+  }
+
+  .player-card.libero .num-text,
+  .player-card.libero .sub-text,
+  .player-card.libero .player-qmark,
+  .player-card.libero .player-input {
+    color: var(--gray-900);
+  }
 }
 
 @media (min-width: 700px) {
@@ -1516,5 +1532,16 @@
 
   .create-actions .entry-btn.create-invite-btn .entry-btn-content {
     gap: 8px;
+  }
+}
+
+/* Final dark-mode override: match home "创建比赛" text color in dark scheme. */
+@media (prefers-color-scheme: dark) {
+  .player-card.libero,
+  .player-card.libero .num-text,
+  .player-card.libero .sub-text,
+  .player-card.libero .player-qmark,
+  .player-card.libero .player-input {
+    color: var(--gray-900) !important;
   }
 }

@@ -481,10 +481,10 @@
 
   <view class="create-actions" wx:if="{{createMode}}">
     <text class="create-invite-reminder">请核对信息 进入比赛后不可修改</text>
-    <button class="entry-btn create-invite-btn {{createInviteBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateInviteTap">
+    <button class="entry-btn create-invite-btn {{createInviteBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateInviteTap" open-type="{{inviteShareReady ? 'share' : ''}}">
       <view class="entry-btn-content">
         <view class="entry-btn-copy-icon"></view>
-        <text class="entry-btn-text">复制邀请</text>
+        <text class="entry-btn-text">邀请其他裁判</text>
       </view>
     </button>
     <button class="entry-btn {{createContinueBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateContinueTap">

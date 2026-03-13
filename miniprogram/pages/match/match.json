@@ -3,6 +3,7 @@
   "navigationStyle": "custom",
   "pageOrientation": "landscape",
   "disableScroll": true,
+  "enableShareAppMessage": true,
   "usingComponents": {
     "score-board": "/components/score-board/score-board"
   }
