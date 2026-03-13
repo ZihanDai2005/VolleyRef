@@ -65,18 +65,18 @@
       <view class="result-progress-head">得分进程</view>
       <view class="result-progress-body">
         <view class="result-progress-grid" wx:if="{{scoreProgressHasData}}">
-          <block wx:for="{{scoreProgressRows}}" wx:key="rowKey" wx:for-item="row">
+          <view class="result-progress-row" wx:for="{{scoreProgressRows}}" wx:key="index" wx:for-item="row">
             <text class="result-progress-team">{{row.teamName}}</text>
             <view class="result-progress-track" style="{{row.trackStyle}}">
               <view
                 wx:for="{{row.cells}}"
-                wx:key="cellKey"
+                wx:key="index"
                 wx:for-item="cell"
                 class="result-progress-cell"
                 style="{{cell.cellStyle}}"
               ></view>
             </view>
-          </block>
+          </view>
         </view>
         <view class="result-progress-empty" wx:if="{{scoreProgressEmpty}}">本局暂无得分进程</view>
       </view>
@@ -85,7 +85,7 @@
     <view class="result-log-card">
       <view class="result-log-head">比赛记录</view>
       <view class="result-log-list">
-        <view class="result-log-row" wx:for="{{logs}}" wx:key="rowKey" wx:for-item="item">
+        <view class="result-log-row" wx:for="{{logs}}" wx:key="index" wx:for-item="item">
           <view class="result-log-col result-log-col-left">
             <view class="{{item.leftPillClass}}" wx:if="{{item.hasLeftNote}}">
               <view class="{{item.leftTextClass}}">
