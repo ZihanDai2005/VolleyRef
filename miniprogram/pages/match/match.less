@@ -1577,10 +1577,10 @@
 }
 
 .set-end-modal {
-  width: min(88vw, 700px);
+  width: min(700px, calc(100vw - var(--safe-pad-left, 0px) - var(--safe-pad-right, 0px) - 24px));
   background: var(--surface);
   border-radius: 16px;
-  padding: 16px;
+  padding: 20px;
   box-sizing: border-box;
 }
 
@@ -1743,7 +1743,7 @@
 
 .set-end-btn-home {
   flex: 1;
-  height: 46px;
+  height: 40px;
   border-radius: 9999px;
   border: 0;
   box-sizing: border-box;
@@ -1790,7 +1790,7 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  padding: 0 20px;
+  padding: 0 10px;
   box-sizing: border-box;
 }
 
@@ -1810,12 +1810,12 @@
   top: auto;
   right: auto;
   transform: none;
-  width: 24px;
-  height: 24px;
+  width: 26px;
+  height: 26px;
 }
 
 .set-end-btn-text {
-  font-size: 20px;
+  font-size: 18px;
   color: inherit;
   line-height: 1;
 }
@@ -1891,6 +1891,7 @@
   margin-top: 10px;
   font-size: 14px;
   line-height: 1.5;
+  text-align: center;
   color: var(--text-main);
 }
 
@@ -1898,7 +1899,8 @@
   margin-top: 6px;
   font-size: 12px;
   line-height: 1.45;
-  color: var(--text-sub);
+  text-align: center;
+  color: var(--text-secondary);
 }
 
 .back-exit-actions {
@@ -2110,14 +2112,14 @@
 }
 
 .log-panel {
-  width: 88vw;
-  max-width: 860px;
+  width: min(760px, calc(100vw - var(--safe-pad-left, 0px) - var(--safe-pad-right, 0px) - 64px));
+  max-width: 760px;
   height: auto;
   min-height: 76vh;
   max-height: 88vh;
   background: var(--surface);
   border-radius: 12px;
-  padding: 14px;
+  padding: 20px;
   box-sizing: border-box;
   display: flex;
   flex-direction: column;
@@ -2217,8 +2219,8 @@
 
 .substitution-panel {
   position: relative;
-  width: 88vw;
-  max-width: 860px;
+  width: min(760px, calc(100vw - var(--safe-pad-left, 0px) - var(--safe-pad-right, 0px) - 64px));
+  max-width: 760px;
   height: auto;
   min-height: 76vh;
   max-height: 88vh;
@@ -2268,8 +2270,8 @@
 }
 
 .captain-confirm-panel {
-  width: 88vw;
-  max-width: 860px;
+  width: min(760px, calc(100vw - var(--safe-pad-left, 0px) - var(--safe-pad-right, 0px) - 64px));
+  max-width: 760px;
   min-height: 0;
   max-height: 88vh;
   display: flex;
@@ -2548,7 +2550,12 @@
 }
 
 .sub-player-grid .num {
-  font-size: 22px;
+  font-size: 19px;
+}
+
+.sub-player-grid .sub-text,
+.sub-player-grid .libero-tag {
+  font-size: 10px;
 }
 
 .sub-player-grid .current-captain-num::after {

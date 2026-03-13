@@ -1,5 +1,20 @@
 <view class="landing-container">
-  <view class="screen-container">
+  <view class="screen-container" style="--custom-nav-offset: {{customNavOffset}};">
+    <view
+      class="quick-resume-entry pressable {{quickResumeVisible ? 'is-visible' : 'is-hidden'}}"
+      hover-class="tap-active"
+      bindtap="onQuickResumeTap"
+    >
+      <view class="quick-resume-main">
+        <text class="quick-resume-title">{{quickResumeTitle}}</text>
+        <text class="quick-resume-subtitle">{{quickResumeSubtitle}}</text>
+      </view>
+      <view class="quick-resume-action">
+        <text class="quick-resume-action-text">进入</text>
+        <view class="quick-resume-action-icon"></view>
+      </view>
+    </view>
+
     <view class="court-motif">
       <view class="court-line line-center"></view>
       <view class="court-line line-attack-top"></view>

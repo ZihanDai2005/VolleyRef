@@ -1,6 +1,7 @@
 import { getRoomAsync, verifyRoomPasswordAsync } from "../../utils/room-service";
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
+import { saveLastRoomEntry } from "../../utils/last-room-entry";
 
 const JOIN_ROOM_KEY = "room";
 const JOIN_PASSWORD_KEY = "password";
@@ -231,10 +232,14 @@ Page({
       }
       const target = room.status === "result" ? "result" : room.status === "match" ? "match" : "create-room";
       if (target === "result") {
+        saveLastRoomEntry(roomId, password);
         wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
         return;
       }
       const url = "/pages/" + target + "/" + target + "?roomId=" + roomId;
+      if (target === "match") {
+        saveLastRoomEntry(roomId, password);
+      }
       wx.redirectTo({
         url: url,
         fail: () => {

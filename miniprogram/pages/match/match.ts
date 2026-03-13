@@ -4865,6 +4865,7 @@ Page({
     }
     this.frontRowLiberoFixing = true;
     let fixError = "";
+    let shouldForceCaptainReconfirmForTeam: TeamCode | "" = "";
     try {
       const next = await updateRoomAsync(roomId, (room) => {
         if (!room || !room.match || !room.teamA || !room.teamB) {
@@ -4882,6 +4883,7 @@ Page({
         }
         const teamObj = candidate.team === "A" ? room.teamA : room.teamB;
         const players = ensureTeamPlayerOrder(teamObj.players || []);
+        const captainNo = this.getTeamCurrentCaptainNoFromRoom(room, candidate.team);
         const roster = getLiberoRosterForTeam(room, candidate.team, candidate.team === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []);
         const rosterSet = buildLiberoRosterSet(roster);
         const frontSlot = getPlayerByPos(players, candidate.frontPos as Position);
@@ -4913,6 +4915,9 @@ Page({
         const tmpNo = nextPlayers[frontIdx].number;
         nextPlayers[frontIdx].number = nextPlayers[liberoIdx].number;
         nextPlayers[liberoIdx].number = tmpNo;
+        if (this.shouldForceCaptainReconfirm(candidate.team, players, nextPlayers, captainNo)) {
+          shouldForceCaptainReconfirmForTeam = candidate.team;
+        }
         teamObj.players = nextPlayers;
         const teamName = candidate.team === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙");
         appendMatchLog(
@@ -4935,6 +4940,9 @@ Page({
       }
       this.applyLocalLineupFromRoom(next);
       await this.loadRoom(roomId, true);
+      if (shouldForceCaptainReconfirmForTeam) {
+        this.openForcedCaptainConfirmAfterSubstitution(shouldForceCaptainReconfirmForTeam);
+      }
     } finally {
       this.frontRowLiberoFixing = false;
     }
@@ -6137,11 +6145,17 @@ Page({
         this.setData({ rotateFlyItemsB: endItems });
       }
       await this.delayAsync(340);
-      // 先恢复底层数字，再下一帧移除飞行层，避免结束瞬间出现空白闪烁。
+      // 收尾拆成两步：先恢复底层数字，再下一帧移除飞行层，避免结束瞬间闪烁。
       if (team === "A") {
-        this.setData({ hideTeamAMainNumbers: false, rotateFlyItemsA: [] });
+        this.setData({ hideTeamAMainNumbers: false });
+        await this.nextTickAsync();
+        await this.delayAsync(16);
+        this.setData({ rotateFlyItemsA: [] });
       } else {
-        this.setData({ hideTeamBMainNumbers: false, rotateFlyItemsB: [] });
+        this.setData({ hideTeamBMainNumbers: false });
+        await this.nextTickAsync();
+        await this.delayAsync(16);
+        this.setData({ rotateFlyItemsB: [] });
       }
       this.scheduleRectCacheWarmup(50);
     } finally {
@@ -7131,6 +7145,9 @@ Page({
         );
       }
       releaseRotateLock();
+      this.clearPendingRoomLoadRetry();
+      this.roomLoadPending = false;
+      this.roomLoadPendingForce = false;
       await this.loadRoom(roomId, true);
       showDecidingSetSwitchChoice();
     } finally {
@@ -7535,6 +7552,9 @@ Page({
             this.rotateActionInFlight = false;
           }
           if (needReload) {
+            this.clearPendingRoomLoadRetry();
+            this.roomLoadPending = false;
+            this.roomLoadPendingForce = false;
             await this.loadRoom(roomId, true);
           }
         }).finally(() => {

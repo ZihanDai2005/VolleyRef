@@ -265,6 +265,124 @@
   z-index: 4;
 }
 
+.quick-resume-entry {
+  position: absolute;
+  left: var(--home-side-gutter);
+  right: var(--home-side-gutter);
+  top: calc(var(--custom-nav-offset, 54px) + 16rpx);
+  min-height: 88rpx;
+  border-radius: 9999rpx;
+  box-sizing: border-box;
+  padding: 14rpx 18rpx;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16rpx;
+  background: transparent;
+  box-shadow: none;
+  z-index: 6;
+  overflow: hidden;
+  opacity: 0;
+  transform: scale(0.98);
+  pointer-events: none;
+  transition: opacity 220ms ease, transform 220ms cubic-bezier(0.2, 0.7, 0.2, 1);
+  will-change: opacity, transform;
+}
+
+.quick-resume-entry::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--brand-white);
+  opacity: 0.05;
+  pointer-events: none;
+}
+
+.quick-resume-entry.is-visible {
+  opacity: 1;
+  transform: scale(1);
+  pointer-events: auto;
+}
+
+.quick-resume-entry.is-hidden {
+  opacity: 0;
+  transform: scale(0.98);
+  pointer-events: none;
+}
+
+.quick-resume-main {
+  min-width: 0;
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 2rpx;
+  position: relative;
+  z-index: 1;
+}
+
+.quick-resume-title {
+  font-size: 27rpx;
+  line-height: 1.3;
+  color: var(--text-primary);
+  font-weight: 600;
+  margin-left: 20rpx;
+}
+
+.quick-resume-subtitle {
+  display: block;
+  font-size: 23rpx;
+  line-height: 1.35;
+  color: var(--text-secondary);
+  margin-left: 20rpx;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.quick-resume-action {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6rpx;
+  min-width: 90rpx;
+  height: 56rpx;
+  padding: 0 14rpx;
+  border-radius: 9999rpx;
+  border: 0;
+  background: var(--brand-white);
+  color: var(--white-ink);
+  box-shadow: 0 12rpx 32rpx var(--ol-white-20);
+  position: relative;
+  z-index: 1;
+}
+
+@media (prefers-color-scheme: dark) {
+  .quick-resume-action {
+    border: 0;
+    background: var(--brand-white);
+    color: var(--bg-deep);
+    box-shadow: 0 8rpx 30rpx var(--ol-black-30);
+  }
+}
+
+.quick-resume-action-text {
+  font-size: 22rpx;
+  line-height: 1;
+  font-weight: 600;
+}
+
+.quick-resume-action-icon {
+  width: 22rpx;
+  height: 22rpx;
+  background: currentColor;
+  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M16.1716 10.9999L10.8076 5.63589L12.2218 4.22168L20 11.9999L12.2218 19.778L10.8076 18.3638L16.1716 12.9999H4V10.9999H16.1716Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
 .pill-button {
   box-sizing: border-box;
   display: block;

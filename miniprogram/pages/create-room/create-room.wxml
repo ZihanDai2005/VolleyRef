@@ -54,22 +54,6 @@
         </view>
       </view>
 
-      <text class="create-head-hint">赛制模式</text>
-      <picker
-        mode="selector"
-        range="{{matchModes}}"
-        range-key="label"
-        value="{{matchModeIndex}}"
-        disabled="{{!createMode}}"
-        bindchange="onMatchModeChange"
-      >
-        <view class="create-head-input-wrap create-head-mode-wrap">
-          <view class="create-head-input create-head-input-mode">
-            <text class="create-head-mode-text">{{(matchModes[matchModeIndex] || matchModes[0]).label}}</text>
-          </view>
-          <view class="create-head-mode-arrow"></view>
-        </view>
-      </picker>
       <view class="create-head-hint-alert-row">
         <text class="create-head-hint create-head-hint-alert">请妥善保存团队编号和密码，否则退出后无法重新进入。</text>
       </view>
@@ -123,7 +107,7 @@
           </view>
         </view>
       </view>
-      <text class="create-head-hint">名称</text>
+      <text class="create-head-hint">队名</text>
       <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamAName">
         <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
           class="create-head-input-native"
@@ -271,7 +255,7 @@
           </view>
         </view>
       </view>
-      <text class="create-head-hint">名称</text>
+      <text class="create-head-hint">队名</text>
       <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamBName">
         <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
           class="create-head-input-native"
@@ -369,6 +353,27 @@
           </view>
         </view>
       </view>
+
+      <view class="create-head-divider-wrap">
+        <view class="create-head-divider"></view>
+      </view>
+
+      <text class="create-head-hint">赛制模式</text>
+      <picker
+        mode="selector"
+        range="{{matchModes}}"
+        range-key="label"
+        value="{{matchModeIndex}}"
+        disabled="{{!createMode}}"
+        bindchange="onMatchModeChange"
+      >
+        <view class="create-head-input-wrap create-head-mode-wrap">
+          <view class="create-head-input create-head-input-mode">
+            <text class="create-head-mode-text">{{matchModes[matchModeIndex].label}}</text>
+          </view>
+          <view class="create-head-mode-arrow"></view>
+        </view>
+      </picker>
     </view>
   </view>
 

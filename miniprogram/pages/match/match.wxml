@@ -346,11 +346,11 @@
               <view class="player-edit-content {{(hideTeamAMainNumbers && rotateFlyItemsA.length > 0) ? 'player-input-hidden' : ''}}">
                 <text class="adjust-fake-caret before {{activeAdjustInputKey === ('A-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
                 <text
-                  class="num pos-{{item.pos}} {{activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamACaptainNo ? 'current-captain-num' : ''}} {{(hideTeamAMainNumbers && rotateFlyItemsA.length > 0) ? 'num-hidden' : ''}}"
+                  class="num pos-{{item.pos}} {{activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamAInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('A-' + item.pos) && item.number === teamACaptainNo ? 'current-captain-num' : ''}}"
                   wx:if="{{item.number !== '?'}}"
                 >{{item.number}}</text>
                 <view wx:if="{{matchFlowMode === 'normal' && activeAdjustInputKey !== ('A-' + item.pos) && item.number !== '?' && item.number === teamACaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamAMainNumbers && rotateFlyItemsA.length > 0))}}" class="current-captain-mark"></view>
-                <text class="player-qmark {{(hideTeamAMainNumbers && rotateFlyItemsA.length > 0) ? 'num-hidden' : ''}}" wx:if="{{item.number === '?'}}">?</text>
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
                 <text class="adjust-fake-caret {{activeAdjustInputKey === ('A-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
               </view>
               <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
@@ -491,11 +491,11 @@
               <view class="player-edit-content {{(hideTeamBMainNumbers && rotateFlyItemsB.length > 0) ? 'player-input-hidden' : ''}}">
                 <text class="adjust-fake-caret before {{activeAdjustInputKey === ('B-' + item.pos) && item.number === '?' ? 'active' : ''}}"></text>
                 <text
-                  class="num pos-{{item.pos}} {{activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBCaptainNo ? 'current-captain-num' : ''}} {{(hideTeamBMainNumbers && rotateFlyItemsB.length > 0) ? 'num-hidden' : ''}}"
+                  class="num pos-{{item.pos}} {{activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBInitialCaptainNo ? 'captain-num' : ''}} {{matchFlowMode === 'normal' && activeAdjustInputKey !== ('B-' + item.pos) && item.number === teamBCaptainNo ? 'current-captain-num' : ''}}"
                   wx:if="{{item.number !== '?'}}"
                 >{{item.number}}</text>
                 <view wx:if="{{matchFlowMode === 'normal' && activeAdjustInputKey !== ('B-' + item.pos) && item.number !== '?' && item.number === teamBCaptainNo && ((item.pos === 'L1' || item.pos === 'L2') || !(hideTeamBMainNumbers && rotateFlyItemsB.length > 0))}}" class="current-captain-mark"></view>
-                <text class="player-qmark {{(hideTeamBMainNumbers && rotateFlyItemsB.length > 0) ? 'num-hidden' : ''}}" wx:if="{{item.number === '?'}}">?</text>
+                <text class="player-qmark" wx:if="{{item.number === '?'}}">?</text>
                 <text class="adjust-fake-caret {{activeAdjustInputKey === ('B-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
               </view>
               <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>

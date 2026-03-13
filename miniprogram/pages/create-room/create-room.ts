@@ -15,6 +15,7 @@ import {
 import { showBlockHint, showToastHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { getMainOrderForTeam, type MainPosition, type TeamCode } from "../../utils/lineup-order";
+import { saveLastRoomEntry } from "../../utils/last-room-entry";
 
 type Position = "I" | "II" | "III" | "IV" | "V" | "VI" | "L1" | "L2";
 type PlayerSlot = { pos: Position; number: string };
@@ -1430,6 +1431,7 @@ Page({
       await releaseRoomIdAsync(created.roomId, clientId);
       this.setData({ createCommitted: true });
       await heartbeatRoomAsync(created.roomId, clientId);
+      saveLastRoomEntry(created.roomId, roomPassword);
       this.enterMatchPage(created.roomId);
       return;
     }
@@ -1482,6 +1484,7 @@ Page({
       wx.navigateBack({ delta: 1 });
       return;
     }
+    saveLastRoomEntry(roomId, roomPassword);
     this.enterMatchPage(roomId);
     } finally {
       if (showCreatingLoading) {

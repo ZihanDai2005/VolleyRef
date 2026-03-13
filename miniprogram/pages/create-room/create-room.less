@@ -314,40 +314,40 @@
 }
 
 .create-head-mode-wrap {
-  height: 50rpx;
-  padding-right: 48rpx;
+  height: 86rpx;
+  padding-right: 76rpx;
 }
 
 .create-head-input-mode {
   display: flex;
   align-items: center;
   height: 100%;
-  line-height: 50rpx;
-  font-size: 30rpx;
+  line-height: 86rpx;
+  font-size: 40rpx;
   letter-spacing: 0;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
 }
 
 .create-head-mode-wrap .create-head-input {
-  font-size: 30rpx;
-  line-height: 50rpx;
+  font-size: 40rpx;
+  line-height: 86rpx;
   letter-spacing: 0;
-  padding: 0 18rpx 0 45rpx;
+  padding: 0 76rpx 0 45rpx;
 }
 
 .create-head-mode-text {
   display: inline-block;
-  line-height: 1;
-  font-size: 30rpx;
+  line-height: 86rpx;
+  font-size: 40rpx;
   font-family: -apple-system, BlinkMacSystemFont, "PingFang SC", "Helvetica Neue", Arial, sans-serif;
 }
 
 .create-head-mode-arrow {
   position: absolute;
-  right: 16rpx;
+  right: 24rpx;
   top: 50%;
-  width: 30rpx;
-  height: 30rpx;
+  width: 36rpx;
+  height: 36rpx;
   transform: translateY(-50%);
   background: var(--text-tertiary);
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M13.1717 12.0007L8.22192 7.05093L9.63614 5.63672L16.0001 12.0007L9.63614 18.3646L8.22192 16.9504L13.1717 12.0007Z'/%3E%3C/svg%3E")
@@ -1426,6 +1426,11 @@
     margin-bottom: 12px;
   }
 
+  .create-head-mode-wrap {
+    height: 56px;
+    padding-right: 48px;
+  }
+
   .create-head-input,
   .create-head-input-native {
     font-size: 26px;
@@ -1445,6 +1450,24 @@
   .room-pass-display-text,
   .create-head-input-mode {
     line-height: 56px;
+  }
+
+  .create-head-input-mode,
+  .create-head-mode-wrap .create-head-input,
+  .create-head-mode-text {
+    font-size: 22px;
+    line-height: 56px;
+    letter-spacing: 0;
+  }
+
+  .create-head-mode-wrap .create-head-input {
+    padding: 0 48px 0 30px;
+  }
+
+  .create-head-mode-arrow {
+    right: 16px;
+    width: 20px;
+    height: 20px;
   }
 
   .match-mode-char {

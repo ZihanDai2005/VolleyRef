@@ -38,6 +38,75 @@ type ScoreSheetSetRow = {
 
 type ScoreSheetTotalRow = Omit<ScoreSheetSetRow, "setNo">;
 
+const SCORE_SONGTI_900_FONT_FAMILY = "ScoreSongtiSerif900";
+const SCORE_SONGTI_700_FONT_FAMILY = "ScoreSongtiSerif700";
+const SCORE_ARIMO_DIGITS_FONT_FAMILY = "ScoreArimoDigits";
+const SCORE_SONGTI_900_CANDIDATES = [
+  "/assets/fonts/SourceHanSerifCN-900-Score-subset.otf",
+  "assets/fonts/SourceHanSerifCN-900-Score-subset.otf",
+  "./assets/fonts/SourceHanSerifCN-900-Score-subset.otf",
+];
+const SCORE_SONGTI_700_CANDIDATES = [
+  "/assets/fonts/SourceHanSerifCN-700-Score-subset.otf",
+  "assets/fonts/SourceHanSerifCN-700-Score-subset.otf",
+  "./assets/fonts/SourceHanSerifCN-700-Score-subset.otf",
+];
+const SCORE_ARIMO_DIGITS_CANDIDATES = [
+  "/assets/fonts/Arimo-ScoreDigits-subset.ttf",
+  "assets/fonts/Arimo-ScoreDigits-subset.ttf",
+  "./assets/fonts/Arimo-ScoreDigits-subset.ttf",
+];
+
+function readLocalFontBase64(candidates: string[]): Promise<string> {
+  return new Promise((resolve) => {
+    const fs = wx.getFileSystemManager();
+    let idx = 0;
+    const tryNext = () => {
+      if (idx >= candidates.length) {
+        resolve("");
+        return;
+      }
+      const filePath = String(candidates[idx++] || "");
+      if (!filePath) {
+        tryNext();
+        return;
+      }
+      fs.readFile({
+        filePath,
+        encoding: "base64",
+        success: (res) => {
+          const data = String((res as any).data || "").trim();
+          if (data) {
+            resolve(data);
+            return;
+          }
+          tryNext();
+        },
+        fail: () => {
+          tryNext();
+        },
+      });
+    };
+    tryNext();
+  });
+}
+
+function loadFontFaceByBase64(family: string, base64Data: string, mime = "font/opentype"): Promise<boolean> {
+  return new Promise((resolve) => {
+    if (!family || !base64Data) {
+      resolve(false);
+      return;
+    }
+    wx.loadFontFace({
+      family,
+      source: `url("data:${mime};base64,${base64Data}")`,
+      global: true,
+      success: () => resolve(true),
+      fail: () => resolve(false),
+    });
+  });
+}
+
 function pad2(n: number): string {
   return n < 10 ? "0" + String(n) : String(n);
 }
@@ -338,8 +407,12 @@ Page({
   scoreSheetTempFilePath: "",
   scoreSheetPreparingPromise: null as null | Promise<string>,
   scoreSheetFontFamily: "Songti SC",
+  scoreSheetSetNoFamily: "Songti SC",
+  scoreSheetSystemFamily: "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Helvetica Neue\", sans-serif",
   scoreSheetMonoFamily: "Courier New",
   scoreSheetScoreFamily: "Arial",
+  scoreSheetFontLoadPromise: null as null | Promise<void>,
+  scoreSheetFontsReady: false as boolean,
   pageActive: false as boolean,
   roomEnsureInFlight: false as boolean,
   roomEnsurePending: false as boolean,
@@ -670,6 +743,7 @@ Page({
       });
       this.applySetView(selectedSetNo);
       this.refreshCountdownText();
+      await this.loadScoreSheetFonts();
       this.prepareScoreSheet(false);
     } finally {
       this.roomEnsureInFlight = false;
@@ -705,9 +779,42 @@ Page({
     this.prepareScoreSheet(true).catch(() => {});
   },
 
-  loadScoreSheetFonts() {
-    // 小程序里不走外部字体网络加载，避免开发工具/弱网场景下 ERR_CACHE_MISS。
-    // 记分表统一走系统字体回退链（见各处 ctx.font）。
+  async loadScoreSheetFonts() {
+    if (this.scoreSheetFontsReady) {
+      return;
+    }
+    if (this.scoreSheetFontLoadPromise) {
+      return this.scoreSheetFontLoadPromise;
+    }
+    this.scoreSheetFontLoadPromise = (async () => {
+      try {
+        const [data900, data700, dataArimoDigits] = await Promise.all([
+          readLocalFontBase64(SCORE_SONGTI_900_CANDIDATES),
+          readLocalFontBase64(SCORE_SONGTI_700_CANDIDATES),
+          readLocalFontBase64(SCORE_ARIMO_DIGITS_CANDIDATES),
+        ]);
+        const [ok900, ok700, okArimoDigits] = await Promise.all([
+          loadFontFaceByBase64(SCORE_SONGTI_900_FONT_FAMILY, data900, "font/opentype"),
+          loadFontFaceByBase64(SCORE_SONGTI_700_FONT_FAMILY, data700, "font/opentype"),
+          loadFontFaceByBase64(SCORE_ARIMO_DIGITS_FONT_FAMILY, dataArimoDigits, "font/ttf"),
+        ]);
+        if (ok900) {
+          this.scoreSheetFontFamily = SCORE_SONGTI_900_FONT_FAMILY;
+        }
+        if (ok700) {
+          this.scoreSheetSetNoFamily = SCORE_SONGTI_700_FONT_FAMILY;
+        }
+        if (okArimoDigits) {
+          this.scoreSheetScoreFamily = SCORE_ARIMO_DIGITS_FONT_FAMILY;
+        }
+      } catch (_e) {
+        // 字体加载失败时自动回退系统字体链，不中断结果页逻辑。
+      }
+    })().finally(() => {
+      this.scoreSheetFontsReady = true;
+      this.scoreSheetFontLoadPromise = null;
+    });
+    return this.scoreSheetFontLoadPromise;
   },
 
   buildScoreSheetRows(teamAName: string, teamBName: string): { setRows: ScoreSheetSetRow[]; total: ScoreSheetTotalRow } {
@@ -951,12 +1058,12 @@ Page({
             ctx.beginPath();
             ctx.arc(circleBCx * scaleX, abCircleCy * scaleY, abCircleR * Math.min(scaleX, scaleY), 0, Math.PI * 2);
             ctx.stroke();
-            // 圆圈内大号 A/B（Arimo Bold）
+            // 圆圈内大号 A/B（与比分同一超粗数字字体族）
             const abGlyphY = abCircleCy + 2 * 10;
             ctx.fillStyle = "#000000";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.font = `bold ${Math.round(176 * Math.min(scaleX, scaleY))}px "Arimo","Arial","Helvetica Neue",sans-serif`;
+            ctx.font = `bold ${Math.round(176 * Math.min(scaleX, scaleY))}px "${this.scoreSheetScoreFamily}","Helvetica Neue","Arial",sans-serif`;
             ctx.fillText("A", circleACx * scaleX, abGlyphY * scaleY);
             ctx.fillText("B", circleBCx * scaleX, abGlyphY * scaleY);
 
@@ -1073,7 +1180,7 @@ Page({
               const isMultiline = linesRaw.length > 1;
               const fontPx = Math.round((isMultiline ? 72 : 90) * minScale);
               const lineOffsetPx = isMultiline ? Math.round(40 * minScale) : 0;
-              ctx.font = `700 ${fontPx}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+              ctx.font = `700 ${fontPx}px ${this.scoreSheetSystemFamily}`;
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
               const lines = linesRaw.map((line) => trimTextToWidth(line, maxWidthPx));
@@ -1149,7 +1256,7 @@ Page({
               const winnerNameX = winnerX + winnerCharStep * 2 + winnerNameGap;
               ctx.textAlign = "left";
               ctx.textBaseline = "middle";
-              ctx.font = `700 ${Math.round(88 * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+              ctx.font = `700 ${Math.round(88 * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
               ctx.fillText(winnerName, winnerNameX * scaleX, winnerY * scaleY);
             }
 
@@ -1217,11 +1324,11 @@ Page({
               ctx.fillStyle = "#000000";
               ctx.textBaseline = "middle";
               ctx.textAlign = "left";
-              ctx.font = `700 ${Math.round(92 * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+              ctx.font = `700 ${Math.round(92 * Math.min(scaleX, scaleY))}px "${this.scoreSheetSetNoFamily}","Songti SC","STSong","SimSun",serif`;
               ctx.fillText(noText, (col5X + setNoLeftPad) * scaleX, cy * scaleY);
 
               ctx.textAlign = "right";
-              ctx.font = `700 ${Math.round(84 * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+              ctx.font = `700 ${Math.round(84 * Math.min(scaleX, scaleY))}px "${this.scoreSheetSetNoFamily}","Songti SC","STSong","SimSun",serif`;
               ctx.fillText("(               )", (col5X + col5W - setBracketRightPad) * scaleX, cy * scaleY);
             }
 
