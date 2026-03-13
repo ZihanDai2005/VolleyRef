@@ -642,15 +642,21 @@
         </block>
         <block wx:else>
           <view class="set-end-btn-home outline set-end-action-btn pressable" hover-class="tap-active" bindtap="onSetEndUndo">
-            <view class="set-end-btn-content">
-              <text class="set-end-btn-text">撤回最后一分</text>
+            <view class="set-end-btn-content leading-content">
               <view class="set-end-btn-icon undo"></view>
+              <text class="set-end-btn-text">撤回最后一分</text>
             </view>
           </view>
           <view class="set-end-btn-home primary set-end-action-btn pressable" hover-class="tap-active" bindtap="onSetEndContinue">
-            <view class="set-end-btn-content">
-              <text class="set-end-btn-text">{{setEndActionText}}</text>
-              <view class="set-end-btn-icon {{setEndMatchFinished ? 'confirm' : ''}}"></view>
+            <view class="set-end-btn-content {{setEndMatchFinished ? 'leading-content' : ''}}">
+              <block wx:if="{{setEndMatchFinished}}">
+                <view class="set-end-btn-icon confirm"></view>
+                <text class="set-end-btn-text">{{setEndActionText}}</text>
+              </block>
+              <block wx:else>
+                <text class="set-end-btn-text">{{setEndActionText}}</text>
+                <view class="set-end-btn-icon"></view>
+              </block>
             </view>
           </view>
         </block>
