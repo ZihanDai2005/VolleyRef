@@ -4,8 +4,6 @@ import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { clearLastRoomEntry, readLastRoomEntry } from "../../utils/last-room-entry";
 import { buildShareCardTitle, SHARE_IMAGE_URL, showMiniProgramShareMenu } from "../../utils/share";
 
-const LOGIN_AUTH_CACHE_KEY = "volleyball.loginAuthorized";
-
 Page({
   data: {
     createBtnFx: false,
@@ -21,7 +19,6 @@ Page({
   themeOff: null as null | (() => void),
   creating: false as boolean,
   quickResumeCheckToken: 0 as number,
-  loginAuthorizing: false as boolean,
   navBusy: false as boolean,
   pageAlive: true as boolean,
   createTapTimer: null as null | ReturnType<typeof setTimeout>,
@@ -182,52 +179,8 @@ Page({
     }
   },
 
-  hasLoginAuthorization() {
-    return !!wx.getStorageSync(LOGIN_AUTH_CACHE_KEY);
-  },
-
-  markLoginAuthorized() {
-    wx.setStorageSync(LOGIN_AUTH_CACHE_KEY, 1);
-  },
-
-  async ensureUserLoggedIn() {
-    if (this.hasLoginAuthorization()) {
-      return true;
-    }
-    if (this.loginAuthorizing) {
-      showBlockHint("登录处理中，请稍后");
-      return false;
-    }
-    if (typeof wx.getUserProfile !== "function") {
-      showBlockHint("当前微信版本不支持登录授权");
-      return false;
-    }
-    this.loginAuthorizing = true;
-    try {
-      const ok = await new Promise<boolean>((resolve) => {
-        wx.getUserProfile({
-          desc: "用于身份确认并进入比赛",
-          success: () => {
-            resolve(true);
-          },
-          fail: () => {
-            resolve(false);
-          },
-        });
-      });
-      if (ok) {
-        this.markLoginAuthorized();
-        return true;
-      }
-      showBlockHint("未登录授权，无法继续");
-      return false;
-    } finally {
-      this.loginAuthorizing = false;
-    }
-  },
-
   onCreateEntryTap() {
-    if (this.navBusy || this.creating || this.loginAuthorizing) {
+    if (this.navBusy || this.creating) {
       return;
     }
     this.setData({ createBtnFx: true });
@@ -240,16 +193,12 @@ Page({
         return;
       }
       this.setData({ createBtnFx: false });
-      const loggedIn = await this.ensureUserLoggedIn();
-      if (!loggedIn || !this.pageAlive) {
-        return;
-      }
       this.onCreateRoomSubmit();
     }, 150);
   },
 
   onJoinEntryTap() {
-    if (this.navBusy || this.creating || this.loginAuthorizing) {
+    if (this.navBusy || this.creating) {
       return;
     }
     this.setData({ joinBtnFx: true });
@@ -262,10 +211,6 @@ Page({
         return;
       }
       this.setData({ joinBtnFx: false });
-      const loggedIn = await this.ensureUserLoggedIn();
-      if (!loggedIn || !this.pageAlive) {
-        return;
-      }
       this.onGoJoinPage();
     }, 150);
   },
