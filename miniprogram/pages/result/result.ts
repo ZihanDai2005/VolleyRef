@@ -333,42 +333,16 @@ function isSubstitutionAction(action: string, noteRaw: string): boolean {
 
 function getSubstitutionTypeLabel(noteRaw: string): string {
   const note = String(noteRaw || "");
-  if (note.indexOf("自由人前排自动换回") >= 0) {
-    return "自由人普通";
-  }
-  if (note.indexOf("自由人特殊换人") >= 0) {
-    const reason = extractSpecialReasonLabel(note);
-    if (reason === "伤病") {
-      return "自由人伤病";
-    }
-    if (reason === "本局禁赛") {
-      return "自由人本局禁";
-    }
-    if (reason === "全场禁赛") {
-      return "自由人全场禁";
-    }
-    return "自由人其他";
-  }
-  if (note.indexOf("自由人常规换人") >= 0) {
-    return "自由人普通";
-  }
-  if (note.indexOf("特殊换人") >= 0) {
-    const reason = extractSpecialReasonLabel(note);
-    if (reason === "伤病") {
-      return "伤病";
-    }
-    if (reason === "本局禁赛") {
-      return "本局禁赛";
-    }
-    if (reason === "全场禁赛") {
-      return "全场禁赛";
-    }
-    return "其他";
+  if (note.indexOf("自由人普通换人") >= 0 || note.indexOf("自由人常规换人") >= 0 || note.indexOf("自由人前排自动换回") >= 0) {
+    return "自由人普通换人";
   }
   if (note.indexOf("普通换人") >= 0) {
-    return "普通";
+    return "普通换人";
   }
-  return "普通";
+  if (note.indexOf("特殊换人") >= 0 || note.indexOf("自由人特殊换人") >= 0 || note.indexOf("特殊自由人换人") >= 0) {
+    return "特殊换人";
+  }
+  return "普通换人";
 }
 
 function normalizeSwapToken(raw: string): string {

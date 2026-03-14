@@ -100,7 +100,7 @@
                     <text class="result-log-pill-sub-num">{{item.leftSubDownNo}}</text>
                   </view>
                 </view>
-                <text class="result-log-pill-sub" wx:elif="{{item.hasLeftSub}}">{{item.leftSubNote}}</text>
+                <text class="result-log-pill-sub" wx:if="{{!item.leftSubSwap && item.hasLeftSub}}">{{item.leftSubNote}}</text>
               </view>
               <view
                 class="{{item.leftBadgeClass}}"
@@ -138,7 +138,7 @@
                     <text class="result-log-pill-sub-num">{{item.rightSubDownNo}}</text>
                   </view>
                 </view>
-                <text class="result-log-pill-sub" wx:elif="{{item.hasRightSub}}">{{item.rightSubNote}}</text>
+                <text class="result-log-pill-sub" wx:if="{{!item.rightSubSwap && item.hasRightSub}}">{{item.rightSubNote}}</text>
               </view>
               <view
                 class="{{item.rightBadgeClass}}"

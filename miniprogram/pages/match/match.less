@@ -1483,16 +1483,56 @@
 
 .sub-text {
   position: absolute;
-  left: 12rpx;
+  left: var(--sub-corner-offset, 12rpx);
   bottom: 4px;
   font-size: 12px;
   font-family: "BebasNeue", "Anton", sans-serif;
   color: inherit;
 }
 
+.live-sub-down-badge {
+  position: absolute;
+  right: var(--sub-corner-offset, 12rpx);
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: inherit;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transform: translateY(2px) scale(0.94);
+  transition:
+    opacity 180ms ease,
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.live-sub-down-badge.active {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.live-sub-down-badge-icon {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 16px;
+  background-color: currentColor;
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20580.99%20532.35'%20fill='currentColor'%3E%3Cpath%20d='M4563.65%2C2353.56%2C4744%2C2041.25c42.35-73.35-10.59-165-95.28-165H4288.06c-84.7%2C0-137.63%2C91.68-95.28%2C165l180.31%2C312.31C4415.43%2C2426.91%2C4521.3%2C2426.91%2C4563.65%2C2353.56Z'%20transform='translate(-4177.87%20-1876.22)'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20580.99%20532.35'%20fill='currentColor'%3E%3Cpath%20d='M4563.65%2C2353.56%2C4744%2C2041.25c42.35-73.35-10.59-165-95.28-165H4288.06c-84.7%2C0-137.63%2C91.68-95.28%2C165l180.31%2C312.31C4415.43%2C2426.91%2C4521.3%2C2426.91%2C4563.65%2C2353.56Z'%20transform='translate(-4177.87%20-1876.22)'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.live-sub-down-badge-text {
+  font-size: 12px;
+  line-height: 1;
+  font-family: "BebasNeue", "Anton", sans-serif;
+  color: inherit;
+}
+
 .libero-tag {
   position: absolute;
-  left: 12rpx;
+  left: var(--sub-corner-offset, 12rpx);
   top: 4px;
   font-size: 12px;
   font-family: "BebasNeue", "Anton", sans-serif;
@@ -2113,6 +2153,10 @@
     font-size: 11px;
   }
 
+  .live-sub-down-badge-text {
+    font-size: 11px;
+  }
+
   .serve-mark {
     width: 12px;
     height: 12px;
@@ -2552,6 +2596,7 @@
 
 .sub-player-grid .player-card {
   cursor: pointer;
+  --sub-corner-offset: 12rpx;
 }
 
 .sub-player-grid .num-wrap {
@@ -2564,7 +2609,18 @@
 
 .sub-player-grid .player-card.sub-player-disabled {
   opacity: 0.15;
-  pointer-events: none;
+}
+
+.sub-player-grid .player-card.sub-normal-libero-disabled {
+  opacity: 0.1;
+}
+
+.sub-player-grid .player-card.sub-normal-locked-disabled {
+  opacity: 0.1;
+}
+
+.sub-player-grid .player-card.sub-normal-limit-disabled {
+  opacity: 0.1;
 }
 
 .sub-player-grid .num {
@@ -2574,6 +2630,49 @@
 .sub-player-grid .sub-text,
 .sub-player-grid .libero-tag {
   font-size: 10px;
+}
+
+.sub-normal-pair-badge {
+  position: absolute;
+  right: var(--sub-corner-offset, 12rpx);
+  bottom: 4px;
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  color: inherit;
+  pointer-events: none;
+  z-index: 2;
+  opacity: 0;
+  transform: translateY(2px) scale(0.94);
+  transition:
+    opacity 180ms ease,
+    transform 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
+.sub-normal-pair-badge.active {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+}
+
+.sub-normal-pair-badge-icon {
+  width: 10px;
+  height: 10px;
+  flex: 0 0 10px;
+  background-color: currentColor;
+}
+
+.sub-normal-pair-badge-icon.link {
+  -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='currentColor'%3E%3Cpath%20d='M18.3638%2015.5355L16.9496%2014.1213L18.3638%2012.7071C20.3164%2010.7545%2020.3164%207.58866%2018.3638%205.63604C16.4112%203.68341%2013.2453%203.68341%2011.2927%205.63604L9.87849%207.05025L8.46428%205.63604L9.87849%204.22182C12.6122%201.48815%2017.0443%201.48815%2019.778%204.22182C22.5117%206.95549%2022.5117%2011.3876%2019.778%2014.1213L18.3638%2015.5355ZM15.5353%2018.364L14.1211%2019.7782C11.3875%2022.5118%206.95531%2022.5118%204.22164%2019.7782C1.48797%2017.0445%201.48797%2012.6123%204.22164%209.87868L5.63585%208.46446L7.05007%209.87868L5.63585%2011.2929C3.68323%2013.2455%203.68323%2016.4113%205.63585%2018.364C7.58847%2020.3166%2010.7543%2020.3166%2012.7069%2018.364L14.1211%2016.9497L15.5353%2018.364ZM14.8282%207.75736L16.2425%209.17157L9.17139%2016.2426L7.75717%2014.8284L14.8282%207.75736Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+  mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%2024%2024'%20fill='currentColor'%3E%3Cpath%20d='M18.3638%2015.5355L16.9496%2014.1213L18.3638%2012.7071C20.3164%2010.7545%2020.3164%207.58866%2018.3638%205.63604C16.4112%203.68341%2013.2453%203.68341%2011.2927%205.63604L9.87849%207.05025L8.46428%205.63604L9.87849%204.22182C12.6122%201.48815%2017.0443%201.48815%2019.778%204.22182C22.5117%206.95549%2022.5117%2011.3876%2019.778%2014.1213L18.3638%2015.5355ZM15.5353%2018.364L14.1211%2019.7782C11.3875%2022.5118%206.95531%2022.5118%204.22164%2019.7782C1.48797%2017.0445%201.48797%2012.6123%204.22164%209.87868L5.63585%208.46446L7.05007%209.87868L5.63585%2011.2929C3.68323%2013.2455%203.68323%2016.4113%205.63585%2018.364C7.58847%2020.3166%2010.7543%2020.3166%2012.7069%2018.364L14.1211%2016.9497L15.5353%2018.364ZM14.8282%207.75736L16.2425%209.17157L9.17139%2016.2426L7.75717%2014.8284L14.8282%207.75736Z'/%3E%3C/svg%3E")
+    center / contain no-repeat;
+}
+
+.sub-normal-pair-badge-text {
+  font-size: 10px;
+  line-height: 1;
+  font-family: "BebasNeue", "Anton", sans-serif;
+  color: inherit;
 }
 
 .sub-player-grid .current-captain-num::after {
@@ -2783,13 +2882,7 @@
 }
 
 .sub-special-reason-field.hidden {
-  visibility: hidden;
-  pointer-events: none;
-}
-
-.sub-special-reason-field.hidden .sub-seg,
-.sub-special-reason-field.hidden .sub-seg-item {
-  pointer-events: none;
+  display: none;
 }
 
 .sub-field-label {
@@ -2902,10 +2995,18 @@
   box-shadow: none;
 }
 
+.sub-op-controls .sub-seg-item.disabled {
+  opacity: 0.42;
+}
+
 .sub-confirm-btn {
   width: 100%;
   height: 40px;
   border-radius: 9999px;
+}
+
+.sub-confirm-btn.sub-confirm-btn-disabled {
+  opacity: 0.5;
 }
 
 .sub-confirm-btn-content {

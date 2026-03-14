@@ -305,6 +305,12 @@
               <text class="adjust-fake-caret {{activeAdjustInputKey === ('A-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
             </view>
             <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
+            <view
+              class="live-sub-down-badge {{matchFlowMode === 'normal' && !showSubstitutionPanel && !substitutionPanelClosing && liveSubDownBadgeA[item.pos] ? 'active' : ''}}"
+            >
+              <view class="live-sub-down-badge-icon"></view>
+              <text class="live-sub-down-badge-text">{{liveSubDownBadgeA[item.pos] || ''}}</text>
+            </view>
           </view>
         </view>
         <view class="main-col">
@@ -357,6 +363,12 @@
               <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
               <text class="sub-text">{{item.pos}}</text>
               <view class="serve-mark {{item.pos === 'I' && servingTeam === 'A' ? 'active' : ''}}"></view>
+              <view
+                class="live-sub-down-badge {{matchFlowMode === 'normal' && !showSubstitutionPanel && !substitutionPanelClosing && liveSubDownBadgeA[item.pos] ? 'active' : ''}}"
+              >
+                <view class="live-sub-down-badge-icon"></view>
+                <text class="live-sub-down-badge-text">{{liveSubDownBadgeA[item.pos] || ''}}</text>
+              </view>
             </view>
           </view>
         </view>
@@ -503,6 +515,12 @@
               <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
               <text class="sub-text">{{item.pos}}</text>
               <view class="serve-mark {{item.pos === 'I' && servingTeam === 'B' ? 'active' : ''}}"></view>
+              <view
+                class="live-sub-down-badge {{matchFlowMode === 'normal' && !showSubstitutionPanel && !substitutionPanelClosing && liveSubDownBadgeB[item.pos] ? 'active' : ''}}"
+              >
+                <view class="live-sub-down-badge-icon"></view>
+                <text class="live-sub-down-badge-text">{{liveSubDownBadgeB[item.pos] || ''}}</text>
+              </view>
             </view>
           </view>
         </view>
@@ -549,6 +567,12 @@
               <text class="adjust-fake-caret {{activeAdjustInputKey === ('B-' + item.pos) && item.number !== '?' ? 'active' : ''}}"></text>
             </view>
             <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
+            <view
+              class="live-sub-down-badge {{matchFlowMode === 'normal' && !showSubstitutionPanel && !substitutionPanelClosing && liveSubDownBadgeB[item.pos] ? 'active' : ''}}"
+            >
+              <view class="live-sub-down-badge-icon"></view>
+              <text class="live-sub-down-badge-text">{{liveSubDownBadgeB[item.pos] || ''}}</text>
+            </view>
           </view>
         </view>
       </view>
@@ -738,12 +762,13 @@
           <view class="lineup-grid sub-player-grid {{subTeam === 'A' ? 'team-a' : 'team-b'}} {{subUseSwapLayout ? 'swap-layout' : ''}}">
             <view class="libero-col">
               <view
-                class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}}"
+                class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}} {{subMode === 'normal' && (item.isLibero || item.pos === 'L1' || item.pos === 'L2') ? 'sub-normal-libero-disabled' : ''}} {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'lock' ? 'sub-normal-locked-disabled' : ''}} {{subMode === 'normal' && subNormalModeLimitLocked ? 'sub-normal-limit-disabled' : ''}}"
                 wx:for="{{subLibero}}"
                 wx:key="pos"
                 wx:for-item="item"
                 data-pos="{{item.pos}}"
                 data-number="{{item.number}}"
+                data-is-libero="{{item.isLibero ? 1 : 0}}"
                 bindtap="onSubSelectPlayer"
               >
                 <view class="num-wrap">
@@ -751,17 +776,22 @@
                   <view wx:if="{{item.number === subCaptainNo}}" class="current-captain-mark inline"></view>
                 </view>
                 <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
+                <view class="sub-normal-pair-badge {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'link' ? 'active' : ''}}">
+                  <view class="sub-normal-pair-badge-icon link"></view>
+                  <text wx:if="{{subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'link'}}" class="sub-normal-pair-badge-text">{{subNormalPairBadge[item.pos].pairNo}}</text>
+                </view>
               </view>
             </view>
             <view class="main-col">
               <view class="player-row row-two" wx:for="{{subMainGrid}}" wx:key="index" wx:for-item="row">
                 <view
-                  class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}}"
+                  class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}} {{subMode === 'normal' && (item.isLibero || item.pos === 'L1' || item.pos === 'L2') ? 'sub-normal-libero-disabled' : ''}} {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'lock' ? 'sub-normal-locked-disabled' : ''}} {{subMode === 'normal' && subNormalModeLimitLocked ? 'sub-normal-limit-disabled' : ''}}"
                   wx:for="{{row}}"
                   wx:key="pos"
                   wx:for-item="item"
                   data-pos="{{item.pos}}"
                   data-number="{{item.number}}"
+                  data-is-libero="{{item.isLibero ? 1 : 0}}"
                   bindtap="onSubSelectPlayer"
                 >
                   <view class="num-wrap">
@@ -770,6 +800,10 @@
                   </view>
                   <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
                   <text class="sub-text">{{item.pos}}</text>
+                  <view class="sub-normal-pair-badge {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'link' ? 'active' : ''}}">
+                    <view class="sub-normal-pair-badge-icon link"></view>
+                    <text wx:if="{{subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'link'}}" class="sub-normal-pair-badge-text">{{subNormalPairBadge[item.pos].pairNo}}</text>
+                  </view>
                 </view>
               </view>
             </view>
@@ -781,9 +815,8 @@
             <view class="sub-field">
               <text class="sub-field-label">换人类型</text>
               <view class="sub-seg {{subModeSwitching ? 'seg-switching' : ''}}">
-                <view class="sub-seg-item {{subMode === 'normal' ? 'active' : ''}}" data-mode="normal" bindtap="onSubSelectMode">普通 ({{subNormalCount}}/6)</view>
-                <view class="sub-seg-item {{subMode === 'special' ? 'active' : ''}}" data-mode="special" bindtap="onSubSelectMode">特殊 ({{subSpecialCount}}/∞)</view>
-                <view class="sub-seg-item {{subMode === 'special_libero' ? 'active' : ''}}" data-mode="special_libero" bindtap="onSubSelectMode">自由人特殊 ({{subSpecialLiberoRecords.length}}/∞)</view>
+                <view class="sub-seg-item {{subMode === 'normal' ? 'active' : ''}} {{subNormalDisabled ? 'disabled' : ''}}" data-mode="normal" bindtap="onSubSelectMode">普通 ({{subNormalCount}}/6)</view>
+                <view class="sub-seg-item {{subMode === 'special' ? 'active' : ''}} {{subSpecialDisabled ? 'disabled' : ''}}" data-mode="special" bindtap="onSubSelectMode">特殊 ({{subSpecialCount}}/∞)</view>
               </view>
             </view>
 
@@ -803,7 +836,16 @@
               />
             </view>
 
-            <view class="sub-field sub-special-reason-field {{(subMode === 'special' || subMode === 'special_libero') ? 'visible' : 'hidden'}}">
+            <view wx:if="{{subMode === 'normal'}}" class="sub-field sub-special-reason-field">
+              <text class="sub-field-label">是否带有处罚</text>
+              <view class="sub-seg {{subReasonSwitching ? 'seg-switching' : ''}}">
+                <view class="sub-seg-item {{subNormalPenalty === 'none' ? 'active' : ''}}" data-penalty="none" bindtap="onSubSelectNormalPenalty">无处罚</view>
+                <view class="sub-seg-item {{subNormalPenalty === 'penalty_set' ? 'active' : ''}}" data-penalty="penalty_set" bindtap="onSubSelectNormalPenalty">本局禁赛</view>
+                <view class="sub-seg-item {{subNormalPenalty === 'penalty_match' ? 'active' : ''}}" data-penalty="penalty_match" bindtap="onSubSelectNormalPenalty">全场禁赛</view>
+              </view>
+            </view>
+
+            <view wx:if="{{subMode === 'special'}}" class="sub-field sub-special-reason-field">
               <text class="sub-field-label">换人原因</text>
               <view class="sub-seg {{subReasonSwitching ? 'seg-switching' : ''}}">
                 <view class="sub-seg-item {{subReason === 'injury' ? 'active' : ''}}" data-reason="injury" bindtap="onSubSelectReason">伤病</view>
@@ -816,7 +858,7 @@
         </view>
       </view>
       <view class="sub-confirm-wrap sub-confirm-wrap-bottom">
-        <view class="set-end-btn-home sub-confirm-btn pressable" hover-class="tap-active" bindtap="onSubConfirmTap">
+        <view class="set-end-btn-home sub-confirm-btn pressable {{subMode === 'normal' && subNormalModeLimitLocked ? 'sub-confirm-btn-disabled' : ''}}" hover-class="tap-active" bindtap="onSubConfirmTap">
           <view class="set-end-btn-content sub-confirm-btn-content">
             <view class="start-match-entry-icon confirm sub-confirm-btn-icon"></view>
             <text class="sub-confirm-btn-text">确认换人</text>
@@ -853,14 +895,9 @@
               <text class="log-time">{{item.index}}</text>
               <text class="log-note">{{item.text}}</text>
             </view>
-            <view class="log-item" wx:if="{{subRecordTab === 'special_libero'}}" wx:for="{{subSpecialLiberoRecords}}" wx:key="index" wx:for-item="item">
-              <text class="log-time">{{item.index}}</text>
-              <text class="log-note">{{item.text}}</text>
-            </view>
             <view class="log-empty" wx:if="{{subRecordTab === 'normal' && !subNormalRecords.length}}">暂无普通换人记录</view>
             <view class="log-empty" wx:if="{{subRecordTab === 'special' && !subSpecialRecords.length}}">暂无特殊换人记录</view>
             <view class="log-empty" wx:if="{{subRecordTab === 'libero' && !subLiberoRecords.length}}">暂无自由人常规换人记录</view>
-            <view class="log-empty" wx:if="{{subRecordTab === 'special_libero' && !subSpecialLiberoRecords.length}}">暂无自由人特殊换人记录</view>
           </scroll-view>
         </view>
       </view>
