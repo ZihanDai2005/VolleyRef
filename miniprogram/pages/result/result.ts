@@ -99,75 +99,6 @@ type ScoreSheetSetRow = {
 
 type ScoreSheetTotalRow = Omit<ScoreSheetSetRow, "setNo">;
 
-const SCORE_SONGTI_900_FONT_FAMILY = "ScoreSongtiSerif900";
-const SCORE_SONGTI_700_FONT_FAMILY = "ScoreSongtiSerif700";
-const SCORE_ARIMO_DIGITS_FONT_FAMILY = "ScoreArimoDigits";
-const SCORE_SONGTI_900_CANDIDATES = [
-  "/assets/fonts/SourceHanSerifCN-900-Score-subset.otf",
-  "assets/fonts/SourceHanSerifCN-900-Score-subset.otf",
-  "./assets/fonts/SourceHanSerifCN-900-Score-subset.otf",
-];
-const SCORE_SONGTI_700_CANDIDATES = [
-  "/assets/fonts/SourceHanSerifCN-700-Score-subset.otf",
-  "assets/fonts/SourceHanSerifCN-700-Score-subset.otf",
-  "./assets/fonts/SourceHanSerifCN-700-Score-subset.otf",
-];
-const SCORE_ARIMO_DIGITS_CANDIDATES = [
-  "/assets/fonts/Arimo-ScoreDigits-subset.ttf",
-  "assets/fonts/Arimo-ScoreDigits-subset.ttf",
-  "./assets/fonts/Arimo-ScoreDigits-subset.ttf",
-];
-
-function readLocalFontBase64(candidates: string[]): Promise<string> {
-  return new Promise((resolve) => {
-    const fs = wx.getFileSystemManager();
-    let idx = 0;
-    const tryNext = () => {
-      if (idx >= candidates.length) {
-        resolve("");
-        return;
-      }
-      const filePath = String(candidates[idx++] || "");
-      if (!filePath) {
-        tryNext();
-        return;
-      }
-      fs.readFile({
-        filePath,
-        encoding: "base64",
-        success: (res) => {
-          const data = String((res as any).data || "").trim();
-          if (data) {
-            resolve(data);
-            return;
-          }
-          tryNext();
-        },
-        fail: () => {
-          tryNext();
-        },
-      });
-    };
-    tryNext();
-  });
-}
-
-function loadFontFaceByBase64(family: string, base64Data: string, mime = "font/opentype"): Promise<boolean> {
-  return new Promise((resolve) => {
-    if (!family || !base64Data) {
-      resolve(false);
-      return;
-    }
-    wx.loadFontFace({
-      family,
-      source: `url("data:${mime};base64,${base64Data}")`,
-      global: true,
-      success: () => resolve(true),
-      fail: () => resolve(false),
-    });
-  });
-}
-
 function pad2(n: number): string {
   return n < 10 ? "0" + String(n) : String(n);
 }
@@ -431,6 +362,9 @@ function extractSpecialReasonLabel(noteRaw: string): string {
   return "";
 }
 
+void stripTeamPrefix;
+void extractSpecialReasonLabel;
+
 function hasSetResult(summary?: SetSummaryItem): boolean {
   if (!summary) {
     return false;
@@ -618,8 +552,8 @@ Page({
   isSheetGenerating: false,
   scoreSheetTempFilePath: "",
   scoreSheetPreparingPromise: null as null | Promise<string>,
-  scoreSheetFontFamily: "Songti SC",
-  scoreSheetSetNoFamily: "Songti SC",
+  scoreSheetFontFamily: "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Helvetica Neue\", sans-serif",
+  scoreSheetSetNoFamily: "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Helvetica Neue\", sans-serif",
   scoreSheetSystemFamily: "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Helvetica Neue\", sans-serif",
   scoreSheetMonoFamily: "Courier New",
   scoreSheetScoreFamily: "Arial",
@@ -677,11 +611,11 @@ Page({
     if (roomId) {
       this.ensureRoom(roomId);
     }
-    this.prepareScoreSheet(false);
+    void this.prepareScoreSheet(false).catch(() => {});
   },
 
   onReady() {
-    this.prepareScoreSheet(false);
+    void this.prepareScoreSheet(false).catch(() => {});
   },
 
   onHide() {
@@ -791,8 +725,6 @@ Page({
         const rawNote = String(item.note || "");
         const normalizedNote = withTeamSuffixForDisplay(rawNote, teamAName, teamBName);
         const action = String(item.action || "");
-        const teamADisplayName = String(teamAName || "甲");
-        const teamBDisplayName = String(teamBName || "乙");
         const isSwitchSides = action.indexOf("switch_sides") === 0 || action === "switch_sides";
         const isSetEnd = action === "set_end";
         const isResultLocked = action === "result_locked" || rawNote.indexOf("比赛结束") >= 0;
@@ -1228,7 +1160,7 @@ Page({
           durationText: String(s.durationText || ""),
         };
       });
-      this.allLogs.forEach((log) => {
+      this.allLogs.forEach((log: MatchLogItem) => {
         if (String(log.action) !== "set_end") {
           return;
         }
@@ -1266,10 +1198,10 @@ Page({
 
       const setNoFromSummaries = Object.keys(setSummaryMap)
         .map((k) => toSetNo(k, 1))
-        .reduce((max, n) => Math.max(max, n), 1);
+        .reduce((max: number, n: number) => Math.max(max, n), 1);
       const setNoFromLogs = this.allLogs
-        .map((item) => toSetNo(item.setNo, 1))
-        .reduce((max, n) => Math.max(max, n), 1);
+        .map((item: MatchLogItem) => toSetNo(item.setNo, 1))
+        .reduce((max: number, n: number) => Math.max(max, n), 1);
       const playedByWins = Math.max(
         1,
         (Number(room.match && room.match.aSetWins) || 0) + (Number(room.match && room.match.bSetWins) || 0)
@@ -1309,7 +1241,7 @@ Page({
       this.applySetView(selectedSetNo);
       this.refreshCountdownText();
       await this.loadScoreSheetFonts();
-      this.prepareScoreSheet(false);
+      void this.prepareScoreSheet(false).catch(() => {});
     } finally {
       this.roomEnsureInFlight = false;
       if (this.roomEnsurePending && this.pageActive) {
@@ -1363,31 +1295,11 @@ Page({
       return this.scoreSheetFontLoadPromise;
     }
     this.scoreSheetFontLoadPromise = (async () => {
-      try {
-        const [data900, data700, dataArimoDigits] = await Promise.all([
-          readLocalFontBase64(SCORE_SONGTI_900_CANDIDATES),
-          readLocalFontBase64(SCORE_SONGTI_700_CANDIDATES),
-          readLocalFontBase64(SCORE_ARIMO_DIGITS_CANDIDATES),
-        ]);
-        const [ok900, ok700, okArimoDigits] = await Promise.all([
-          loadFontFaceByBase64(SCORE_SONGTI_900_FONT_FAMILY, data900, "font/opentype"),
-          loadFontFaceByBase64(SCORE_SONGTI_700_FONT_FAMILY, data700, "font/opentype"),
-          loadFontFaceByBase64(SCORE_ARIMO_DIGITS_FONT_FAMILY, dataArimoDigits, "font/ttf"),
-        ]);
-        if (ok900) {
-          this.scoreSheetFontFamily = SCORE_SONGTI_900_FONT_FAMILY;
-        }
-        if (ok700) {
-          this.scoreSheetSetNoFamily = SCORE_SONGTI_700_FONT_FAMILY;
-        }
-        if (okArimoDigits) {
-          this.scoreSheetScoreFamily = SCORE_ARIMO_DIGITS_FONT_FAMILY;
-        }
-      } catch (_e) {
-        // 字体加载失败时自动回退系统字体链，不中断结果页逻辑。
-      }
-    })().finally(() => {
+      // 仅使用系统字体，不再加载云端/本地嵌入字体。
+      this.scoreSheetFontFamily = this.scoreSheetSystemFamily;
+      this.scoreSheetSetNoFamily = this.scoreSheetSystemFamily;
       this.scoreSheetFontsReady = true;
+    })().finally(() => {
       this.scoreSheetFontLoadPromise = null;
     });
     return this.scoreSheetFontLoadPromise;
@@ -1395,7 +1307,7 @@ Page({
 
   buildScoreSheetRows(teamAName: string, teamBName: string): { setRows: ScoreSheetSetRow[]; total: ScoreSheetTotalRow } {
     const hiddenOpIds = new Set<string>();
-    (this.allLogs || []).forEach((item) => {
+    (this.allLogs || []).forEach((item: MatchLogItem) => {
       if (String(item.action || "") === "score_undo") {
         const reverted = String((item as any).revertedOpId || "");
         if (reverted) {
@@ -1437,7 +1349,7 @@ Page({
       teamSetCounts.B[setNo] = { timeout: 0, subs: 0 };
     }
 
-    (this.allLogs || []).forEach((item) => {
+    (this.allLogs || []).forEach((item: MatchLogItem) => {
       const setNo = toSetNo(item.setNo, 1);
       if (setNo < 1 || setNo > 5) {
         return;
@@ -1530,7 +1442,7 @@ Page({
     };
   },
 
-  prepareScoreSheet(previewAfterReady: boolean): Promise<string> {
+  async prepareScoreSheet(previewAfterReady: boolean): Promise<string> {
     if (this.scoreSheetTempFilePath) {
       if (previewAfterReady) {
         wx.previewImage({
@@ -1545,7 +1457,7 @@ Page({
         wx.showLoading({ title: "生成中", mask: true });
       }
       return this.scoreSheetPreparingPromise
-        .then((path) => {
+        .then((path: string) => {
           if (previewAfterReady && path) {
             wx.hideLoading();
             wx.previewImage({
@@ -1555,7 +1467,41 @@ Page({
           }
           return path;
         })
-        .catch((err) => {
+        .catch((err: unknown) => {
+          if (previewAfterReady) {
+            wx.hideLoading();
+            wx.showToast({ title: "生成失败，请重试", icon: "none" });
+          }
+          throw err;
+        });
+    }
+    if (previewAfterReady) {
+      wx.showLoading({ title: "生成中", mask: true });
+    }
+    await this.loadScoreSheetFonts();
+    if (this.scoreSheetTempFilePath) {
+      if (previewAfterReady) {
+        wx.hideLoading();
+        wx.previewImage({
+          current: this.scoreSheetTempFilePath,
+          urls: [this.scoreSheetTempFilePath],
+        });
+      }
+      return this.scoreSheetTempFilePath;
+    }
+    if (this.scoreSheetPreparingPromise) {
+      return this.scoreSheetPreparingPromise
+        .then((path: string) => {
+          if (previewAfterReady && path) {
+            wx.hideLoading();
+            wx.previewImage({
+              current: path,
+              urls: [path],
+            });
+          }
+          return path;
+        })
+        .catch((err: unknown) => {
           if (previewAfterReady) {
             wx.hideLoading();
             wx.showToast({ title: "生成失败，请重试", icon: "none" });
@@ -1568,9 +1514,6 @@ Page({
     const drawHeight = 635;
     const exportWidth = 2560;
     const exportHeight = 2540;
-    if (previewAfterReady) {
-      wx.showLoading({ title: "生成中", mask: true });
-    }
     const generatePromise = new Promise<string>((resolve, reject) => {
       wx.nextTick(() => {
         const query = wx.createSelectorQuery();
@@ -1586,6 +1529,8 @@ Page({
             const canvas = canvasRef as any;
             const ctx = canvas.getContext("2d");
             const dpr = Math.max(1, Number(wx.getSystemInfoSync().pixelRatio || 1));
+            const songti900Weight = "700";
+            const songti700Weight = "500";
             canvas.width = drawWidth * dpr;
             canvas.height = drawHeight * dpr;
             ctx.scale(dpr, dpr);
@@ -1714,7 +1659,7 @@ Page({
             const teamNameInnerPad = 2 * 10;
             ctx.fillStyle = "#000000";
             ctx.textBaseline = "middle";
-            const teamLabelFont = `900 ${Math.round(row3MidSize * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+            const teamLabelFont = `${songti900Weight} ${Math.round(row3MidSize * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
             ctx.font = teamLabelFont;
             ctx.textAlign = "left";
             ctx.fillText(teamNameLabel, (row2X + teamNamePad) * scaleX, teamNameY * scaleY);
@@ -1778,7 +1723,7 @@ Page({
               const cx = row3CursorX + cw / 2;
               const isMid = idx === 4;
               const fontSize = isMid ? row3MidSize : row3NormalSize;
-              ctx.font = `900 ${Math.round(fontSize * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+              ctx.font = `${songti900Weight} ${Math.round(fontSize * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
               ctx.fillStyle = "#000000";
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
@@ -1797,7 +1742,7 @@ Page({
             ctx.fillStyle = "#000000";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.font = `900 ${Math.round(titleFontSize * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+            ctx.font = `${songti900Weight} ${Math.round(titleFontSize * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
             titleChars.forEach((ch, idx) => {
               const x = titleCenterX - titleTotal / 2 + idx * titleStep;
               ctx.fillText(ch, x * scaleX, (titleCenterY + titleVisualOffsetY) * scaleY);
@@ -1811,7 +1756,7 @@ Page({
             ctx.fillStyle = "#000000";
             ctx.textAlign = "left";
             ctx.textBaseline = "middle";
-            ctx.font = `900 ${Math.round(titleFontSize * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+            ctx.font = `${songti900Weight} ${Math.round(titleFontSize * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
             winnerChars.forEach((ch, idx) => {
               const x = winnerX + idx * winnerCharStep;
               ctx.fillText(ch, x * scaleX, winnerY * scaleY);
@@ -1873,7 +1818,7 @@ Page({
               bSubs: metrics.total.bSubs,
               bTimeout: metrics.total.bTimeout,
             });
-            rowDataToDraw.forEach((row, idx) => {
+            rowDataToDraw.forEach((row: ScoreSheetSetRow, idx: number) => {
               const cy = rowGridStartY + rowGridH * (idx + 1) + rowGridH / 2;
               const valsLeft = [row.aTimeout, row.aSubs, row.aWin, row.aPoints];
               const valsRight = [row.bPoints, row.bWin, row.bSubs, row.bTimeout];
@@ -1900,12 +1845,12 @@ Page({
               ctx.fillStyle = "#000000";
               ctx.textBaseline = "middle";
               ctx.textAlign = "left";
-              ctx.font = `700 ${Math.round(92 * Math.min(scaleX, scaleY))}px "${this.scoreSheetSetNoFamily}","Songti SC","STSong","SimSun",serif`;
+              ctx.font = `${songti700Weight} ${Math.round(92 * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
               ctx.fillText(noText, (col5X + setNoLeftPad) * scaleX, cy * scaleY);
 
               ctx.textAlign = "right";
-              ctx.font = `700 ${Math.round(84 * Math.min(scaleX, scaleY))}px "${this.scoreSheetSetNoFamily}","Songti SC","STSong","SimSun",serif`;
-              ctx.fillText("(               )", (col5X + col5W - setBracketRightPad) * scaleX, cy * scaleY);
+              ctx.font = `${songti700Weight} ${Math.round(84 * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
+              ctx.fillText("(           )", (col5X + col5W - setBracketRightPad) * scaleX, cy * scaleY);
             }
 
             // 4-8行，第5列：第二遍（括号内分钟数，使用和两侧数字一致字体）
@@ -1944,10 +1889,10 @@ Page({
             ctx.fillStyle = "#000000";
             ctx.textAlign = "center";
             ctx.textBaseline = "middle";
-            ctx.font = `900 ${Math.round(summaryLine1FontPx * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+            ctx.font = `${songti900Weight} ${Math.round(summaryLine1FontPx * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
             ctx.fillText("比赛用时", durationCellCenterX * scaleX, durationLine1Y * scaleY);
-            ctx.font = `900 ${Math.round(summaryLine2FontPx * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
-            ctx.fillText("(                    分)", durationCellCenterX * scaleX, durationLine2Y * scaleY);
+            ctx.font = `${songti900Weight} ${Math.round(summaryLine2FontPx * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
+            ctx.fillText("(                分)", durationCellCenterX * scaleX, durationLine2Y * scaleY);
             // 比赛用时中的分钟数：单独用等宽字体叠加渲染（不与中文混排）
             let totalSetMinutes = 0;
             let hasAnySetMinutes = false;
@@ -1983,18 +1928,18 @@ Page({
             const row10Line1Y = row10Y + row10H * 0.34;
             const row10Line2Y = row10Y + row10H * 0.72;
             const row10Meta = [
-              { w: row10Widths[0], title: "比赛开始时间", value: "         点          分" },
-              { w: row10Widths[1], title: "比赛结束时间", value: "         点          分" },
-              { w: row10Widths[2], title: "比赛总时间", value: "         时          分" },
+              { w: row10Widths[0], title: "比赛开始时间", value: "         点        分" },
+              { w: row10Widths[1], title: "比赛结束时间", value: "         点        分" },
+              { w: row10Widths[2], title: "比赛总时间", value: "         时        分" },
             ];
             row10Meta.forEach((item, idx) => {
               const cx = row10CellStarts[idx] + item.w / 2;
               ctx.fillStyle = "#000000";
               ctx.textAlign = "center";
               ctx.textBaseline = "middle";
-              ctx.font = `900 ${Math.round(summaryLine1FontPx * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+              ctx.font = `${songti900Weight} ${Math.round(summaryLine1FontPx * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
               ctx.fillText(item.title, cx * scaleX, row10Line1Y * scaleY);
-              ctx.font = `900 ${Math.round(summaryLine2FontPx * Math.min(scaleX, scaleY))}px "${this.scoreSheetFontFamily}","Noto Serif SC","Songti SC","STSong","SimSun",serif`;
+              ctx.font = `${songti900Weight} ${Math.round(summaryLine2FontPx * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
               ctx.fillText(item.value, cx * scaleX, row10Line2Y * scaleY);
             });
             // 第10行三格：数字单独用等宽字体叠加渲染（不与“点/分/时”混排）

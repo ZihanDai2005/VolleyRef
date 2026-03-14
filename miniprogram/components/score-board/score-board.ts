@@ -3,7 +3,7 @@ Component({
     aScore: {
       type: Number,
       value: 0,
-      observer(this: any, _newVal: number, oldVal: number) {
+      observer(_newVal: number, oldVal: number) {
         if (typeof oldVal === "number") {
           this.triggerPulse("A");
         }
@@ -12,7 +12,7 @@ Component({
     bScore: {
       type: Number,
       value: 0,
-      observer(this: any, _newVal: number, oldVal: number) {
+      observer(_newVal: number, oldVal: number) {
         if (typeof oldVal === "number") {
           this.triggerPulse("B");
         }

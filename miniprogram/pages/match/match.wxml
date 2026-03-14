@@ -688,21 +688,6 @@
     </view>
   </view>
 
-  <view class="back-exit-mask" wx:if="{{showBackExitModal}}" bindtap="onBackExitCancel">
-    <view class="back-exit-modal" catchtap="onBackExitModalTap">
-      <view class="back-exit-title">退出确认</view>
-      <view class="back-exit-text">
-        退出房间将返回首页，再次进入需要提供完整的裁判团队编号和密码，确认退出吗？
-      </view>
-      <view class="back-exit-subtext">可先复制邀请信息，返回后在加入页面粘贴快速重新加入。</view>
-      <view class="back-exit-actions">
-        <view class="back-exit-btn pressable" hover-class="tap-active" bindtap="onBackExitCancel">取消</view>
-        <view class="back-exit-btn danger pressable" hover-class="tap-active" bindtap="onBackExitDirect">退出</view>
-        <view class="back-exit-btn primary pressable" hover-class="tap-active" bindtap="onBackExitCopyAndLeave">复制邀请并退出</view>
-      </view>
-    </view>
-  </view>
-
   <view class="log-mask modal-mask {{showLogPanel ? 'modal-enter' : 'modal-leave'}}" wx:if="{{showLogPanel || logPanelClosing}}" bindtap="onCloseLogPanel">
     <view class="log-panel modal-panel {{showLogPanel ? 'modal-panel-enter' : 'modal-panel-leave'}}" style="{{logPanelInlineStyle}}" catchtap="onLogPanelTap">
       <view class="log-head">
@@ -762,7 +747,7 @@
           <view class="lineup-grid sub-player-grid {{subTeam === 'A' ? 'team-a' : 'team-b'}} {{subUseSwapLayout ? 'swap-layout' : ''}}">
             <view class="libero-col">
               <view
-                class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}} {{subMode === 'normal' && (item.isLibero || item.pos === 'L1' || item.pos === 'L2') ? 'sub-normal-libero-disabled' : ''}} {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'lock' ? 'sub-normal-locked-disabled' : ''}} {{subMode === 'normal' && subNormalModeLimitLocked ? 'sub-normal-limit-disabled' : ''}}"
+                class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}} {{subMode === 'normal' && (item.isLibero || item.pos === 'L1' || item.pos === 'L2') ? 'sub-normal-libero-disabled' : ''}} {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'lock' ? 'sub-normal-locked-disabled' : ''}} {{subMode === 'normal' && subNormalModeLimitLocked ? 'sub-normal-limit-disabled' : ''}} {{subMode === 'special' && subSpecialPenaltyPairOnly && !subSpecialPenaltyAllowedPos[item.pos] ? 'sub-special-penalty-disabled' : ''}}"
                 wx:for="{{subLibero}}"
                 wx:key="pos"
                 wx:for-item="item"
@@ -777,7 +762,6 @@
                 </view>
                 <text class="sub-text" wx:if="{{item.isLibero}}">{{item.pos}}</text>
                 <view class="sub-normal-pair-badge {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'link' ? 'active' : ''}}">
-                  <view class="sub-normal-pair-badge-icon link"></view>
                   <text wx:if="{{subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'link'}}" class="sub-normal-pair-badge-text">{{subNormalPairBadge[item.pos].pairNo}}</text>
                 </view>
               </view>
@@ -785,7 +769,7 @@
             <view class="main-col">
               <view class="player-row row-two" wx:for="{{subMainGrid}}" wx:key="index" wx:for-item="row">
                 <view
-                  class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}} {{subMode === 'normal' && (item.isLibero || item.pos === 'L1' || item.pos === 'L2') ? 'sub-normal-libero-disabled' : ''}} {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'lock' ? 'sub-normal-locked-disabled' : ''}} {{subMode === 'normal' && subNormalModeLimitLocked ? 'sub-normal-limit-disabled' : ''}}"
+                  class="player-card {{item.isLibero ? 'libero' : ''}} {{subSelectedPos === item.pos ? 'sub-player-selected' : ''}} {{item.number === '?' ? 'sub-player-disabled' : ''}} {{subMode === 'normal' && (item.isLibero || item.pos === 'L1' || item.pos === 'L2') ? 'sub-normal-libero-disabled' : ''}} {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'lock' ? 'sub-normal-locked-disabled' : ''}} {{subMode === 'normal' && subNormalModeLimitLocked ? 'sub-normal-limit-disabled' : ''}} {{subMode === 'special' && subSpecialPenaltyPairOnly && !subSpecialPenaltyAllowedPos[item.pos] ? 'sub-special-penalty-disabled' : ''}}"
                   wx:for="{{row}}"
                   wx:key="pos"
                   wx:for-item="item"
@@ -801,7 +785,6 @@
                   <text class="libero-tag" wx:if="{{item.isLibero && item.liberoTag}}">{{item.liberoTag}}</text>
                   <text class="sub-text">{{item.pos}}</text>
                   <view class="sub-normal-pair-badge {{subMode === 'normal' && subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'link' ? 'active' : ''}}">
-                    <view class="sub-normal-pair-badge-icon link"></view>
                     <text wx:if="{{subNormalPairBadge[item.pos] && subNormalPairBadge[item.pos].state === 'link'}}" class="sub-normal-pair-badge-text">{{subNormalPairBadge[item.pos].pairNo}}</text>
                   </view>
                 </view>

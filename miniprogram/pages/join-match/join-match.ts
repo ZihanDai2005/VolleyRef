@@ -181,19 +181,6 @@ Page({
     });
   },
 
-  parseInviteText(text: string): { roomId: string; password: string } | null {
-    const raw = String(text || "");
-    const roomMatch = raw.match(/(?:裁判团队编号|房间号码)\s*[:：]?\s*(\d{6})/);
-    const pwdMatch = raw.match(/密码\s*[:：]?\s*(\d{6})/);
-    if (!roomMatch || !pwdMatch) {
-      return null;
-    }
-    return {
-      roomId: roomMatch[1],
-      password: pwdMatch[1],
-    };
-  },
-
   tryAutoJoinFromShareQuery(query: Record<string, string>) {
     const roomId = normalizeShareDigits(query && query.roomId);
     const password = normalizeShareDigits((query && query.password) || (query && query.pwd));
@@ -287,28 +274,6 @@ Page({
       this.setData({ joinBtnFx: false });
       this.onJoinRoomSubmit();
     }, 150);
-  },
-
-  onPasteInviteAndJoin() {
-    wx.getClipboardData({
-      success: (res: any) => {
-        const data = this.parseInviteText((res && res.data) || "");
-        if (!data) {
-          showBlockHint("未识别到有效邀请信息，请先复制完整邀请文案");
-          return;
-        }
-        this.setData({
-          joinRoomId: data.roomId,
-          joinPassword: data.password,
-          joinRoomIdSpaced: data.roomId.split("").join(" "),
-          joinPasswordSpaced: data.password.split("").join(" "),
-        });
-        this.onJoinRoomSubmit();
-      },
-      fail: () => {
-        showBlockHint("读取剪贴板失败，请检查小程序剪贴板权限");
-      },
-    });
   },
 
   onShareAppMessage() {

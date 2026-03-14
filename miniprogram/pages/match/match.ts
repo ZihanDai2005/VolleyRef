@@ -1,5 +1,6 @@
 import {
   updateRoomAsync,
+  forcePullRoomAsync,
   getRoom,
   getRoomAsync,
   getRoomExistenceFromServerAsync,
@@ -839,7 +840,12 @@ function formatOperationLogNoteForDisplay(actionRaw: string, noteRaw: string): s
   if (isLiberoNormal) {
     const parsedLibero = parseLiberoSwapRecordText(normalized);
     const detail = parsedLibero
-      ? buildLiberoSwapRecordText(parsedLibero.normalNo, parsedLibero.liberoNo)
+      ? buildDirectionalSubRecordText(
+          parsedLibero.upNo,
+          parsedLibero.downNo,
+          parsedLibero.upIsLibero,
+          parsedLibero.downIsLibero
+        )
       : String(body || "").replace(/自由人常规换人|自由人普通换人/g, "").trim();
     return (teamPrefix + "自由人普通换人" + (detail ? " " + detail : "")).replace(/\s{2,}/g, " ").trim();
   }
@@ -910,10 +916,15 @@ function buildSubRecordText(upNoRaw: string, downNoRaw: string): string {
   return "↑" + upNo + " ↓" + downNo;
 }
 
-function buildLiberoSwapRecordText(normalNoRaw: string, liberoNoRaw: string): string {
-  const normalNo = normalizeSubstituteNumber(normalNoRaw) || "?";
-  const liberoNo = normalizeSubstituteNumber(liberoNoRaw) || "?";
-  return "↑" + normalNo + " ↓" + liberoNo + "（自）";
+function buildDirectionalSubRecordText(
+  upNoRaw: string,
+  downNoRaw: string,
+  upIsLibero = false,
+  downIsLibero = false
+): string {
+  const upNo = normalizeSubstituteNumber(upNoRaw) || "?";
+  const downNo = normalizeSubstituteNumber(downNoRaw) || "?";
+  return "↑" + upNo + (upIsLibero ? "（自）" : "") + " ↓" + downNo + (downIsLibero ? "（自）" : "");
 }
 
 function buildSubRecordDetailText(upNoRaw: string, downNoRaw: string, downIsLibero = false): string {
@@ -949,14 +960,40 @@ function parseGenericSubRecordText(noteRaw: string): { upNo: string; downNo: str
   return null;
 }
 
-function parseLiberoSwapRecordText(noteRaw: string): { normalNo: string; liberoNo: string } | null {
+function parseLiberoSwapRecordText(noteRaw: string): {
+  normalNo: string;
+  liberoNo: string;
+  upNo: string;
+  downNo: string;
+  upIsLibero: boolean;
+  downIsLibero: boolean;
+} | null {
   const note = normalizeSwapSymbolText(noteRaw);
-  const arrowMatch = note.match(/自由人常规换人\s*↑\s*(\d{1,2})\s*↓\s*(\d{1,2})\s*(（自）)?/);
+  const arrowMatch = note.match(/自由人(?:常规|普通)换人\s*↑\s*(\d{1,2})\s*(（自）)?\s*↓\s*(\d{1,2})\s*(（自）)?/);
   if (arrowMatch) {
     const normalNo = normalizeSubstituteNumber(arrowMatch[1]);
-    const liberoNo = normalizeSubstituteNumber(arrowMatch[2]);
-    if (normalNo && liberoNo) {
-      return { normalNo: normalNo, liberoNo: liberoNo };
+    const maybeUpMarker = !!arrowMatch[2];
+    const maybeDownNo = normalizeSubstituteNumber(arrowMatch[3]);
+    const maybeDownMarker = !!arrowMatch[4];
+    if (normalNo && maybeDownNo) {
+      const upNo = normalNo;
+      const downNo = maybeDownNo;
+      let upIsLibero = maybeUpMarker;
+      let downIsLibero = maybeDownMarker;
+      if (!upIsLibero && !downIsLibero) {
+        // 兼容历史日志：默认视为“↓ 是自由人”。
+        downIsLibero = true;
+      }
+      const liberoNo = upIsLibero && !downIsLibero ? upNo : downNo;
+      const resolvedNormalNo = upIsLibero && !downIsLibero ? downNo : upNo;
+      return {
+        normalNo: resolvedNormalNo,
+        liberoNo: liberoNo,
+        upNo,
+        downNo,
+        upIsLibero,
+        downIsLibero,
+      };
     }
   }
   const markerMatch = note.match(/自由人常规换人\s*(\d{1,2})\s*(（自）)?\s*↔\s*(\d{1,2})\s*(（自）)?/);
@@ -967,12 +1004,33 @@ function parseLiberoSwapRecordText(noteRaw: string): { normalNo: string; liberoN
     const rightIsLibero = !!markerMatch[4];
     if (leftNo && rightNo) {
       if (leftIsLibero && !rightIsLibero) {
-        return { normalNo: rightNo, liberoNo: leftNo };
+        return {
+          normalNo: rightNo,
+          liberoNo: leftNo,
+          upNo: rightNo,
+          downNo: leftNo,
+          upIsLibero: false,
+          downIsLibero: true,
+        };
       }
       if (!leftIsLibero && rightIsLibero) {
-        return { normalNo: leftNo, liberoNo: rightNo };
+        return {
+          normalNo: leftNo,
+          liberoNo: rightNo,
+          upNo: leftNo,
+          downNo: rightNo,
+          upIsLibero: false,
+          downIsLibero: true,
+        };
       }
-      return { normalNo: leftNo, liberoNo: rightNo };
+      return {
+        normalNo: leftNo,
+        liberoNo: rightNo,
+        upNo: leftNo,
+        downNo: rightNo,
+        upIsLibero: false,
+        downIsLibero: true,
+      };
     }
   }
   const oldStyle = note.match(
@@ -987,12 +1045,33 @@ function parseLiberoSwapRecordText(noteRaw: string): { normalNo: string; liberoN
     const rightIsLibero = rightPos === "L1" || rightPos === "L2";
     if (leftNo && rightNo) {
       if (leftIsLibero && !rightIsLibero) {
-        return { normalNo: rightNo, liberoNo: leftNo };
+        return {
+          normalNo: rightNo,
+          liberoNo: leftNo,
+          upNo: rightNo,
+          downNo: leftNo,
+          upIsLibero: false,
+          downIsLibero: true,
+        };
       }
       if (!leftIsLibero && rightIsLibero) {
-        return { normalNo: leftNo, liberoNo: rightNo };
+        return {
+          normalNo: leftNo,
+          liberoNo: rightNo,
+          upNo: leftNo,
+          downNo: rightNo,
+          upIsLibero: false,
+          downIsLibero: true,
+        };
       }
-      return { normalNo: leftNo, liberoNo: rightNo };
+      return {
+        normalNo: leftNo,
+        liberoNo: rightNo,
+        upNo: leftNo,
+        downNo: rightNo,
+        upIsLibero: false,
+        downIsLibero: true,
+      };
     }
   }
   const genericPair = note.match(/自由人常规换人[\s\S]*?(\d{1,2})\s*↔\s*(\d{1,2})/);
@@ -1000,7 +1079,14 @@ function parseLiberoSwapRecordText(noteRaw: string): { normalNo: string; liberoN
     const leftNo = normalizeSubstituteNumber(genericPair[1]);
     const rightNo = normalizeSubstituteNumber(genericPair[2]);
     if (leftNo && rightNo) {
-      return { normalNo: leftNo, liberoNo: rightNo };
+      return {
+        normalNo: leftNo,
+        liberoNo: rightNo,
+        upNo: leftNo,
+        downNo: rightNo,
+        upIsLibero: false,
+        downIsLibero: true,
+      };
     }
   }
   return null;
@@ -1363,6 +1449,69 @@ function buildSubNormalPairBadgeByPos(
   return out;
 }
 
+function buildSpecialPenaltyPairAllowedPosBySet(
+  logs: MatchLogItem[],
+  setNo: number,
+  team: TeamCode,
+  players: PlayerSlot[]
+): Partial<Record<Position, boolean>> {
+  const pairs = buildNormalSubPairsFromLogs(logs, setNo, team);
+  if (!pairs.length) {
+    return {};
+  }
+  const banState = buildSpecialBanStateBySet(logs, setNo, team);
+  const punishedNos = new Set<string>();
+  banState.setBanNos.forEach((no) => {
+    const normalized = normalizeSubstituteNumber(no);
+    if (normalized) {
+      punishedNos.add(normalized);
+    }
+  });
+  banState.matchBanNos.forEach((no) => {
+    const normalized = normalizeSubstituteNumber(no);
+    if (normalized) {
+      punishedNos.add(normalized);
+    }
+  });
+  if (!punishedNos.size) {
+    return {};
+  }
+  const allowedNos = new Set<string>();
+  pairs.forEach((pair) => {
+    if (!pair || pair.closed) {
+      return;
+    }
+    const starterNo = normalizeSubstituteNumber(pair.starterNo);
+    const substituteNo = normalizeSubstituteNumber(pair.substituteNo);
+    if (!starterNo || !substituteNo) {
+      return;
+    }
+    if (punishedNos.has(starterNo)) {
+      allowedNos.add(substituteNo);
+    }
+    if (punishedNos.has(substituteNo)) {
+      allowedNos.add(starterNo);
+    }
+  });
+  if (!allowedNos.size) {
+    return {};
+  }
+  const out: Partial<Record<Position, boolean>> = {};
+  ensureTeamPlayerOrder(players || []).forEach((slot) => {
+    if (!slot || !isPosition(String(slot.pos || ""))) {
+      return;
+    }
+    const no = normalizeSubstituteNumber(String(slot.number || ""));
+    if (!no) {
+      return;
+    }
+    if (allowedNos.has(no)) {
+      out[slot.pos as Position] = true;
+    }
+  });
+  return out;
+}
+
 function isLockedSubNormalPairPos(
   badges: Partial<Record<Position, SubNormalPairBadge>>,
   pos: "" | Position
@@ -1464,7 +1613,15 @@ function buildSubRecordSummary(logs: MatchLogItem[], setNo: number, team: TeamCo
     if (action === "libero_swap" || note.indexOf("自由人常规换人") >= 0) {
       const parsedLibero = parseLiberoSwapRecordText(note);
       if (parsedLibero) {
-        appendSubRecordRow(liberoLines, buildLiberoSwapRecordText(parsedLibero.normalNo, parsedLibero.liberoNo));
+        appendSubRecordRow(
+          liberoLines,
+          buildDirectionalSubRecordText(
+            parsedLibero.upNo,
+            parsedLibero.downNo,
+            parsedLibero.upIsLibero,
+            parsedLibero.downIsLibero
+          )
+        );
       }
       return;
     }
@@ -1996,6 +2153,8 @@ Page({
     subNormalCount: 0,
     subSpecialCount: 0,
     subNormalDisabled: false,
+    subSpecialPenaltyPairOnly: false,
+    subSpecialPenaltyAllowedPos: {} as Partial<Record<Position, boolean>>,
     showSubMatchLogPopover: false,
     subMatchLogPopoverClosing: false,
     subLogPopoverInlineStyle: "",
@@ -2037,7 +2196,6 @@ Page({
     safeDebugText: "",
     updatedAt: 0,
     backConfirming: false,
-    showBackExitModal: false,
     showSetEndModal: false,
     setEndModalClosing: false,
     setEndTitleTop: "",
@@ -3526,7 +3684,7 @@ Page({
       swapDragGhostIsInitialCaptain: !!sourceNoNorm && sourceNoNorm === initialCaptainNoNorm,
       swapDragGhostIsLibero: sourceNumberIsLibero,
     });
-    void this.measureSwapSourceCard(team, pos).then((size) => {
+    void this.measureSwapSourceCard(team, pos).then((size: null | { width: number; height: number }) => {
       if (!size || !this.swapDragStart) {
         return;
       }
@@ -3677,12 +3835,17 @@ Page({
       const teamName = team === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙");
       const fromInLiberoRoster = liberoRoster.indexOf(fromNo) >= 0;
       const toInLiberoRoster = liberoRoster.indexOf(toNo) >= 0;
-      const liberoNo = fromInLiberoRoster ? fromNo : toInLiberoRoster ? toNo : fromNo;
-      const normalNo = fromInLiberoRoster ? toNo : toInLiberoRoster ? fromNo : toNo;
+      const fromPosIsLibero = isLiberoPosition(fromPos);
+      const upNo = fromPosIsLibero ? fromNo : toNo;
+      const downNo = fromPosIsLibero ? toNo : fromNo;
+      const upIsLibero = fromPosIsLibero ? fromInLiberoRoster : toInLiberoRoster;
+      const downIsLibero = fromPosIsLibero ? toInLiberoRoster : fromInLiberoRoster;
       appendMatchLog(
         room,
         "libero_swap",
-        teamName + "队 自由人常规换人 ↑" + normalNo + " ↓" + liberoNo + "（自）",
+        teamName +
+          "队 自由人常规换人 " +
+          buildDirectionalSubRecordText(upNo, downNo, upIsLibero, downIsLibero),
         team,
         opId
       );
@@ -4014,21 +4177,37 @@ Page({
   },
 
   confirmBackToHome() {
-    if (this.data.backConfirming || this.data.showBackExitModal) {
+    if (this.data.backConfirming) {
       return;
     }
-    this.setData({ showBackExitModal: true });
+    this.setData({ backConfirming: true });
+    wx.showModal({
+      title: "退出确认",
+      content: "确认退出当前房间？",
+      cancelText: "取消",
+      confirmText: "退出",
+      success: (res) => {
+        if (res.confirm) {
+          wx.reLaunch({ url: "/pages/home/home" });
+          return;
+        }
+        this.setData({ backConfirming: false });
+      },
+      fail: () => {
+        this.setData({ backConfirming: false });
+      },
+      complete: () => {
+        // 只有未退出时才在这里恢复，确认退出会立刻 reLaunch。
+        if (this.data.backConfirming) {
+          this.setData({ backConfirming: false });
+        }
+      },
+    });
   },
 
   onBackPress() {
     this.confirmBackToHome();
     return true;
-  },
-
-  onBackExitModalTap() {},
-
-  onBackExitCancel() {
-    this.setData({ showBackExitModal: false });
   },
 
   async onTakeoverTap() {
@@ -4056,39 +4235,6 @@ Page({
     }
   },
 
-  onBackExitDirect() {
-    this.setData({ showBackExitModal: false, backConfirming: true });
-    wx.reLaunch({ url: "/pages/home/home" });
-    setTimeout(() => {
-      this.setData({ backConfirming: false });
-    }, 200);
-  },
-
-  onBackExitCopyAndLeave() {
-    this.setData({ showBackExitModal: false, backConfirming: true });
-    const inviteText =
-      "[排球裁判小助手] 裁判团队编号 " +
-      this.data.roomId +
-      "，密码 " +
-      this.data.roomPassword +
-      "，打开小程序粘贴即可加入房间，请确认邀请人已完成比赛设置并进入比赛页面后再加入";
-    if (!/^\d{6}$/.test(this.data.roomId) || !/^\d{6}$/.test(this.data.roomPassword)) {
-      wx.reLaunch({ url: "/pages/home/home" });
-      setTimeout(() => {
-        this.setData({ backConfirming: false });
-      }, 200);
-      return;
-    }
-    wx.setClipboardData({
-      data: inviteText,
-      complete: () => {
-        wx.reLaunch({ url: "/pages/home/home" });
-        setTimeout(() => {
-          this.setData({ backConfirming: false });
-        }, 200);
-      },
-    });
-  },
 
   onSetEndModalTap() {},
 
@@ -4367,7 +4513,6 @@ Page({
         includeSetBan: false,
       });
       if (banErrA) {
-        showToastHint("存在全场禁赛球员，无法确认");
         showBlockHint(banErrA);
         return;
       }
@@ -4375,7 +4520,6 @@ Page({
         includeSetBan: false,
       });
       if (banErrB) {
-        showToastHint("存在全场禁赛球员，无法确认");
         showBlockHint(banErrB);
         return;
       }
@@ -4658,38 +4802,46 @@ Page({
     this.setEndActionInFlight = true;
     this.showSetEndLoading("处理中");
     try {
-      const saved = await updateRoomAsync(
-        roomId,
-        (room) => {
-          const opId = createLogId();
-          (room.match as any).currentOpId = opId;
-          const lockTs = Date.now();
-          room.status = "result";
-          room.match.isFinished = true;
-          delete (room.match as any).setEndState;
-          (room as any).resultLockedAt = lockTs;
-          (room as any).resultExpireAt = lockTs + 24 * 60 * 60 * 1000;
-          (room as any).expiresAt = (room as any).resultExpireAt;
-          const winnerTeam: TeamCode = Number(room.match.aSetWins || 0) > Number(room.match.bSetWins || 0) ? "A" : "B";
-          const winnerName = winnerTeam === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙");
-          appendMatchLog(
-            room,
-            "result_locked",
-            "比赛结束 结果确认：" +
-              winnerName +
-              " 以 " +
-              String(room.match.aSetWins || 0) +
-              ":" +
-              String(room.match.bSetWins || 0) +
-              " 获胜",
-            winnerTeam,
-            opId
-          );
-          (room.match as any).lastActionOpId = opId;
-          return room;
-        },
-        { awaitCloud: true, requireCloudAck: true }
-      );
+      const saveResultWithCloudAck = async () => {
+        return updateRoomAsync(
+          roomId,
+          (room) => {
+            const opId = createLogId();
+            (room.match as any).currentOpId = opId;
+            const lockTs = Date.now();
+            room.status = "result";
+            room.match.isFinished = true;
+            delete (room.match as any).setEndState;
+            (room as any).resultLockedAt = lockTs;
+            (room as any).resultExpireAt = lockTs + 24 * 60 * 60 * 1000;
+            (room as any).expiresAt = (room as any).resultExpireAt;
+            const winnerTeam: TeamCode = Number(room.match.aSetWins || 0) > Number(room.match.bSetWins || 0) ? "A" : "B";
+            const winnerName = winnerTeam === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙");
+            appendMatchLog(
+              room,
+              "result_locked",
+              "比赛结束 结果确认：" +
+                winnerName +
+                " 以 " +
+                String(room.match.aSetWins || 0) +
+                ":" +
+                String(room.match.bSetWins || 0) +
+                " 获胜",
+              winnerTeam,
+              opId
+            );
+            (room.match as any).lastActionOpId = opId;
+            return room;
+          },
+          { awaitCloud: true, requireCloudAck: true }
+        );
+      };
+      let saved = await saveResultWithCloudAck();
+      if (!saved || String((saved as any).status || "") !== "result") {
+        // 兜底：如果首次提交命中云端版本竞争，先强拉最新快照再重试一次。
+        await forcePullRoomAsync(roomId);
+        saved = await saveResultWithCloudAck();
+      }
       if (!saved || String((saved as any).status || "") !== "result") {
         showBlockHint("结果保存失败，请重试");
         return;
@@ -6023,7 +6175,7 @@ Page({
     }
     const order = this.getTeamMainOrderInView(team);
     const indexByPos: Partial<Record<MainPosition, number>> = {};
-    order.forEach((pos, idx) => {
+    order.forEach((pos: MainPosition, idx: number) => {
       indexByPos[pos] = idx;
     });
     const rowTopSamples: number[][] = [[], [], []];
@@ -6088,10 +6240,10 @@ Page({
     const colStep = this.estimateAxisStep(colLeft, fbColLeft) || (avgWidth > 0 ? avgWidth + 8 : 0);
     const rowTopFilled = this.fillAxisValues(rowTop, rowStep, fbRowTop);
     const colLeftFilled = this.fillAxisValues(colLeft, colStep, fbColLeft);
-    const rowHeightFilled = this.fillAxisValues(rowHeight, 0, fbRowHeight).map((v) =>
+    const rowHeightFilled = this.fillAxisValues(rowHeight, 0, fbRowHeight).map((v: number | null) =>
       v != null ? v : avgHeight > 0 ? avgHeight : 0
     );
-    const colWidthFilled = this.fillAxisValues(colWidth, 0, fbColWidth).map((v) =>
+    const colWidthFilled = this.fillAxisValues(colWidth, 0, fbColWidth).map((v: number | null) =>
       v != null ? v : avgWidth > 0 ? avgWidth : 0
     );
     const out: TeamRectMap = {};
@@ -7866,7 +8018,7 @@ Page({
       const beforeRotateNoMap = this.getTeamMainNumberMap(team);
       const beforeRotateCaptain = team === "A" ? this.data.teamACaptainNo : this.data.teamBCaptainNo;
       const beforeRotateInitialCaptain = team === "A" ? this.data.teamAInitialCaptainNo : this.data.teamBInitialCaptainNo;
-      void beforeRotateRectsPromise.then(async (beforeRotateRects) => {
+      void beforeRotateRectsPromise.then(async (beforeRotateRects: TeamRectMap) => {
         const teamAPlayers = clonePlayerList(this.data.teamAPlayers || []);
         const teamBPlayers = clonePlayerList(this.data.teamBPlayers || []);
         if (team === "A") {
@@ -8399,21 +8551,25 @@ Page({
   ) {
     const nextTeam: TeamCode = team === "B" ? "B" : "A";
     const teamName = nextTeam === "A" ? String(this.data.teamAName || "甲") : String(this.data.teamBName || "乙");
+    const setNo = Math.max(1, Number(this.data.setNo || 1));
+    const teamPlayers = ensureTeamPlayerOrder(nextTeam === "A" ? this.data.teamAPlayers || [] : this.data.teamBPlayers || []);
     const mainGrid = nextTeam === "A" ? this.data.teamAMainGrid || [] : this.data.teamBMainGrid || [];
     const libero = nextTeam === "A" ? this.data.teamALibero || [] : this.data.teamBLibero || [];
     const captainNo = nextTeam === "A" ? String(this.data.teamACaptainNo || "") : String(this.data.teamBCaptainNo || "");
     const initialCaptainNo =
       nextTeam === "A" ? String(this.data.teamAInitialCaptainNo || "") : String(this.data.teamBInitialCaptainNo || "");
     const subUseSwapLayout = nextTeam === "A" ? !!this.data.isSwapped : !this.data.isSwapped;
-    const summary = buildSubRecordSummary(this.allLogs, Math.max(1, Number(this.data.setNo || 1)), nextTeam);
+    const summary = buildSubRecordSummary(this.allLogs, setNo, nextTeam);
     const subNormalPairBadge = buildSubNormalPairBadgeByPos(
       this.allLogs,
-      Math.max(1, Number(this.data.setNo || 1)),
+      setNo,
       nextTeam,
-      ensureTeamPlayerOrder(nextTeam === "A" ? this.data.teamAPlayers || [] : this.data.teamBPlayers || [])
+      teamPlayers
     );
-    const specialDisabled = summary.normal.length < 6;
     const normalDisabled = summary.normal.length >= 6;
+    const subSpecialPenaltyAllowedPos = buildSpecialPenaltyPairAllowedPosBySet(this.allLogs, setNo, nextTeam, teamPlayers);
+    const subSpecialPenaltyPairOnly = !normalDisabled && Object.keys(subSpecialPenaltyAllowedPos).length > 0;
+    const specialDisabled = !normalDisabled && !subSpecialPenaltyPairOnly;
     const draft = (options && options.draft) || null;
     const preserveDraft = !!(options && options.preserveDraft);
     const selectedPosRaw = String(
@@ -8447,6 +8603,9 @@ Page({
       }
     }
     if (nextMode === "normal" && isLockedSubNormalPairPos(subNormalPairBadge || {}, nextSelectedPos)) {
+      nextSelectedPos = "";
+    }
+    if (nextMode === "special" && subSpecialPenaltyPairOnly && nextSelectedPos && !subSpecialPenaltyAllowedPos[nextSelectedPos]) {
       nextSelectedPos = "";
     }
     const nextReason: "injury" | "penalty_set" | "penalty_match" | "other" = draft
@@ -8538,6 +8697,8 @@ Page({
         subNormalCount: summary.normal.length,
         subSpecialCount: summary.special.length,
         subNormalDisabled: normalDisabled,
+        subSpecialPenaltyPairOnly: subSpecialPenaltyPairOnly,
+        subSpecialPenaltyAllowedPos: subSpecialPenaltyAllowedPos,
         subSpecialDisabled: specialDisabled,
         subNormalModeLimitLocked: nextNormalModeLimitLocked,
       },
@@ -8710,8 +8871,11 @@ Page({
     if (mode === "normal" && isLiberoByRule) {
       return "只能对非自由人使用普通换人";
     }
+    if (mode === "special" && this.data.subSpecialPenaltyPairOnly && !this.data.subSpecialPenaltyAllowedPos[pos]) {
+      return "仍有普通换人机会，仅可替换与被处罚球员形成配对的在场球员";
+    }
     if (mode === "normal" && (this.data.subNormalModeLimitLocked || this.data.subNormalDisabled)) {
-      return "普通换人本次已达6次上限";
+      return "普通换人本局已达6次上限";
     }
     if (mode === "normal" && isLockedSubNormalPairPos(this.data.subNormalPairBadge || {}, pos)) {
       return "该球员已执行过2次普通换人，已锁定";
@@ -8754,11 +8918,11 @@ Page({
     }
     const nextMode = mode as "normal" | "special";
     if (nextMode === "normal" && this.data.subNormalDisabled) {
-      showToastHint("普通换人本次已达6次上限");
+      showToastHint("普通换人本局已达6次上限");
       return;
     }
     if (nextMode === "special" && this.data.subSpecialDisabled) {
-      showToastHint("当前可执行普通换人，请先使用普通换人机会");
+      showToastHint("仍有普通换人机会，且不涉及被处罚球员锁定配对");
       return;
     }
     if (nextMode === this.data.subMode) {
@@ -8787,6 +8951,9 @@ Page({
           nextSelectedPos = "";
         }
       }
+    }
+    if (nextMode === "special" && nextSelectedPos && this.data.subSpecialPenaltyPairOnly && !this.data.subSpecialPenaltyAllowedPos[nextSelectedPos]) {
+      nextSelectedPos = "";
     }
     this.setData(
       {
@@ -8910,6 +9077,9 @@ Page({
     if (!downNo) {
       return "当前被换下球员号码无效";
     }
+    if (mode === "special" && this.data.subSpecialPenaltyPairOnly && !this.data.subSpecialPenaltyAllowedPos[selectedPos]) {
+      return "仍有普通换人机会，仅可替换与被处罚球员形成配对的在场球员";
+    }
     const upNo = normalizeSubstituteNumber(incomingNo);
     if (!upNo) {
       return "请输入换上号码";
@@ -8984,7 +9154,7 @@ Page({
       this.data.subIncomingLockedNo || this.data.subIncomingNoInput || this.data.subIncomingNo || ""
     );
     if (this.data.subMode === "normal" && (this.data.subNormalModeLimitLocked || this.data.subNormalDisabled)) {
-      showToastHint("普通换人本次已达6次上限");
+      showToastHint("普通换人本局已达6次上限");
       return;
     }
     if (!selectedPos || !isPosition(String(selectedPos))) {
@@ -9050,6 +9220,18 @@ Page({
 
       const teamObj = team === "A" ? room.teamA : room.teamB;
       const nextPlayers = ensureTeamPlayerOrder(teamObj.players || []);
+      const roomNormalCount = countNormalSubstitutionsBySet(roomLogs, roomSetNo, team);
+      if (mode === "special" && roomNormalCount < 6) {
+        const allowedPos = buildSpecialPenaltyPairAllowedPosBySet(roomLogs, roomSetNo, team, nextPlayers);
+        if (!Object.keys(allowedPos).length) {
+          updateError = "当前可执行普通换人，请先使用普通换人机会";
+          return room;
+        }
+        if (!allowedPos[selectedPos as Position]) {
+          updateError = "仍有普通换人机会，仅可替换与被处罚球员形成配对的在场球员";
+          return room;
+        }
+      }
       const captainNo = this.getTeamCurrentCaptainNoFromRoom(room, team);
       const selectedSlot = getPlayerByPos(nextPlayers, selectedPos as Position);
       if (!selectedSlot) {
@@ -9230,15 +9412,23 @@ Page({
       this.showSubstitutionBlock(updateError);
       return;
     }
-    this.setData({
-      subSelectedPos: "",
-      subIncomingNoInput: "",
-      subIncomingNo: "",
-    });
-    this.clearSubstitutionDraft();
     const latestLogs = normalizeLogsBySet(Array.isArray(next.match && next.match.logs) ? (next.match.logs as MatchLogItem[]) : []);
     this.allLogs = latestLogs.slice();
-    this.syncSubstitutionTeamDisplay(team);
+    this.syncSubstitutionTeamDisplay(team, {
+      draft: {
+        setNo: Math.max(1, Number((next.match && (next.match as any).setNo) || currentSetNo)),
+        panelOpen: true,
+        team,
+        mode,
+        reason: specialReason,
+        normalPenalty,
+        selectedPos: "",
+        incomingNoInput: "",
+        incomingNo: "",
+        incomingLocked: false,
+        incomingLockedNo: "",
+      },
+    });
     this.applyLocalLineupFromRoom(next);
     if (this.data.matchFlowMode === "normal" && liveBadgePos && liveBadgeDownNo) {
       this.applyLiveSubDownBadge(team, liveBadgePos, liveBadgeDownNo);

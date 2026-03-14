@@ -85,7 +85,7 @@ page {
 
 .form-block {
   width: 100%;
-  padding-top: 220rpx;
+  padding-top: 244rpx;
   box-sizing: border-box;
 }
 
@@ -223,46 +223,6 @@ page {
   animation: fakeCaretBlink 1s steps(1, end) infinite;
 }
 
-.paste-link-btn {
-  margin-top: 0;
-  display: inline-flex;
-  align-items: center;
-  color: var(--text-primary);
-  font-size: 28rpx;
-  font-weight: 500;
-  line-height: 1.2;
-  text-align: left;
-  background: transparent;
-  border: 0;
-  border-radius: 0;
-  padding: 0;
-  height: auto;
-  transition: opacity 160ms ease;
-}
-
-.paste-link-hover {
-  opacity: 0.8;
-}
-
-.link-content {
-  width: auto;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  gap: 6rpx;
-  height: auto;
-}
-
-.paste-icon {
-  width: 30rpx;
-  height: 30rpx;
-  background: currentColor;
-  mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M7 4V2H17V4H20.0066C20.5552 4 21 4.44495 21 4.9934V21.0066C21 21.5552 20.5551 22 20.0066 22H3.9934C3.44476 22 3 21.5551 3 21.0066V4.9934C3 4.44476 3.44495 4 3.9934 4H7ZM7 6H5V20H19V6H17V8H7V6ZM9 4V6H15V4H9Z'/%3E%3C/svg%3E")
-    center / contain no-repeat;
-  -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M7 4V2H17V4H20.0066C20.5552 4 21 4.44495 21 4.9934V21.0066C21 21.5552 20.5551 22 20.0066 22H3.9934C3.44476 22 3 21.5551 3 21.0066V4.9934C3 4.44476 3.44495 4 3.9934 4H7ZM7 6H5V20H19V6H17V8H7V6ZM9 4V6H15V4H9Z'/%3E%3C/svg%3E")
-    center / contain no-repeat;
-}
-
 .action-row {
   width: 100%;
   margin-top: auto;
@@ -338,10 +298,6 @@ page {
 @media (prefers-color-scheme: dark) {
   .entry-container {
     background-image: none;
-  }
-
-  .paste-link-btn {
-    color: var(--text-primary);
   }
 
   .action-row .entry-btn {
@@ -437,15 +393,6 @@ page {
 
   .num-input-display-text {
     line-height: 56px;
-  }
-
-  .paste-link-btn {
-    font-size: 15px;
-  }
-
-  .paste-icon {
-    width: 18px;
-    height: 18px;
   }
 
   .action-row {

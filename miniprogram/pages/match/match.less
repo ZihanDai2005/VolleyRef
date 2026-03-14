@@ -1484,8 +1484,9 @@
 .sub-text {
   position: absolute;
   left: var(--sub-corner-offset, 12rpx);
-  bottom: 4px;
+  bottom: 6px;
   font-size: 12px;
+  line-height: 1;
   font-family: "BebasNeue", "Anton", sans-serif;
   color: inherit;
 }
@@ -1493,9 +1494,9 @@
 .live-sub-down-badge {
   position: absolute;
   right: var(--sub-corner-offset, 12rpx);
-  bottom: 4px;
+  bottom: 6px;
   display: inline-flex;
-  align-items: center;
+  align-items: flex-end;
   gap: 2px;
   color: inherit;
   pointer-events: none;
@@ -1513,9 +1514,9 @@
 }
 
 .live-sub-down-badge-icon {
-  width: 16px;
-  height: 16px;
-  flex: 0 0 16px;
+  width: 12px;
+  height: 12px;
+  flex: 0 0 12px;
   background-color: currentColor;
   -webkit-mask: url("data:image/svg+xml,%3Csvg%20xmlns='http://www.w3.org/2000/svg'%20viewBox='0%200%20580.99%20532.35'%20fill='currentColor'%3E%3Cpath%20d='M4563.65%2C2353.56%2C4744%2C2041.25c42.35-73.35-10.59-165-95.28-165H4288.06c-84.7%2C0-137.63%2C91.68-95.28%2C165l180.31%2C312.31C4415.43%2C2426.91%2C4521.3%2C2426.91%2C4563.65%2C2353.56Z'%20transform='translate(-4177.87%20-1876.22)'/%3E%3C/svg%3E")
     center / contain no-repeat;
@@ -1913,79 +1914,6 @@
     center / contain no-repeat;
 }
 
-.back-exit-mask {
-  position: fixed;
-  inset: 0;
-  background: var(--ol-black-30);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 26;
-}
-
-.back-exit-modal {
-  width: min(86vw, 640px);
-  background: var(--surface);
-  border-radius: 14px;
-  padding: 14px;
-  box-sizing: border-box;
-}
-
-.back-exit-title {
-  font-size: 18px;
-  font-weight: 700;
-  text-align: center;
-  color: var(--text-main);
-}
-
-.back-exit-text {
-  margin-top: 10px;
-  font-size: 14px;
-  line-height: 1.5;
-  text-align: center;
-  color: var(--text-main);
-}
-
-.back-exit-subtext {
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 1.45;
-  text-align: center;
-  color: var(--text-secondary);
-}
-
-.back-exit-actions {
-  margin-top: 12px;
-  display: flex;
-  gap: 8px;
-}
-
-.back-exit-btn {
-  flex: 1;
-  height: 38px;
-  border-radius: 9999px;
-  border: 0;
-  box-shadow: inset 0 0 0 1.5px var(--ol-black-50);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 14px;
-  color: var(--ink-base);
-  background: transparent;
-}
-
-.back-exit-btn.primary {
-  box-shadow: none;
-  background: var(--ink-base);
-  color: var(--ink-on-base);
-}
-
-.back-exit-btn.danger {
-  background: transparent;
-  box-shadow: inset 0 0 0 1.5px #f7464e;
-  color: #f7464e;
-}
-
 @media (prefers-color-scheme: dark) {
   .match-page {
     --entry-fill: var(--ink-base);
@@ -2038,12 +1966,6 @@
   .set-end-btn-home.takeover {
     background: #d94b4b;
     color: var(--white-ink);
-  }
-
-  .back-exit-btn {
-    box-shadow: inset 0 0 0 1.5px var(--ol-white-50);
-    color: var(--ink-base);
-    background: transparent;
   }
 
   .sub-op-controls .sub-seg-item.active {
@@ -2623,6 +2545,10 @@
   opacity: 0.1;
 }
 
+.sub-player-grid .player-card.sub-special-penalty-disabled {
+  opacity: 0.1;
+}
+
 .sub-player-grid .num {
   font-size: 19px;
 }
@@ -2635,10 +2561,12 @@
 .sub-normal-pair-badge {
   position: absolute;
   right: var(--sub-corner-offset, 12rpx);
-  bottom: 4px;
+  bottom: 6px;
   display: inline-flex;
-  align-items: center;
-  gap: 2px;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: flex-end;
+  gap: 1px;
   color: inherit;
   pointer-events: none;
   z-index: 2;
@@ -2673,6 +2601,7 @@
   line-height: 1;
   font-family: "BebasNeue", "Anton", sans-serif;
   color: inherit;
+  text-align: right;
 }
 
 .sub-player-grid .current-captain-num::after {
@@ -2860,9 +2789,10 @@
 .sub-op-controls-fields {
   flex: 1;
   min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display: grid;
+  grid-auto-rows: min-content;
+  row-gap: 10px;
+  align-content: start;
 }
 
 .sub-confirm-wrap {

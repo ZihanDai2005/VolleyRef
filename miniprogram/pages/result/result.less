@@ -106,7 +106,7 @@ page {
   position: relative;
   z-index: 1;
   box-sizing: border-box;
-  padding: 24rpx 64rpx 32rpx;
+  padding: 24rpx 64rpx calc(56rpx + env(safe-area-inset-bottom));
 }
 
 .result-nav-spacer {
@@ -372,12 +372,54 @@ page {
   margin-top: 40rpx;
 }
 
+.result-log-team-row {
+  margin-top: 18rpx;
+  display: flex;
+  align-items: center;
+}
+
+.result-log-team-col {
+  box-sizing: border-box;
+}
+
+.result-log-team-col-left,
+.result-log-team-col-right {
+  width: 40%;
+}
+
+.result-log-team-col-left {
+  padding-right: 10rpx;
+}
+
+.result-log-team-col-right {
+  padding-left: 10rpx;
+}
+
+.result-log-team-col-time {
+  width: 20%;
+  flex-shrink: 0;
+}
+
+.result-log-team-name {
+  display: block;
+  width: 100%;
+  max-width: 100%;
+  color: var(--text-main);
+  font-size: 14px;
+  font-weight: 700;
+  line-height: 1.2;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
 .result-log-list {
-  margin-top: 8px;
+  margin-top: 8rpx;
 }
 
 .result-log-row {
-  padding: 8px 0;
+  padding: 12rpx 0;
   display: flex;
   align-items: stretch;
 }
@@ -418,7 +460,7 @@ page {
 .result-log-pill-left,
 .result-log-pill-right {
   width: 100%;
-  min-height: 96rpx;
+  min-height: 76rpx;
   padding: 10rpx 16rpx;
   display: flex;
   align-items: center;
@@ -678,7 +720,7 @@ page {
   .result-content {
     max-width: 460px;
     margin: 0 auto;
-    padding: 12px 24px 20px;
+    padding: 12px 24px calc(32px + env(safe-area-inset-bottom));
   }
 
   .result-countdown {
