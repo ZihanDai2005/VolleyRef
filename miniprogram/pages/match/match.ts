@@ -87,6 +87,13 @@ type FrontRowLiberoFixCandidate = {
   liberoNo: string;
   normalNo: string;
 };
+type LiberoReentryLock = {
+  team: TeamCode;
+  liberoNo: string;
+  setNo: number;
+  aScore: number;
+  bScore: number;
+};
 type TeamPosRect = { left: number; top: number; width: number; height: number };
 type TeamRectMap = Partial<Record<MainPosition, TeamPosRect>>;
 type TeamMainNoMap = Partial<Record<MainPosition, string>>;
@@ -156,6 +163,10 @@ const CONN_WATCHDOG_OFFLINE_MS = 52000;
 const MODAL_ANIM_MS = 180;
 const SEG_SWITCH_ANIM_MS = 180;
 const LOCAL_OP_ID_TTL_MS = 10 * 60 * 1000;
+const NORMAL_SUB_RETURN_TO_MAIN_HINT = "请将普通球员换回场上6人区再进行普通换人";
+const SPECIAL_SUB_NOT_READY_HINT = "当前未满足特殊换人条件";
+const SPECIAL_SUB_RESTRICTED_HINT = "当前仅可对符合条件球员执行特殊换人";
+const LIBERO_REENTRY_SAME_POINT_HINT = "同一分内该自由人不可再次替换后排球员";
 const localOpIdSeenAt = new Map<string, number>();
 const SUB_RECORD_TAB_OPTIONS: Array<{ label: string; value: SubRecordTab }> = [
   { label: "普通", value: "normal" },
@@ -1512,6 +1523,41 @@ function buildSpecialPenaltyPairAllowedPosBySet(
   return out;
 }
 
+function buildLiberoZoneNormalPlayerAllowedPos(
+  players: PlayerSlot[],
+  liberoRoster: string[]
+): Partial<Record<Position, boolean>> {
+  const roster = normalizeLiberoRosterNumbers(liberoRoster || []);
+  if (!roster.length) {
+    return {};
+  }
+  const out: Partial<Record<Position, boolean>> = {};
+  ensureTeamPlayerOrder(players || []).forEach((slot) => {
+    if (!slot || !isLiberoPosition(slot.pos)) {
+      return;
+    }
+    const no = normalizeSubstituteNumber(String(slot.number || ""));
+    if (!no || roster.indexOf(no) >= 0) {
+      return;
+    }
+    out[slot.pos as Position] = true;
+  });
+  return out;
+}
+
+function buildRestrictedSpecialAllowedPosBySet(
+  logs: MatchLogItem[],
+  setNo: number,
+  team: TeamCode,
+  players: PlayerSlot[],
+  liberoRoster: string[]
+): Partial<Record<Position, boolean>> {
+  return {
+    ...buildSpecialPenaltyPairAllowedPosBySet(logs, setNo, team, players),
+    ...buildLiberoZoneNormalPlayerAllowedPos(players, liberoRoster),
+  };
+}
+
 function isLockedSubNormalPairPos(
   badges: Partial<Record<Position, SubNormalPairBadge>>,
   pos: "" | Position
@@ -1749,6 +1795,49 @@ function markSetEndIsSwapped(room: any, setNoRaw: number): void {
   snapshot.endedAt = Date.now();
 }
 
+function normalizeLiberoReentryLock(raw: any): LiberoReentryLock | null {
+  if (!raw || typeof raw !== "object") {
+    return null;
+  }
+  const team: TeamCode | "" = raw.team === "B" ? "B" : raw.team === "A" ? "A" : "";
+  const liberoNo = normalizeSubstituteNumber(String(raw.liberoNo || ""));
+  const setNo = Math.max(1, Number(raw.setNo || 1));
+  const aScore = Math.max(0, Number(raw.aScore || 0));
+  const bScore = Math.max(0, Number(raw.bScore || 0));
+  if (!team || !liberoNo) {
+    return null;
+  }
+  return {
+    team,
+    liberoNo,
+    setNo,
+    aScore,
+    bScore,
+  };
+}
+
+function isLiberoReentryLockActive(
+  lockRaw: any,
+  team: TeamCode,
+  liberoNoRaw: string,
+  setNoRaw: number,
+  aScoreRaw: number,
+  bScoreRaw: number
+): boolean {
+  const lock = normalizeLiberoReentryLock(lockRaw);
+  const liberoNo = normalizeSubstituteNumber(String(liberoNoRaw || ""));
+  if (!lock || !liberoNo) {
+    return false;
+  }
+  return (
+    lock.team === team &&
+    lock.liberoNo === liberoNo &&
+    lock.setNo === Math.max(1, Number(setNoRaw || 1)) &&
+    lock.aScore === Math.max(0, Number(aScoreRaw || 0)) &&
+    lock.bScore === Math.max(0, Number(bScoreRaw || 0))
+  );
+}
+
 function rotateTeamReverseByRule(players: PlayerSlot[]): PlayerSlot[] {
   const byPos: Record<string, PlayerSlot> = {};
   players.forEach(function (p) {
@@ -1876,6 +1965,7 @@ function pushUndoSnapshot(room: any): void {
     // 业务要求：暂停态/暂停次数不可被“撤回比分”回退，因此不进 undo 快照。
     isFinished: room.match.isFinished,
     setSummaries: JSON.parse(JSON.stringify((room.match as any).setSummaries || {})),
+    liberoReentryLock: JSON.parse(JSON.stringify((room.match as any).liberoReentryLock || null)),
     lastActionOpId: String((room.match as any).lastActionOpId || ""),
   });
   if (room.match.undoStack.length > 100) {
@@ -2078,6 +2168,11 @@ Page({
     aScore: 0,
     bScore: 0,
     lastScoringTeam: "" as TeamCode | "",
+    liberoReentryLockTeam: "" as "" | TeamCode,
+    liberoReentryLockNo: "",
+    liberoReentryLockSetNo: 0,
+    liberoReentryLockAScore: 0,
+    liberoReentryLockBScore: 0,
     setTimerText: "00:00",
     servingTeam: "A" as TeamCode,
     setNo: 1,
@@ -2960,9 +3055,6 @@ Page({
   },
 
   openForcedCaptainConfirmAfterSubstitution(team: TeamCode, options?: { switchFromSubPanel?: boolean }) {
-    if (options && options.switchFromSubPanel) {
-      this.clearSubstitutionDraft();
-    }
     this.openCaptainConfirmModal("post_sub", {
       showCancel: false,
       scopedTeam: team,
@@ -3545,9 +3637,50 @@ Page({
       }
     );
     if (autoSpecial) {
-      const teamName = team === "A" ? String(this.data.teamAName || "甲") : String(this.data.teamBName || "乙");
-      showToastHint(teamName + "队本局普通换人次数已用完，已自动选择特殊换人");
+      showToastHint("本局普通换人次数已用完，已自动选择特殊换人");
     }
+  },
+
+  getLiberoZoneNormalPlayerNormalSubHint(team: TeamCode, pos: Position, numberRaw?: string): string {
+    if (!isLiberoPosition(pos)) {
+      return "";
+    }
+    const number = normalizeSubstituteNumber(String(numberRaw || ""));
+    if (!number) {
+      return "";
+    }
+    const liberoRoster = normalizeLiberoRosterNumbers(
+      team === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []
+    );
+    if (!liberoRoster.length || liberoRoster.indexOf(number) >= 0) {
+      return "";
+    }
+    return NORMAL_SUB_RETURN_TO_MAIN_HINT;
+  },
+
+  getLiberoReentryBlockedHint(team: TeamCode, liberoNoRaw?: string): string {
+    const liberoNo = normalizeSubstituteNumber(String(liberoNoRaw || ""));
+    if (!liberoNo) {
+      return "";
+    }
+    const rawAScore = this.data.isSwapped ? Number(this.data.bScore || 0) : Number(this.data.aScore || 0);
+    const rawBScore = this.data.isSwapped ? Number(this.data.aScore || 0) : Number(this.data.bScore || 0);
+    return isLiberoReentryLockActive(
+      {
+        team: this.data.liberoReentryLockTeam,
+        liberoNo: this.data.liberoReentryLockNo,
+        setNo: this.data.liberoReentryLockSetNo,
+        aScore: this.data.liberoReentryLockAScore,
+        bScore: this.data.liberoReentryLockBScore,
+      },
+      team,
+      liberoNo,
+      this.data.setNo,
+      rawAScore,
+      rawBScore
+    )
+      ? LIBERO_REENTRY_SAME_POINT_HINT
+      : "";
   },
 
   tryOpenQuickSubstitutionByDataset(
@@ -3579,6 +3712,11 @@ Page({
     }
     const selectedNo = normalizeSubstituteNumber(String(slot.number || ""));
     if (!selectedNo) {
+      return;
+    }
+    const quickSubBlockedHint = this.getLiberoZoneNormalPlayerNormalSubHint(team, pos, selectedNo);
+    if (quickSubBlockedHint) {
+      showToastHint(quickSubBlockedHint);
       return;
     }
     const liberoRoster = normalizeLiberoRosterNumbers(
@@ -3634,6 +3772,13 @@ Page({
     const sourceNumberIsLibero = !!sourceNoNorm && teamRoster.indexOf(sourceNoNorm) >= 0;
     if (!sourceNumberIsLibero) {
       return;
+    }
+    if (sourceSlotIsLibero) {
+      const reentryBlockedHint = this.getLiberoReentryBlockedHint(team, sourceNoNorm);
+      if (reentryBlockedHint) {
+        showToastHint(reentryBlockedHint);
+        return;
+      }
     }
     let targetMainPoses: MainPosition[] = [];
     let targetLiberoPoses: Position[] = [];
@@ -3749,7 +3894,19 @@ Page({
       team === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []
     );
     const teamPlayers = ensureTeamPlayerOrder(team === "A" ? this.data.teamAPlayers || [] : this.data.teamBPlayers || []);
-    return validateLiberoSwapByRule(teamPlayers, roster, fromPos, toPos);
+    const ruleError = validateLiberoSwapByRule(teamPlayers, roster, fromPos, toPos);
+    if (ruleError) {
+      return ruleError;
+    }
+    if (isLiberoPosition(fromPos)) {
+      const fromSlot = getPlayerByPos(teamPlayers, fromPos);
+      const fromNo = normalizeSubstituteNumber(String((fromSlot && fromSlot.number) || ""));
+      const reentryBlockedHint = this.getLiberoReentryBlockedHint(team, fromNo);
+      if (reentryBlockedHint) {
+        return reentryBlockedHint;
+      }
+    }
+    return "";
   },
 
   async performLiberoSwap(team: TeamCode, fromPos: Position, toPos: Position) {
@@ -3803,6 +3960,20 @@ Page({
       const toNo = normalizeNumberInput(toSlot.number || "");
       if (!fromNo || !toNo) {
         swapError = "号码未填写，无法替换";
+        return room;
+      }
+      if (
+        fromIsLibero &&
+        isLiberoReentryLockActive(
+          (room.match as any).liberoReentryLock,
+          team,
+          fromNo,
+          room.match.setNo,
+          room.match.aScore,
+          room.match.bScore
+        )
+      ) {
+        swapError = LIBERO_REENTRY_SAME_POINT_HINT;
         return room;
       }
       const ruleError = validateLiberoSwapByRule(players, liberoRoster, fromPos, toPos);
@@ -4458,14 +4629,6 @@ Page({
       preStartCaptainConfirmSetNo: nextPreStartCaptainConfirmSetNo,
     };
     if (isPostSubReconfirm) {
-      this.clearSubstitutionDraft(roomId);
-      this.substitutionDraftRestoreTriedKey = roomId + "|" + String(setNo);
-      nextData.showSubstitutionPanel = false;
-      nextData.substitutionPanelClosing = false;
-      nextData.showSubMatchLogPopover = false;
-      nextData.subMatchLogPopoverClosing = false;
-      nextData.showLogPanel = false;
-      nextData.logPanelClosing = false;
       nextData.subSelectedPos = "";
       nextData.subIncomingNoInput = "";
       nextData.subIncomingNo = "";
@@ -5424,6 +5587,13 @@ Page({
           shouldForceCaptainReconfirmForTeam = candidate.team;
         }
         teamObj.players = nextPlayers;
+        (room.match as any).liberoReentryLock = {
+          team: candidate.team,
+          liberoNo: frontNo,
+          setNo: Math.max(1, Number(room.match.setNo || 1)),
+          aScore: Math.max(0, Number(room.match.aScore || 0)),
+          bScore: Math.max(0, Number(room.match.bScore || 0)),
+        };
         const teamName = candidate.team === "A" ? String(room.teamA.name || "甲") : String(room.teamB.name || "乙");
         appendMatchLog(
           room,
@@ -7037,6 +7207,7 @@ Page({
       }
       const betweenHeadHint = buildBetweenSetHint(effectiveSetNo, wins);
       const isDecidingSet = isDecidingSetByRule(effectiveSetNo, wins);
+      const liberoReentryLock = normalizeLiberoReentryLock((room.match as any).liberoReentryLock);
       const setEndPhase = String((setEndState && setEndState.phase) || "pending");
       const setEndOwnerClientId = String((setEndState && setEndState.ownerClientId) || "");
       const setEndWaiting = effectiveSetEndActive && setEndPhase === "lineup" && setEndOwnerClientId !== currentClientId;
@@ -7116,6 +7287,31 @@ Page({
         aScore: freezeSetEndDisplay ? Number(this.data.aScore || 0) : leftScore,
         bScore: freezeSetEndDisplay ? Number(this.data.bScore || 0) : rightScore,
         lastScoringTeam: freezeSetEndDisplay ? this.data.lastScoringTeam : displayLastScoringTeam,
+        liberoReentryLockTeam: freezeSetEndDisplay
+          ? this.data.liberoReentryLockTeam
+          : liberoReentryLock
+            ? liberoReentryLock.team
+            : "",
+        liberoReentryLockNo: freezeSetEndDisplay
+          ? String(this.data.liberoReentryLockNo || "")
+          : liberoReentryLock
+            ? liberoReentryLock.liberoNo
+            : "",
+        liberoReentryLockSetNo: freezeSetEndDisplay
+          ? Math.max(0, Number(this.data.liberoReentryLockSetNo || 0))
+          : liberoReentryLock
+            ? liberoReentryLock.setNo
+            : 0,
+        liberoReentryLockAScore: freezeSetEndDisplay
+          ? Math.max(0, Number(this.data.liberoReentryLockAScore || 0))
+          : liberoReentryLock
+            ? liberoReentryLock.aScore
+            : 0,
+        liberoReentryLockBScore: freezeSetEndDisplay
+          ? Math.max(0, Number(this.data.liberoReentryLockBScore || 0))
+          : liberoReentryLock
+            ? liberoReentryLock.bScore
+            : 0,
         setTimerText: freezeSetEndDisplay ? String(this.data.setTimerText || "00:00") : timerText,
         servingTeam: freezeSetEndDisplay ? this.data.servingTeam : room.match.servingTeam,
         setNo: freezeSetEndDisplay ? Number(this.data.setNo || 1) : room.match.setNo || 1,
@@ -8132,6 +8328,7 @@ Page({
       (room.match as any).timeoutActive = false;
       (room.match as any).timeoutTeam = "";
       (room.match as any).timeoutEndAt = 0;
+      delete (room.match as any).liberoReentryLock;
       room.match.isFinished = false;
       (room.match as any).setStartLineupsBySet = {};
       (room.match as any).lastActionOpId = opId;
@@ -8241,6 +8438,12 @@ Page({
       room.match.bSetWins = last.bSetWins || 0;
       room.match.isFinished = !!last.isFinished;
       (room.match as any).setSummaries = JSON.parse(JSON.stringify((last as any).setSummaries || {}));
+      const snapshotLiberoReentryLock = normalizeLiberoReentryLock((last as any).liberoReentryLock);
+      if (snapshotLiberoReentryLock) {
+        (room.match as any).liberoReentryLock = snapshotLiberoReentryLock;
+      } else {
+        delete (room.match as any).liberoReentryLock;
+      }
       (room.match as any).lastActionOpId = String((last as any).lastActionOpId || "");
       undoRotateA = isOneStepRotationBetween(room.teamA.players || [], last.teamAPlayers || []);
       undoRotateB = isOneStepRotationBetween(room.teamB.players || [], last.teamBPlayers || []);
@@ -8567,7 +8770,16 @@ Page({
       teamPlayers
     );
     const normalDisabled = summary.normal.length >= 6;
-    const subSpecialPenaltyAllowedPos = buildSpecialPenaltyPairAllowedPosBySet(this.allLogs, setNo, nextTeam, teamPlayers);
+    const liberoRoster = normalizeLiberoRosterNumbers(
+      nextTeam === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []
+    );
+    const subSpecialPenaltyAllowedPos = buildRestrictedSpecialAllowedPosBySet(
+      this.allLogs,
+      setNo,
+      nextTeam,
+      teamPlayers,
+      liberoRoster
+    );
     const subSpecialPenaltyPairOnly = !normalDisabled && Object.keys(subSpecialPenaltyAllowedPos).length > 0;
     const specialDisabled = !normalDisabled && !subSpecialPenaltyPairOnly;
     const draft = (options && options.draft) || null;
@@ -8864,15 +9076,22 @@ Page({
       return "该位置暂无球员，无法换人";
     }
     const mode: "normal" | "special" = this.data.subMode === "special" ? "special" : "normal";
+    const team: TeamCode = this.data.subTeam === "B" ? "B" : "A";
+    if (mode === "normal") {
+      const liberoZoneNormalPlayerHint = this.getLiberoZoneNormalPlayerNormalSubHint(team, pos, number);
+      if (liberoZoneNormalPlayerHint) {
+        return liberoZoneNormalPlayerHint;
+      }
+    }
     const liberoRoster = normalizeLiberoRosterNumbers(
-      this.data.subTeam === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []
+      team === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []
     );
     const isLiberoByRule = isLiberoPosition(pos) || liberoRoster.indexOf(number) >= 0;
     if (mode === "normal" && isLiberoByRule) {
       return "只能对非自由人使用普通换人";
     }
     if (mode === "special" && this.data.subSpecialPenaltyPairOnly && !this.data.subSpecialPenaltyAllowedPos[pos]) {
-      return "仍有普通换人机会，仅可替换与被处罚球员形成配对的在场球员";
+      return SPECIAL_SUB_RESTRICTED_HINT;
     }
     if (mode === "normal" && (this.data.subNormalModeLimitLocked || this.data.subNormalDisabled)) {
       return "普通换人本局已达6次上限";
@@ -8922,7 +9141,7 @@ Page({
       return;
     }
     if (nextMode === "special" && this.data.subSpecialDisabled) {
-      showToastHint("仍有普通换人机会，且不涉及被处罚球员锁定配对");
+      showToastHint(SPECIAL_SUB_NOT_READY_HINT);
       return;
     }
     if (nextMode === this.data.subMode) {
@@ -9078,7 +9297,7 @@ Page({
       return "当前被换下球员号码无效";
     }
     if (mode === "special" && this.data.subSpecialPenaltyPairOnly && !this.data.subSpecialPenaltyAllowedPos[selectedPos]) {
-      return "仍有普通换人机会，仅可替换与被处罚球员形成配对的在场球员";
+      return SPECIAL_SUB_RESTRICTED_HINT;
     }
     const upNo = normalizeSubstituteNumber(incomingNo);
     if (!upNo) {
@@ -9221,14 +9440,16 @@ Page({
       const teamObj = team === "A" ? room.teamA : room.teamB;
       const nextPlayers = ensureTeamPlayerOrder(teamObj.players || []);
       const roomNormalCount = countNormalSubstitutionsBySet(roomLogs, roomSetNo, team);
+      ensureLiberoRosterForCurrentSet(room);
+      const roster = normalizeLiberoRosterNumbers(getLiberoRosterForTeam(room, team)).map((n) => normalizeSubstituteNumber(n));
       if (mode === "special" && roomNormalCount < 6) {
-        const allowedPos = buildSpecialPenaltyPairAllowedPosBySet(roomLogs, roomSetNo, team, nextPlayers);
+        const allowedPos = buildRestrictedSpecialAllowedPosBySet(roomLogs, roomSetNo, team, nextPlayers, roster);
         if (!Object.keys(allowedPos).length) {
-          updateError = "当前可执行普通换人，请先使用普通换人机会";
+          updateError = SPECIAL_SUB_NOT_READY_HINT;
           return room;
         }
         if (!allowedPos[selectedPos as Position]) {
-          updateError = "仍有普通换人机会，仅可替换与被处罚球员形成配对的在场球员";
+          updateError = SPECIAL_SUB_RESTRICTED_HINT;
           return room;
         }
       }
@@ -9277,8 +9498,6 @@ Page({
         }
       }
 
-      ensureLiberoRosterForCurrentSet(room);
-      const roster = normalizeLiberoRosterNumbers(getLiberoRosterForTeam(room, team)).map((n) => normalizeSubstituteNumber(n));
       const downIsLibero = roster.indexOf(downNo) >= 0 || isLiberoPosition(selectedPos as Position);
       if (mode === "normal" && downIsLibero) {
         updateError = "普通换人仅支持场上6人，不可选择自由人";
@@ -9435,7 +9654,7 @@ Page({
     }
     await this.loadRoom(roomId, true);
     if (shouldForceCaptainReconfirmForTeam) {
-      this.openForcedCaptainConfirmAfterSubstitution(shouldForceCaptainReconfirmForTeam, { switchFromSubPanel: true });
+      this.openForcedCaptainConfirmAfterSubstitution(shouldForceCaptainReconfirmForTeam);
       return;
     }
     showToastHint("换人已记录");

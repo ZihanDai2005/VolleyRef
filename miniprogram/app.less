@@ -42,14 +42,16 @@ page {
   --ol-white-50: rgba(255, 255, 255, 0.5);
   --ol-slate-25: rgba(120, 126, 137, 0.25);
   --ol-slate-45: rgba(120, 126, 137, 0.45);
-  --ink-base: #111315;
-  --ink-contrast: #f5f6f8;
+  --ink-deep: #111315;
+  --ink-white: #f5f6f8;
+  --ink-base: var(--ink-deep);
+  --ink-contrast: var(--ink-white);
   --ink-pure-white: #ffffff;
   --ink-pure-black: #000000;
-  --ink-on-base: var(--ink-pure-white);
+  --ink-on-base: var(--ink-white);
   --entry-action-bottom: 140rpx;
   --entry-tag-bottom: 60rpx;
-  --white-ink: var(--ink-contrast);
+  --white-ink: var(--ink-white);
   --page-bg: var(--gray-0);
   --card-bg: var(--ol-neutral-06);
   --surface: var(--gray-0);
@@ -68,12 +70,12 @@ page {
   page {
     --theme-accent: #e82600;
     --theme-accent-rgb: 232, 38, 0;
-    --ink-base: #f5f6f8;
-    --ink-contrast: #f5f6f8;
-    --ink-on-base: var(--ink-pure-black);
+    --ink-base: var(--ink-white);
+    --ink-contrast: var(--ink-white);
+    --ink-on-base: var(--ink-deep);
     --entry-action-bottom: 140rpx;
     --entry-tag-bottom: 60rpx;
-    --white-ink: var(--ink-contrast);
+    --white-ink: var(--ink-white);
     --page-bg: var(--gray-800);
     --card-bg: var(--ink-pure-black);
     --surface: var(--ink-pure-black);

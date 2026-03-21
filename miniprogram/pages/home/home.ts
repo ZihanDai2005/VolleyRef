@@ -229,6 +229,20 @@ Page({
     });
   },
 
+  onOpenGuidePage() {
+    if (this.navBusy || !this.pageAlive) {
+      return;
+    }
+    this.navBusy = true;
+    wx.navigateTo({
+      url: "/pages/guide/guide",
+      fail: () => {
+        this.navBusy = false;
+        showBlockHint("页面打开失败，请重试");
+      },
+    });
+  },
+
   async refreshQuickResumeEntry() {
     const token = ++this.quickResumeCheckToken;
     const cached = readLastRoomEntry();
@@ -277,7 +291,7 @@ Page({
         quickResumeVisible: true,
         quickResumeRoomId: cached.roomId,
         quickResumeTitle: status === "result" ? "返回上次比赛结果" : "继续上次比赛",
-        quickResumeSubtitle: "裁判团队 " + cached.roomId + " · " + teamAName + " vs " + teamBName,
+        quickResumeSubtitle: cached.roomId + " · " + teamAName + " vs " + teamBName,
       });
     } catch (_e) {
       if (token !== this.quickResumeCheckToken) {

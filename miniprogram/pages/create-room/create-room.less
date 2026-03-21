@@ -1,6 +1,21 @@
+page {
+  --page-bg: var(--gray-0);
+  --surface: var(--gray-0);
+  --surface-soft: var(--gray-50);
+  --card-bg: var(--ol-neutral-06);
+  --line: var(--gray-200);
+  --line-soft: var(--gray-100);
+  --text-primary: var(--ink-base);
+  --text-secondary: var(--gray-500);
+  --text-muted: var(--gray-400);
+  --text-tertiary: var(--gray-500);
+  --status-danger: var(--theme-accent);
+  min-height: 100vh;
+  background: var(--page-bg);
+  color: var(--text-primary);
+}
+
 .room-container {
-  --page-bg-rgb: 255, 255, 255;
-  --score-hot-red: #d94a4a;
   padding: calc(30rpx + var(--custom-nav-offset, 54px)) 30rpx 30rpx;
   display: flex;
   flex-direction: column;
@@ -125,7 +140,7 @@
 }
 
 .create-head-hint-alert {
-  color: var(--score-hot-red);
+  color: var(--status-danger);
 }
 
 .create-head-hint-alert-row {
@@ -147,7 +162,7 @@
   height: 1em;
   margin-right: 8rpx;
   vertical-align: -0.1em;
-  background: var(--score-hot-red);
+  background: var(--status-danger);
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11 15H13V17H11V15ZM11 7H13V13H11V7Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11 15H13V17H11V15ZM11 7H13V13H11V7Z'/%3E%3C/svg%3E")
@@ -159,7 +174,7 @@
   height: 30rpx;
   flex-shrink: 0;
   margin-top: 2rpx;
-  background: var(--score-hot-red);
+  background: var(--status-danger);
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11 15H13V17H11V15ZM11 7H13V13H11V7Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M12 22C6.47715 22 2 17.5228 2 12C2 6.47715 6.47715 2 12 2C17.5228 2 22 6.47715 22 12C22 17.5228 17.5228 22 12 22ZM12 20C16.4183 20 20 16.4183 20 12C20 7.58172 16.4183 4 12 4C7.58172 4 4 7.58172 4 12C4 16.4183 7.58172 20 12 20ZM11 15H13V17H11V15ZM11 7H13V13H11V7Z'/%3E%3C/svg%3E")
@@ -603,25 +618,25 @@
 
 .create-head-lineup-grid.team-a .player-card {
   background-color: var(--page-bg);
-  color: var(--team-a-color, #8a87d0);
-  border: 1.5px solid var(--team-a-color, #8a87d0);
+  color: var(--team-a-color);
+  border: 1.5px solid var(--team-a-color);
 }
 
 .create-head-lineup-grid.team-a .player-card.libero {
-  background-color: var(--team-a-color, #8a87d0);
-  color: var(--white-ink);
+  background-color: var(--team-a-color);
+  color: var(--ink-white);
   border: none;
 }
 
 .create-head-lineup-grid.team-b .player-card {
   background-color: var(--page-bg);
-  color: var(--team-b-color, #8dc8a5);
-  border: 1.5px solid var(--team-b-color, #8dc8a5);
+  color: var(--team-b-color);
+  border: 1.5px solid var(--team-b-color);
 }
 
 .create-head-lineup-grid.team-b .player-card.libero {
-  background-color: var(--team-b-color, #8dc8a5);
-  color: var(--white-ink);
+  background-color: var(--team-b-color);
+  color: var(--ink-white);
   border: none;
 }
 
@@ -963,25 +978,25 @@
 
 .team-a .player-card {
   background-color: var(--page-bg);
-  color: var(--team-a-color, #8a87d0);
-  border: 1.5px solid var(--team-a-color, #8a87d0);
+  color: var(--team-a-color);
+  border: 1.5px solid var(--team-a-color);
 }
 
 .team-b .player-card {
   background-color: var(--page-bg);
-  color: var(--team-b-color, #81c79e);
-  border: 1.5px solid var(--team-b-color, #81c79e);
+  color: var(--team-b-color);
+  border: 1.5px solid var(--team-b-color);
 }
 
 .team-a .player-card.libero {
-  background-color: var(--team-a-color, #8a87d0);
-  color: var(--white-ink);
+  background-color: var(--team-a-color);
+  color: var(--ink-white);
   border: none;
 }
 
 .team-b .player-card.libero {
-  background-color: var(--team-b-color, #81c79e);
-  color: var(--white-ink);
+  background-color: var(--team-b-color);
+  color: var(--ink-white);
   border: none;
 }
 
@@ -1046,8 +1061,8 @@
   height: 82rpx;
   line-height: 82rpx;
   padding: 0;
-  background: #6c63be;
-  color: var(--white-ink);
+  background: var(--ink-base);
+  color: var(--ink-on-base);
   border-radius: 999rpx;
   font-size: 32rpx;
 }
@@ -1078,6 +1093,21 @@
   font-size: 31rpx;
   line-height: 1.45;
   color: var(--text-secondary);
+}
+
+.create-invite-reminder-row {
+  display: block;
+}
+
+.create-invite-reminder-muted {
+  color: var(--ol-slate-45);
+}
+
+.create-invite-reminders {
+  display: flex;
+  flex-direction: column;
+  gap: 12rpx;
+  margin-bottom: 8rpx;
 }
 
 .create-actions .entry-btn {
@@ -1359,7 +1389,7 @@
 }
 
 .captain-picker-btn.confirm {
-  color: #576b95;
+  color: var(--theme-accent);
 }
 
 .captain-picker-btn.confirm {
@@ -1367,25 +1397,36 @@
 }
 
 @media (prefers-color-scheme: dark) {
+  page {
+    --page-bg: var(--ink-pure-black);
+    --surface: var(--ink-pure-black);
+    --surface-soft: var(--gray-800);
+    --card-bg: var(--gray-800);
+    --line: var(--gray-700);
+    --line-soft: var(--gray-700);
+    --text-primary: var(--ink-base);
+    --text-secondary: var(--gray-300);
+    --text-muted: var(--gray-400);
+    --text-tertiary: var(--gray-300);
+  }
+
   .room-container {
-    --page-bg-rgb: 19, 20, 22;
     background-image: none;
   }
 
-  /* Keep libero card number/corner text in dark mode aligned with home VOLLEY text color. */
   .create-head-lineup-grid.team-a .player-card.libero,
   .create-head-lineup-grid.team-b .player-card.libero,
   .team-a .player-card.libero,
   .team-b .player-card.libero,
   .captain-picker-grid .player-card.libero {
-    color: var(--gray-900);
+    color: var(--ink-deep);
   }
 
   .player-card.libero .num-text,
   .player-card.libero .sub-text,
   .player-card.libero .player-qmark,
   .player-card.libero .player-input {
-    color: var(--gray-900);
+    color: var(--ink-deep);
   }
 }
 
@@ -1542,6 +1583,6 @@
   .player-card.libero .sub-text,
   .player-card.libero .player-qmark,
   .player-card.libero .player-input {
-    color: var(--gray-900) !important;
+    color: var(--ink-deep) !important;
   }
 }

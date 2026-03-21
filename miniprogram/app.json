@@ -1,6 +1,7 @@
 {
   "pages": [
     "pages/home/home",
+    "pages/guide/guide",
     "pages/join-match/join-match",
     "pages/create-room/create-room",
     "pages/match/match",

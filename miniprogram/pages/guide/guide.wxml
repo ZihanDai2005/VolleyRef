@@ -1,0 +1,87 @@
+<view class="guide-shell" style="--custom-nav-offset: {{customNavOffset}};">
+  <view class="custom-nav-bg" style="height: {{customNavOffset}};"></view>
+  <view class="custom-nav" style="top: {{customNavTop}}; left: 64rpx; right: 64rpx;">
+    <view class="custom-nav-back pressable" hover-class="tap-active" bindtap="onBackTap">
+      <view class="custom-nav-back-icon"></view>
+    </view>
+    <view class="custom-nav-space"></view>
+  </view>
+
+  <view class="guide-page" style="padding-top: {{customNavOffset}};">
+    <view class="guide-topbar" id="guide-section-top">
+      <view class="create-head-block guide-head-block">
+        <text class="create-head-title">几分钟了解</text>
+        <view class="create-head-title create-head-title-second">
+          <text>如何上手</text>
+          <text class="title-special-dot">.</text>
+        </view>
+      </view>
+
+      <scroll-view class="guide-chip-strip" scroll-x="true" enhanced="true" show-scrollbar="false">
+        <view class="guide-chip-inner">
+          <view
+            wx:for="{{displaySections}}"
+            wx:key="id"
+            class="guide-chip guide-switch {{activeSectionId === item.id ? 'active' : ''}}"
+            data-id="{{item.id}}"
+            hover-class="guide-switch-hover"
+            bindtap="onJumpSection"
+          >
+            <text class="guide-chip-no">{{item.no}}</text>
+            <text class="guide-chip-text">{{item.shortTitle}}</text>
+          </view>
+        </view>
+      </scroll-view>
+    </view>
+
+    <scroll-view
+      class="guide-scroll"
+      scroll-y="true"
+      enhanced="true"
+      show-scrollbar="false"
+      enable-flex="true"
+      scroll-with-animation="true"
+      scroll-into-view="{{scrollIntoView}}"
+    >
+      <view class="guide-scroll-content">
+        <block wx:if="{{displaySections.length}}">
+          <view
+            wx:for="{{displaySections}}"
+            wx:key="id"
+            class="guide-section"
+            id="{{item.anchorId}}"
+          >
+            <view class="guide-section-head">
+              <text class="guide-section-no">{{item.no}}</text>
+              <view class="guide-section-copy">
+                <text class="guide-section-title">{{item.title}}</text>
+                <text class="guide-section-summary">{{item.summary}}</text>
+              </view>
+            </view>
+
+            <view class="guide-item-list">
+              <view
+                wx:for="{{item.items}}"
+                wx:key="id"
+                class="guide-item"
+                id="{{item.anchorId}}"
+              >
+                <view class="guide-item-head">
+                  <text class="guide-item-no">{{item.no}}</text>
+                  <text class="guide-item-title">{{item.title}}</text>
+                </view>
+                <text class="guide-item-body">{{item.body}}</text>
+              </view>
+            </view>
+          </view>
+        </block>
+
+      <view wx:else class="guide-empty">
+        <text class="guide-empty-title">没有找到相关内容</text>
+        <text class="guide-empty-text">换个关键词试试，例如“换人”“自由人”“场上队长”“暂停”。</text>
+      </view>
+      </view>
+    </scroll-view>
+  </view>
+
+</view>

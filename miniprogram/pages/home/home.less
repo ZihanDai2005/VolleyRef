@@ -1,7 +1,8 @@
 .landing-container {
   --bg-deep: var(--gray-0);
   --brand-red: var(--theme-accent);
-  --brand-white: var(--ink-base);
+  --brand-ink: var(--ink-deep);
+  --brand-on-ink: var(--ink-white);
   --text-muted: var(--text-muted);
   --bg-gradient-tint: var(--ol-black-20);
   --court-line-gray: var(--gray-400);
@@ -17,7 +18,7 @@
   width: 100%;
   height: 100vh;
   background: var(--bg-deep);
-  color: var(--brand-white);
+  color: var(--brand-ink);
   font-family: var(--font-ui);
   overflow: hidden;
 }
@@ -26,7 +27,8 @@
   .landing-container {
     --bg-deep: var(--gray-900);
     --brand-red: var(--theme-accent);
-    --brand-white: var(--ink-base);
+    --brand-ink: var(--ink-white);
+    --brand-on-ink: var(--ink-deep);
     --text-muted: var(--text-muted);
     --bg-gradient-tint: var(--ol-white-08);
     --court-line-gray: var(--gray-400);
@@ -137,7 +139,7 @@
   line-height: 0.9;
   letter-spacing: -1.5px;
   text-transform: uppercase;
-  color: var(--brand-white);
+  color: var(--brand-ink);
 }
 
 .brand-line-two {
@@ -357,8 +359,8 @@
   padding: 0 14rpx;
   border-radius: 9999rpx;
   border: 0;
-  background: var(--brand-white);
-  color: var(--white-ink);
+  background: var(--brand-ink);
+  color: var(--brand-on-ink);
   box-shadow: 0 12rpx 32rpx var(--ol-white-20);
   position: relative;
   z-index: 1;
@@ -367,8 +369,8 @@
 @media (prefers-color-scheme: dark) {
   .quick-resume-action {
     border: 0;
-    background: var(--brand-white);
-    color: var(--bg-deep);
+    background: var(--brand-ink);
+    color: var(--brand-on-ink);
     box-shadow: 0 8rpx 30rpx var(--ol-black-30);
   }
 }
@@ -448,22 +450,22 @@
 }
 
 .pill-primary {
-  background: var(--brand-white);
-  color: var(--white-ink);
+  background: var(--brand-ink);
+  color: var(--brand-on-ink);
   box-shadow: 0 12rpx 32rpx var(--ol-white-20);
 }
 
 .pill-secondary {
   background: transparent;
-  color: var(--brand-white);
+  color: var(--brand-ink);
   border: 0;
   box-shadow: inset 0 0 0 1.5px var(--ol-black-50);
 }
 
 @media (prefers-color-scheme: dark) {
   .pill-primary {
-    background: var(--brand-white);
-    color: var(--bg-deep);
+    background: var(--brand-ink);
+    color: var(--brand-on-ink);
     box-shadow: 0 8rpx 30rpx var(--ol-black-30);
   }
 }
@@ -471,7 +473,7 @@
 @media (prefers-color-scheme: dark) {
   .pill-secondary {
     background: transparent;
-    color: var(--brand-white);
+    color: var(--brand-ink);
     border: 0;
     box-shadow: inset 0 0 0 1.5px var(--ol-white-50);
   }
@@ -501,17 +503,76 @@
   }
 }
 
-.version-tag {
+.version-row {
   position: absolute;
   bottom: var(--home-version-bottom);
-  font-size: 20rpx;
-  color: var(--brand-white);
-  opacity: 0.5;
-  letter-spacing: 2rpx;
-  white-space: nowrap;
   left: 50%;
   transform: translateX(-50%);
   z-index: 4;
+  display: inline-flex;
+  align-items: center;
+  gap: 20rpx;
+  white-space: nowrap;
+}
+
+.version-tag {
+  font-size: 20rpx;
+  color: var(--brand-ink);
+  opacity: 0.5;
+  letter-spacing: 2rpx;
+}
+
+.version-sep {
+  font-size: 20rpx;
+  color: var(--brand-ink);
+  opacity: 0.5;
+  letter-spacing: 2rpx;
+  margin: 0;
+}
+
+.version-link {
+  margin: 0;
+  padding: 0 !important;
+  display: inline-flex !important;
+  flex: none;
+  align-items: center;
+  justify-content: center;
+  width: auto !important;
+  min-width: 0 !important;
+  min-height: 0 !important;
+  line-height: 1 !important;
+  font-size: 0;
+  background: transparent !important;
+  border: 0 !important;
+  border-radius: 0;
+  text-align: center;
+  vertical-align: middle;
+  overflow: visible;
+  -webkit-appearance: none;
+  font-weight: 400 !important;
+  font-family: inherit;
+}
+
+.version-link-text {
+  font-size: 20rpx;
+  line-height: 1.2;
+  color: var(--brand-ink);
+  opacity: 0.5;
+  letter-spacing: 2rpx;
+  font-weight: 400 !important;
+  font-family: inherit;
+  transition:
+    opacity 160ms ease,
+    transform 160ms ease;
+}
+
+.version-link-hover .version-link-text {
+  opacity: 0.72;
+  transform: scale(0.96);
+}
+
+.version-link::after {
+  border: 0;
 }
 
 @media (min-width: 700px) {
@@ -581,8 +642,12 @@
     height: 24px;
   }
 
-  .version-tag {
+  .version-row {
     bottom: var(--home-version-bottom);
+    gap: 8px;
+  }
+
+  .version-tag {
     font-size: 12px;
     letter-spacing: 1px;
   }
