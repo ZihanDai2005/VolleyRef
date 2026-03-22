@@ -13,30 +13,29 @@
   <view class="result-nav-spacer" style="height: calc({{customNavOffset}} + 24rpx);"></view>
 
   <view class="result-content">
-    <view class="result-countdown-row" wx:if="{{clearCountdownText}}">
-      <text class="result-countdown">{{clearCountdownText}}</text>
-    </view>
-
     <view class="result-score-panel">
       <view class="result-sheet-btn pressable" hover-class="tap-active" bindtap="onScoreSheetTap">记分表</view>
       <text class="result-section-label">比局</text>
       <view class="result-compare-line">
         <text class="result-compare-left">{{teamAName}}</text>
-        <text class="result-compare-colon">:</text>
+        <text class="result-compare-colon">vs</text>
         <text class="result-compare-right">{{teamBName}}</text>
       </view>
       <view class="result-score-line">
-        <text class="result-score">{{bigScoreA}}</text>
-        <text class="result-score-sep">:</text>
-        <text class="result-score">{{bigScoreB}}</text>
+        <text class="result-score result-score-large result-score-left {{bigScoreLeadingTeam === 'A' ? 'result-score-hot' : ''}}">{{bigScoreA}}</text>
+        <text class="result-score-sep result-score-sep-large">-</text>
+        <text class="result-score result-score-large result-score-right {{bigScoreLeadingTeam === 'B' ? 'result-score-hot' : ''}}">{{bigScoreB}}</text>
       </view>
     </view>
 
-    <view class="result-set-switch" wx:if="{{setOptions.length > 1}}">
-      <text class="result-set-label">局</text>
-      <view class="result-set-seg">
+    <view class="result-countdown-row" wx:if="{{clearCountdownText}}">
+      <text class="result-countdown">{{clearCountdownText}}</text>
+    </view>
+
+    <view class="result-set-switch log-set-switch" wx:if="{{setOptions.length > 1}}">
+      <view class="result-set-seg log-set-seg">
         <view
-          class="result-set-item {{selectedSetNo === item ? 'active' : ''}}"
+          class="result-set-item log-set-item {{selectedSetNo === item ? 'active' : ''}}"
           wx:for="{{setOptions}}"
           wx:key="*this"
           wx:for-item="item"
@@ -44,131 +43,135 @@
           bindtap="onSelectSet"
         >{{item}}</view>
       </view>
+      <text class="result-set-label log-set-label">局</text>
     </view>
 
-    <view class="result-score-panel">
-      <view class="result-compare-line">
-        <text class="result-compare-left">{{teamAName}}</text>
-        <text class="result-compare-colon">:</text>
-        <text class="result-compare-right">{{teamBName}}</text>
+    <view class="result-set-content">
+      <view class="result-score-panel">
+        <view class="result-compare-line">
+          <text class="result-compare-left">{{teamAName}}</text>
+          <text class="result-compare-colon">vs</text>
+          <text class="result-compare-right">{{teamBName}}</text>
+        </view>
+        <view class="result-set-summary {{resultSetContentSwitching ? 'switching' : ''}}">
+          <view class="result-score-line">
+            <text class="result-score result-score-left {{selectedSetLeadingTeam === 'A' ? 'result-score-hot' : ''}}">{{selectedSmallScoreA}}</text>
+            <text class="result-score-sep">-</text>
+            <text class="result-score result-score-right {{selectedSetLeadingTeam === 'B' ? 'result-score-hot' : ''}}">{{selectedSmallScoreB}}</text>
+          </view>
+          <text class="result-duration" wx:if="{{selectedSetDurationText}}">{{selectedSetDurationText}}</text>
+        </view>
       </view>
-      <view class="result-score-line">
-        <text class="result-score">{{selectedSmallScoreA}}</text>
-        <text class="result-score-sep">:</text>
-        <text class="result-score">{{selectedSmallScoreB}}</text>
-      </view>
-      <text class="result-winner" wx:if="{{selectedSetWinnerText}}">{{selectedSetWinnerText}}</text>
-      <text class="result-duration" wx:if="{{selectedSetDurationText}}">{{selectedSetDurationText}}</text>
-    </view>
 
-    <view class="result-progress-card">
-      <view class="result-progress-head">得分进程</view>
-      <view class="result-progress-body">
-        <view class="result-progress-grid" wx:if="{{scoreProgressHasData}}">
-          <view class="result-progress-row" wx:for="{{scoreProgressRows}}" wx:key="index" wx:for-item="row">
-            <text class="result-progress-team">{{row.teamName}}</text>
-            <view class="result-progress-track" style="{{row.trackStyle}}">
-              <view
-                wx:for="{{row.cells}}"
-                wx:key="index"
-                wx:for-item="cell"
-                class="result-progress-cell"
-                style="{{cell.cellStyle}}"
-              ></view>
+      <view class="result-progress-card">
+        <view class="result-progress-head">得分进程</view>
+        <view class="result-progress-body {{resultSetContentSwitching ? 'switching' : ''}}">
+          <view class="result-progress-grid" wx:if="{{scoreProgressHasData}}">
+            <view class="result-progress-row" wx:for="{{scoreProgressRows}}" wx:key="index" wx:for-item="row">
+              <text class="result-progress-team">{{row.teamName}}</text>
+              <view class="result-progress-track" style="{{row.trackStyle}}">
+                <view
+                  wx:for="{{row.cells}}"
+                  wx:key="index"
+                  wx:for-item="cell"
+                  class="result-progress-cell"
+                  style="{{cell.cellStyle}}"
+                ></view>
+              </view>
             </view>
           </view>
+          <view class="result-progress-empty" wx:if="{{scoreProgressEmpty}}">本局暂无得分进程</view>
         </view>
-        <view class="result-progress-empty" wx:if="{{scoreProgressEmpty}}">本局暂无得分进程</view>
       </view>
-    </view>
 
-    <view class="result-log-card">
-      <view class="result-log-head">比赛记录</view>
-      <view class="result-log-team-row">
-        <view class="result-log-team-col result-log-team-col-left">
-          <text class="result-log-team-name">{{teamAName}}</text>
+      <view class="result-log-card">
+        <view class="result-log-head">比赛记录</view>
+        <view class="result-log-team-row">
+          <view class="result-log-team-col result-log-team-col-left">
+            <text class="result-log-team-name">{{teamAName}}</text>
+          </view>
+          <view class="result-log-team-col result-log-team-col-time"></view>
+          <view class="result-log-team-col result-log-team-col-right">
+            <text class="result-log-team-name">{{teamBName}}</text>
+          </view>
         </view>
-        <view class="result-log-team-col result-log-team-col-time"></view>
-        <view class="result-log-team-col result-log-team-col-right">
-          <text class="result-log-team-name">{{teamBName}}</text>
-        </view>
-      </view>
-      <view class="result-log-list">
-        <view class="result-log-row" wx:for="{{logs}}" wx:key="index" wx:for-item="item">
-          <view class="result-log-col result-log-col-left">
-            <view class="{{item.leftPillClass}}" wx:if="{{item.hasLeftNote}}">
-              <view class="{{item.leftTextClass}}">
-                <text class="result-log-pill-main">{{item.leftNote}}</text>
-                <view class="result-log-pill-sub-row" wx:if="{{item.leftSubSwap}}">
-                  <view class="result-log-pill-sub-action">
-                    <view class="result-log-sub-arrow result-log-sub-arrow-up"></view>
-                    <text class="result-log-pill-sub-num">{{item.leftSubUpNo}}</text>
+        <view class="result-log-list {{resultSetContentSwitching ? 'switching' : ''}}">
+          <view class="result-log-row" wx:for="{{logs}}" wx:key="index" wx:for-item="item">
+            <view class="result-log-col result-log-col-left">
+              <view class="{{item.leftPillClass}}" wx:if="{{item.hasLeftNote}}">
+                <view class="{{item.leftTextClass}}">
+                  <text class="result-log-pill-main">{{item.leftNote}}</text>
+                  <view class="result-log-pill-sub-row" wx:if="{{item.leftSubSwap}}">
+                    <view class="result-log-pill-sub-action">
+                      <view class="result-log-sub-arrow result-log-sub-arrow-up"></view>
+                      <text class="result-log-pill-sub-num">{{item.leftSubUpNo}}</text>
+                    </view>
+                    <view class="result-log-pill-sub-action">
+                      <view class="result-log-sub-arrow result-log-sub-arrow-down"></view>
+                      <text class="result-log-pill-sub-num">{{item.leftSubDownNo}}</text>
+                    </view>
                   </view>
-                  <view class="result-log-pill-sub-action">
-                    <view class="result-log-sub-arrow result-log-sub-arrow-down"></view>
-                    <text class="result-log-pill-sub-num">{{item.leftSubDownNo}}</text>
-                  </view>
+                  <text class="result-log-pill-sub" wx:if="{{!item.leftSubSwap && item.hasLeftSub}}">{{item.leftSubNote}}</text>
                 </view>
-                <text class="result-log-pill-sub" wx:if="{{!item.leftSubSwap && item.hasLeftSub}}">{{item.leftSubNote}}</text>
-              </view>
-              <view
-                class="{{item.leftBadgeClass}}"
-                wx:if="{{item.showLeftBadge}}"
-                style="{{item.leftBadgeStyle}}"
-              >
-                <text class="result-log-score-badge-text">{{item.leftScoreBadgeText}}</text>
-              </view>
-            </view>
-            <view class="result-log-pill result-log-pill-left result-log-pill-placeholder" wx:if="{{item.hasLeftPlaceholder}}">
-              <view
-                class="{{item.leftBadgeClass}}"
-                wx:if="{{item.showLeftBadge}}"
-                style="{{item.leftBadgeStyle}}"
-              >
-                <text class="result-log-score-badge-text">{{item.leftScoreBadgeText}}</text>
-              </view>
-            </view>
-          </view>
-          <view class="result-log-col result-log-col-time">
-            <text class="result-log-time-main">{{item.timeText}}</text>
-            <text class="result-log-time-set">{{item.setTimeText}}</text>
-          </view>
-          <view class="result-log-col result-log-col-right">
-            <view class="{{item.rightPillClass}}" wx:if="{{item.hasRightNote}}">
-              <view class="{{item.rightTextClass}}">
-                <text class="result-log-pill-main">{{item.rightNote}}</text>
-                <view class="result-log-pill-sub-row" wx:if="{{item.rightSubSwap}}">
-                  <view class="result-log-pill-sub-action">
-                    <view class="result-log-sub-arrow result-log-sub-arrow-up"></view>
-                    <text class="result-log-pill-sub-num">{{item.rightSubUpNo}}</text>
-                  </view>
-                  <view class="result-log-pill-sub-action">
-                    <view class="result-log-sub-arrow result-log-sub-arrow-down"></view>
-                    <text class="result-log-pill-sub-num">{{item.rightSubDownNo}}</text>
-                  </view>
+                <view
+                  class="{{item.leftBadgeClass}}"
+                  wx:if="{{item.showLeftBadge}}"
+                  style="{{item.leftBadgeStyle}}"
+                >
+                  <text class="result-log-score-badge-text">{{item.leftScoreBadgeText}}</text>
                 </view>
-                <text class="result-log-pill-sub" wx:if="{{!item.rightSubSwap && item.hasRightSub}}">{{item.rightSubNote}}</text>
               </view>
-              <view
-                class="{{item.rightBadgeClass}}"
-                wx:if="{{item.showRightBadge}}"
-                style="{{item.rightBadgeStyle}}"
-              >
-                <text class="result-log-score-badge-text">{{item.rightScoreBadgeText}}</text>
+              <view class="result-log-pill result-log-pill-left result-log-pill-placeholder" wx:if="{{item.hasLeftPlaceholder}}">
+                <view
+                  class="{{item.leftBadgeClass}}"
+                  wx:if="{{item.showLeftBadge}}"
+                  style="{{item.leftBadgeStyle}}"
+                >
+                  <text class="result-log-score-badge-text">{{item.leftScoreBadgeText}}</text>
+                </view>
               </view>
             </view>
-            <view class="result-log-pill result-log-pill-right result-log-pill-placeholder" wx:if="{{item.hasRightPlaceholder}}">
-              <view
-                class="{{item.rightBadgeClass}}"
-                wx:if="{{item.showRightBadge}}"
-                style="{{item.rightBadgeStyle}}"
-              >
-                <text class="result-log-score-badge-text">{{item.rightScoreBadgeText}}</text>
+            <view class="result-log-col result-log-col-time">
+              <text class="result-log-time-main">{{item.timeText}}</text>
+              <text class="result-log-time-set">{{item.setTimeText}}</text>
+            </view>
+            <view class="result-log-col result-log-col-right">
+              <view class="{{item.rightPillClass}}" wx:if="{{item.hasRightNote}}">
+                <view class="{{item.rightTextClass}}">
+                  <text class="result-log-pill-main">{{item.rightNote}}</text>
+                  <view class="result-log-pill-sub-row" wx:if="{{item.rightSubSwap}}">
+                    <view class="result-log-pill-sub-action">
+                      <view class="result-log-sub-arrow result-log-sub-arrow-up"></view>
+                      <text class="result-log-pill-sub-num">{{item.rightSubUpNo}}</text>
+                    </view>
+                    <view class="result-log-pill-sub-action">
+                      <view class="result-log-sub-arrow result-log-sub-arrow-down"></view>
+                      <text class="result-log-pill-sub-num">{{item.rightSubDownNo}}</text>
+                    </view>
+                  </view>
+                  <text class="result-log-pill-sub" wx:if="{{!item.rightSubSwap && item.hasRightSub}}">{{item.rightSubNote}}</text>
+                </view>
+                <view
+                  class="{{item.rightBadgeClass}}"
+                  wx:if="{{item.showRightBadge}}"
+                  style="{{item.rightBadgeStyle}}"
+                >
+                  <text class="result-log-score-badge-text">{{item.rightScoreBadgeText}}</text>
+                </view>
+              </view>
+              <view class="result-log-pill result-log-pill-right result-log-pill-placeholder" wx:if="{{item.hasRightPlaceholder}}">
+                <view
+                  class="{{item.rightBadgeClass}}"
+                  wx:if="{{item.showRightBadge}}"
+                  style="{{item.rightBadgeStyle}}"
+                >
+                  <text class="result-log-score-badge-text">{{item.rightScoreBadgeText}}</text>
+                </view>
               </view>
             </view>
           </view>
+          <view class="result-log-empty" wx:if="{{!logs.length}}">暂无记录</view>
         </view>
-        <view class="result-log-empty" wx:if="{{!logs.length}}">暂无记录</view>
       </view>
     </view>
   </view>

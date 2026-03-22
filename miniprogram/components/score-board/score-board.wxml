@@ -2,7 +2,7 @@
   <view class="team-score a">
     <view
       wx:if="{{allowScore}}"
-      class="side-btn pressable"
+      class="side-btn score-btn-enter pressable"
       hover-class="tap-active"
       hover-start-time="0"
       hover-stay-time="70"
@@ -18,7 +18,7 @@
     <text class="score {{pulseB ? 'score-pulse' : ''}} {{lastScoringTeam === 'B' ? 'score-hot' : ''}}">{{bScore}}</text>
     <view
       wx:if="{{allowScore}}"
-      class="side-btn pressable"
+      class="side-btn score-btn-enter pressable"
       hover-class="tap-active"
       hover-start-time="0"
       hover-stay-time="70"

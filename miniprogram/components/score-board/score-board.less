@@ -42,7 +42,7 @@
 }
 
 .score-hot {
-  color: #d94a4a;
+  color: var(--status-danger-red);
 }
 .side-btn {
   margin: 0;
@@ -60,6 +60,10 @@
   transition: transform 100ms ease, opacity 100ms ease;
 }
 
+.score-btn-enter {
+  animation: scoreBtnReveal 180ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+
 .side-btn-placeholder {
   background: transparent;
 }
@@ -67,7 +71,7 @@
 .plus-icon {
   width: 28px;
   height: 28px;
-  background-color: var(--gray-500);
+  background-color: var(--text-secondary);
   mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z'/%3E%3C/svg%3E")
     center / contain no-repeat;
   -webkit-mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='currentColor'%3E%3Cpath d='M11 11V5H13V11H19V13H13V19H11V13H5V11H11Z'/%3E%3C/svg%3E")
@@ -102,6 +106,17 @@
     transform: scale(1.16);
   }
   100% {
+    transform: scale(1);
+  }
+}
+
+@keyframes scoreBtnReveal {
+  0% {
+    opacity: 0;
+    transform: scale(0.82);
+  }
+  100% {
+    opacity: 1;
     transform: scale(1);
   }
 }

@@ -1,4 +1,4 @@
-import { getRoomAsync, verifyRoomPasswordAsync } from "../../utils/room-service";
+import { forcePullRoomAsync, getRoomAsync, verifyRoomPasswordAsync } from "../../utils/room-service";
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { saveLastRoomEntry } from "../../utils/last-room-entry";
@@ -239,7 +239,7 @@ Page({
         return;
       }
 
-      const room = await getRoomAsync(roomId);
+      const room = (await forcePullRoomAsync(roomId)) || (await getRoomAsync(roomId));
       if (!room) {
         showBlockHint("房间不存在");
         return;

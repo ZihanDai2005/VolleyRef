@@ -265,7 +265,7 @@ function isSubstitutionAction(action: string, noteRaw: string): boolean {
 function getSubstitutionTypeLabel(noteRaw: string): string {
   const note = String(noteRaw || "");
   if (note.indexOf("自由人普通换人") >= 0 || note.indexOf("自由人常规换人") >= 0 || note.indexOf("自由人前排自动换回") >= 0) {
-    return "自由人普通换人";
+    return "自由人常规换人";
   }
   if (note.indexOf("普通换人") >= 0) {
     return "普通换人";
@@ -440,7 +440,7 @@ function getSetDurationMinutesFromLogs(logs: MatchLogItem[], setNo: number): str
 
 function resolveSetDurationMinutes(durationText: string, logs: MatchLogItem[], setNo: number): string {
   const fromSummary = parseSetDurationMinutes(durationText);
-  if (fromSummary && Number(fromSummary) > 0) {
+  if (fromSummary !== "") {
     return fromSummary;
   }
   const fromLogs = getSetDurationMinutesFromLogs(logs, setNo);
@@ -450,21 +450,33 @@ function resolveSetDurationMinutes(durationText: string, logs: MatchLogItem[], s
   return fromSummary;
 }
 
+function sumDisplayedSetMinutes(
+  logs: MatchLogItem[],
+  setSummaryMap: Record<number, SetSummaryItem>
+): { totalMinutes: number; hasAnySetMinutes: boolean } {
+  let totalMinutes = 0;
+  let hasAnySetMinutes = false;
+  for (let setNo = 1; setNo <= 5; setNo += 1) {
+    const summary = setSummaryMap[setNo];
+    if (!hasSetResult(summary)) {
+      continue;
+    }
+    const mins = resolveSetDurationMinutes(String(summary && summary.durationText ? summary.durationText : ""), logs, setNo);
+    totalMinutes += Math.max(0, Number(mins) || 0);
+    hasAnySetMinutes = true;
+  }
+  return { totalMinutes, hasAnySetMinutes };
+}
+
 function getMatchTimeStats(
   logs: MatchLogItem[],
   setSummaryMap: Record<number, SetSummaryItem>
-): { startTs: number; endTs: number; totalMinutes: number } {
+): { startTs: number; endTs: number; totalMinutes: number; hasAnySetMinutes: boolean } {
   let startTs = 0;
   let endTs = 0;
   let firstActionTs = 0;
   let lastActionTs = 0;
-  let hasSetResultFlag = false;
-  for (let s = 1; s <= 5; s += 1) {
-    if (hasSetResult(setSummaryMap[s])) {
-      hasSetResultFlag = true;
-      break;
-    }
-  }
+  const displayedMinutes = sumDisplayedSetMinutes(logs, setSummaryMap);
   (logs || []).forEach((item) => {
     const ts = Math.max(0, Number(item.ts) || 0);
     const action = String(item.action || "");
@@ -503,19 +515,19 @@ function getMatchTimeStats(
     endTs = lastActionTs;
   }
   if (!startTs || !endTs || endTs < startTs) {
-    return { startTs, endTs, totalMinutes: 0 };
+    return {
+      startTs,
+      endTs,
+      totalMinutes: displayedMinutes.totalMinutes,
+      hasAnySetMinutes: displayedMinutes.hasAnySetMinutes,
+    };
   }
-  // 总时长按“显示用的分钟值”对齐计算，避免出现 19:11~20:18 却显示 1:06 的观感偏差。
-  const startMinuteTs = Math.floor(startTs / 60000) * 60000;
-  const endMinuteTs = Math.floor(endTs / 60000) * 60000;
-  let totalMinutes = Math.floor((endMinuteTs - startMinuteTs) / 60000);
-  if (totalMinutes < 0) {
-    totalMinutes = Math.floor((endTs - startTs) / 60000);
-  }
-  if (hasSetResultFlag && totalMinutes <= 0) {
-    totalMinutes = 1;
-  }
-  return { startTs, endTs, totalMinutes: Math.max(0, totalMinutes) };
+  return {
+    startTs,
+    endTs,
+    totalMinutes: displayedMinutes.totalMinutes,
+    hasAnySetMinutes: displayedMinutes.hasAnySetMinutes,
+  };
 }
 
 Page({
@@ -532,12 +544,15 @@ Page({
     winnerRGB: "81, 125, 209",
     bigScoreA: "0",
     bigScoreB: "0",
+    bigScoreLeadingTeam: "" as "" | "A" | "B",
     setOptions: [1] as number[],
     selectedSetNo: 1,
     selectedSmallScoreA: "--",
     selectedSmallScoreB: "--",
+    selectedSetLeadingTeam: "" as "" | "A" | "B",
     selectedSetWinnerText: "",
     selectedSetDurationText: "",
+    resultSetContentSwitching: false,
     scoreProgressRows: [] as ScoreProgressRowView[],
     scoreProgressHasData: false,
     scoreProgressEmpty: true,
@@ -563,6 +578,7 @@ Page({
   roomEnsureInFlight: false as boolean,
   roomEnsurePending: false as boolean,
   statusRouteRedirecting: false as boolean,
+  resultSetContentSwitchTimer: 0 as number,
 
   onLoad(query: Record<string, string>) {
     this.pageActive = true;
@@ -635,6 +651,10 @@ Page({
     this.isSheetGenerating = false;
     this.scoreSheetTempFilePath = "";
     this.scoreSheetPreparingPromise = null;
+    if (this.resultSetContentSwitchTimer) {
+      clearTimeout(this.resultSetContentSwitchTimer);
+      this.resultSetContentSwitchTimer = 0;
+    }
   },
 
   buildSetOptions(playedSets: number): number[] {
@@ -1045,7 +1065,6 @@ Page({
   applySetView(setNo: number) {
     const targetSet = toSetNo(setNo, 1);
     const summary = this.setSummaryMap[targetSet];
-    const winnerText = summary && summary.winnerName ? "本局" + summary.winnerName + "队胜" : "";
     const durationText = summary && summary.durationText && summary.durationText !== "00:00" ? "局时间 " + summary.durationText : "";
     const displayLogs = this.getDisplayLogsBySet(this.allLogs, targetSet);
     const scoreProgress = this.buildScoreProgressBySet(this.allLogs, targetSet);
@@ -1058,17 +1077,48 @@ Page({
       scoreProgress,
       gapRpx
     );
+    const smallScoreAValue = summary ? Number(summary.smallScoreA) : NaN;
+    const smallScoreBValue = summary ? Number(summary.smallScoreB) : NaN;
+    const selectedSetLeadingTeam: "" | "A" | "B" =
+      Number.isFinite(smallScoreAValue) && Number.isFinite(smallScoreBValue)
+        ? smallScoreAValue > smallScoreBValue
+          ? "A"
+          : smallScoreBValue > smallScoreAValue
+            ? "B"
+            : ""
+        : "";
     this.setData({
       selectedSetNo: targetSet,
       selectedSmallScoreA: summary ? summary.smallScoreA : "--",
       selectedSmallScoreB: summary ? summary.smallScoreB : "--",
-      selectedSetWinnerText: winnerText,
+      selectedSetLeadingTeam,
       selectedSetDurationText: durationText,
       scoreProgressRows,
       scoreProgressHasData: scoreProgress.hasData,
       scoreProgressEmpty: !scoreProgress.hasData,
       logs: Array.isArray(displayLogs) ? displayLogs : [],
     });
+  },
+
+  triggerResultSetContentSwitchAnimation() {
+    if (this.resultSetContentSwitchTimer) {
+      clearTimeout(this.resultSetContentSwitchTimer);
+      this.resultSetContentSwitchTimer = 0;
+    }
+    const start = () => {
+      this.setData({ resultSetContentSwitching: true });
+      this.resultSetContentSwitchTimer = setTimeout(() => {
+        this.resultSetContentSwitchTimer = 0;
+        if (this.data.resultSetContentSwitching) {
+          this.setData({ resultSetContentSwitching: false });
+        }
+      }, 320) as unknown as number;
+    };
+    if (this.data.resultSetContentSwitching) {
+      this.setData({ resultSetContentSwitching: false }, start);
+      return;
+    }
+    start();
   },
 
   isResultPageTop(): boolean {
@@ -1133,6 +1183,8 @@ Page({
       const bSetWins = Math.max(0, Number(room.match && room.match.bSetWins) || 0);
       const bigScoreA = String(aSetWins);
       const bigScoreB = String(bSetWins);
+      const bigScoreLeadingTeam: "" | "A" | "B" =
+        aSetWins > bSetWins ? "A" : bSetWins > aSetWins ? "B" : "";
       const teamAColor = String((room.teamA && (room.teamA as any).color) || "#837ae5");
       const teamBColor = String((room.teamB && (room.teamB as any).color) || "#4c87de");
       const teamARGB = hexToRgbTriplet(teamAColor, "131, 122, 229");
@@ -1236,6 +1288,7 @@ Page({
         winnerRGB,
         bigScoreA,
         bigScoreB,
+        bigScoreLeadingTeam,
         setOptions: this.buildSetOptions(playedSets),
       });
       this.applySetView(selectedSetNo);
@@ -1258,7 +1311,10 @@ Page({
     if (setNo === this.data.selectedSetNo) {
       return;
     }
-    this.applySetView(setNo);
+    this.setData({ resultSetContentSwitching: false }, () => {
+      this.applySetView(setNo);
+      this.triggerResultSetContentSwitchAnimation();
+    });
   },
 
   onShareAppMessage() {
@@ -1857,14 +1913,11 @@ Page({
             for (let i = 0; i < 5; i += 1) {
               const setNo = i + 1;
               const summary = this.setSummaryMap[setNo];
-              let mins = resolveSetDurationMinutes(
+              const mins = resolveSetDurationMinutes(
                 String(summary && summary.durationText ? summary.durationText : ""),
                 this.allLogs,
                 setNo
               );
-              if (hasSetResult(summary) && (!mins || Number(mins) <= 0)) {
-                mins = "1";
-              }
               if (!mins) {
                 continue;
               }
@@ -1894,31 +1947,13 @@ Page({
             ctx.font = `${songti900Weight} ${Math.round(summaryLine2FontPx * Math.min(scaleX, scaleY))}px ${this.scoreSheetSystemFamily}`;
             ctx.fillText("(                分)", durationCellCenterX * scaleX, durationLine2Y * scaleY);
             // 比赛用时中的分钟数：单独用等宽字体叠加渲染（不与中文混排）
-            let totalSetMinutes = 0;
-            let hasAnySetMinutes = false;
-            for (let i = 0; i < 5; i += 1) {
-              const setNo = i + 1;
-              const summary = this.setSummaryMap[setNo];
-              if (!hasSetResult(summary)) {
-                continue;
-              }
-              let mins = resolveSetDurationMinutes(
-                String(summary && summary.durationText ? summary.durationText : ""),
-                this.allLogs,
-                setNo
-              );
-              if (!mins || Number(mins) <= 0) {
-                mins = "1";
-              }
-              totalSetMinutes += Math.max(1, Number(mins) || 1);
-              hasAnySetMinutes = true;
-            }
-            if (hasAnySetMinutes) {
+            const displayedSetMinutes = sumDisplayedSetMinutes(this.allLogs, this.setSummaryMap);
+            if (displayedSetMinutes.hasAnySetMinutes) {
               const durationNumberOffsetX = -1 * 10;
               const durationNumberOffsetY = 1 * 10;
               ctx.font = `900 ${Math.round(summaryLine2FontPx * Math.min(scaleX, scaleY))}px "${this.scoreSheetMonoFamily}","Courier New","Roboto Mono","SFMono-Regular",monospace`;
               ctx.fillText(
-                String(totalSetMinutes),
+                String(displayedSetMinutes.totalMinutes),
                 (durationCellCenterX + durationNumberOffsetX) * scaleX,
                 (durationLine2Y + durationNumberOffsetY) * scaleY
               );
@@ -1950,8 +1985,8 @@ Page({
             const startMinute = startDate ? pad2(startDate.getMinutes()) : "";
             const endHour = endDate ? pad2(endDate.getHours()) : "";
             const endMinute = endDate ? pad2(endDate.getMinutes()) : "";
-            const totalHour = matchTime.totalMinutes > 0 ? String(Math.floor(matchTime.totalMinutes / 60)) : "";
-            const totalMinute = matchTime.totalMinutes > 0 ? pad2(matchTime.totalMinutes % 60) : "";
+            const totalHour = matchTime.hasAnySetMinutes ? String(Math.floor(matchTime.totalMinutes / 60)) : "";
+            const totalMinute = matchTime.hasAnySetMinutes ? pad2(matchTime.totalMinutes % 60) : "";
             const row10NumOffsetLeft = 15 * 10;
             const row10NumOffsetRight = 16 * 10;
             const drawRow10Numbers = (

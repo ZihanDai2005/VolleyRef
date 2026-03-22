@@ -132,7 +132,7 @@
           aScore="{{aScore}}"
           bScore="{{bScore}}"
           lastScoringTeam="{{lastScoringTeam}}"
-          allowScore="{{hasOperationAuthority}}"
+          allowScore="{{hasOperationAuthority && updatedAt > 0 && !showSetEndModal && !isMatchFinished}}"
           bind:scoreChange="onScoreChange"
         />
       </view>
@@ -690,12 +690,18 @@
 
   <view class="log-mask modal-mask {{showLogPanel ? 'modal-enter' : 'modal-leave'}}" wx:if="{{showLogPanel || logPanelClosing}}" bindtap="onCloseLogPanel">
     <view class="log-panel modal-panel {{showLogPanel ? 'modal-panel-enter' : 'modal-panel-leave'}}" style="{{logPanelInlineStyle}}" catchtap="onLogPanelTap">
-      <view class="log-head">
-        <view class="sub-panel-title-row">
-          <text class="log-title sub-panel-title">操作记录</text>
-          <text class="sub-panel-title popup-title-dot">.</text>
+      <view class="log-head log-head-centered">
+        <view class="log-head-slot log-head-slot-left">
+          <view class="action-btn icon-circle-btn modal-head-icon-btn pressable" hover-class="tap-active" bindtap="onCloseLogPanel">
+            <view class="btn-icon modal-head-icon icon-close"></view>
+          </view>
         </view>
-        <view class="log-head-right">
+        <view class="sub-panel-title-wrap sub-panel-title-wrap-centered">
+          <view class="sub-panel-title-row sub-panel-title-row-centered">
+            <text class="log-title sub-panel-title">操作记录</text>
+          </view>
+        </view>
+        <view class="log-head-slot log-head-slot-right">
           <view class="log-set-switch" wx:if="{{logSetSwitchVisible}}">
             <text class="log-set-label">局</text>
             <view class="log-set-seg">
@@ -709,10 +715,9 @@
               >{{item}}</view>
             </view>
           </view>
-          <button class="plain-btn small" size="mini" bindtap="onCloseLogPanel">关闭</button>
         </view>
       </view>
-      <scroll-view class="log-list" scroll-y="true">
+      <scroll-view class="log-list {{logContentSwitching ? 'switching' : ''}}" scroll-y="true">
         <view class="log-item" wx:for="{{logs}}" wx:key="id" wx:for-item="item">
           <text class="log-time">{{item.timeText}}</text>
           <text class="log-note">{{item.note}}</text>
@@ -724,20 +729,22 @@
 
   <view class="log-mask modal-mask {{showSubstitutionPanel ? 'modal-enter' : 'modal-leave'}}" wx:if="{{showSubstitutionPanel || substitutionPanelClosing}}" bindtap="onCloseSubstitutionPanel">
     <view class="log-panel substitution-panel modal-panel {{showSubstitutionPanel ? 'modal-panel-enter' : 'modal-panel-leave'}}" catchtap="onSubstitutionPanelTap">
-      <view class="log-head">
-        <view class="sub-panel-title-wrap">
-          <view class="sub-panel-title-row">
-            <text class="log-title sub-panel-title">局中换人</text>
-            <text class="sub-panel-title popup-title-dot">.</text>
+      <view class="log-head log-head-centered">
+        <view class="log-head-slot log-head-slot-left">
+          <view class="action-btn icon-circle-btn modal-head-icon-btn pressable" hover-class="tap-active" bindtap="onCloseSubstitutionPanel">
+            <view class="btn-icon modal-head-icon icon-close"></view>
           </view>
-          <text class="sub-panel-tip">自由人常规换人（与场上6人之间交换）请直接在比赛页拖拽自由人到目标球员位置。</text>
         </view>
-        <view class="log-head-right">
-          <view class="sub-head-record-btn pressable" hover-class="tap-active" bindtap="onToggleSubMatchLogPopover">
-            <view class="btn-icon icon-log"></view>
-            <text class="sub-head-record-text">记录</text>
+        <view class="sub-panel-title-wrap sub-panel-title-wrap-centered">
+          <view class="sub-panel-title-row sub-panel-title-row-centered">
+            <text class="log-title sub-panel-title">局中换人</text>
           </view>
-          <button class="plain-btn small" size="mini" bindtap="onCloseSubstitutionPanel">关闭</button>
+          <text class="sub-panel-tip sub-panel-tip-centered">自由人常规换人（与场上6人之间交换）请直接在比赛页拖拽自由人到目标位置替换。</text>
+        </view>
+        <view class="log-head-slot log-head-slot-right">
+          <view class="action-btn icon-circle-btn modal-head-icon-btn pressable" hover-class="tap-active" bindtap="onToggleSubMatchLogPopover">
+            <view class="btn-icon modal-head-icon icon-log"></view>
+          </view>
         </view>
       </view>
 
@@ -828,13 +835,13 @@
               </view>
             </view>
 
-            <view wx:if="{{subMode === 'special'}}" class="sub-field sub-special-reason-field">
-              <text class="sub-field-label">换人原因</text>
-              <view class="sub-seg {{subReasonSwitching ? 'seg-switching' : ''}}">
-                <view class="sub-seg-item {{subReason === 'injury' ? 'active' : ''}}" data-reason="injury" bindtap="onSubSelectReason">伤病</view>
-                <view class="sub-seg-item {{subReason === 'penalty_set' ? 'active' : ''}}" data-reason="penalty_set" bindtap="onSubSelectReason">处罚 (本局禁赛)</view>
-                <view class="sub-seg-item {{subReason === 'penalty_match' ? 'active' : ''}}" data-reason="penalty_match" bindtap="onSubSelectReason">处罚 (全场禁赛)</view>
-                <view class="sub-seg-item {{subReason === 'other' ? 'active' : ''}}" data-reason="other" bindtap="onSubSelectReason">其他</view>
+            <view wx:if="{{subMode === 'special'}}" class="sub-field sub-special-placeholder-field" aria-hidden="true">
+              <text class="sub-field-label sub-field-label-placeholder">换人原因</text>
+              <view class="sub-seg {{subReasonSwitching ? 'seg-switching' : ''}} sub-seg-placeholder">
+                <view class="sub-seg-item">伤病</view>
+                <view class="sub-seg-item">处罚 (本局禁赛)</view>
+                <view class="sub-seg-item">处罚 (全场禁赛)</view>
+                <view class="sub-seg-item">其他</view>
               </view>
             </view>
           </view>
@@ -850,37 +857,121 @@
       </view>
 
       <view class="sub-log-popover-mask {{showSubMatchLogPopover ? 'popover-enter' : 'popover-leave'}}" wx:if="{{showSubMatchLogPopover || subMatchLogPopoverClosing}}" bindtap="onCloseSubMatchLogPopover">
-        <view class="sub-log-popover {{showSubMatchLogPopover ? 'popover-enter' : 'popover-leave'}}" style="{{subLogPopoverInlineStyle}}" catchtap="onSubMatchLogPopoverTap">
+        <view class="sub-log-popover {{showSubMatchLogPopover ? 'popover-enter' : 'popover-leave'}}" catchtap="onSubMatchLogPopoverTap">
           <view class="log-head sub-log-popover-head">
             <text class="log-title">换人记录</text>
-            <picker
-              mode="selector"
-              range="{{subRecordTabOptions}}"
-              value="{{subRecordTabIndex}}"
-              bindchange="onSubRecordTabPickerChange"
-            >
-              <view class="sub-record-picker pressable" hover-class="tap-active">
-                <text class="sub-record-picker-text">{{subRecordTabOptions[subRecordTabIndex]}}</text>
-                <view class="sub-record-picker-icon"></view>
+            <view class="sub-record-picker-trigger">
+              <view
+                id="sub-log-tab-seg"
+                class="sub-record-picker pressable"
+                bindtap="onToggleSubRecordTabMenu"
+              >
+                <view class="sub-record-picker-content {{subRecordPickerSwitching ? 'switching' : ''}}">
+                  <view class="sub-record-picker-text-wrap">
+                    <text class="sub-record-picker-text">{{subRecordTabOptions[subRecordTabIndex]}}</text>
+                  </view>
+                  <view class="sub-record-picker-icon-wrap">
+                    <view class="sub-record-picker-icon {{showSubRecordTabMenu ? 'open' : ''}}"></view>
+                  </view>
+                </view>
               </view>
-            </picker>
+              <view class="sub-record-picker-menu {{showSubRecordTabMenu ? 'open' : ''}}" wx:if="{{showSubRecordTabMenu}}">
+                <view
+                  class="sub-record-picker-option pressable"
+                  wx:for="{{subRecordTabOptions}}"
+                  wx:key="index"
+                  wx:for-item="option"
+                  wx:for-index="index"
+                  data-tab="{{index === 0 ? 'normal' : index === 1 ? 'special' : 'libero'}}"
+                  bindtap="onSelectSubRecordTab"
+                >
+                  <text class="sub-record-picker-option-text {{subRecordTabIndex === index ? 'active' : ''}}">{{option}}</text>
+                </view>
+              </view>
+            </view>
           </view>
-          <scroll-view class="log-list sub-log-popover-list {{subRecordTabSwitching ? 'sub-record-list-switching' : ''}}" scroll-y="true">
-            <view class="log-item" wx:if="{{subRecordTab === 'normal'}}" wx:for="{{subNormalRecords}}" wx:key="index" wx:for-item="item">
-              <text class="log-time">{{item.index}}</text>
-              <text class="log-note">{{item.text}}</text>
-            </view>
-            <view class="log-item" wx:if="{{subRecordTab === 'special'}}" wx:for="{{subSpecialRecords}}" wx:key="index" wx:for-item="item">
-              <text class="log-time">{{item.index}}</text>
-              <text class="log-note">{{item.text}}</text>
-            </view>
-            <view class="log-item" wx:if="{{subRecordTab === 'libero'}}" wx:for="{{subLiberoRecords}}" wx:key="index" wx:for-item="item">
-              <text class="log-time">{{item.index}}</text>
-              <text class="log-note">{{item.text}}</text>
-            </view>
-            <view class="log-empty" wx:if="{{subRecordTab === 'normal' && !subNormalRecords.length}}">暂无普通换人记录</view>
-            <view class="log-empty" wx:if="{{subRecordTab === 'special' && !subSpecialRecords.length}}">暂无特殊换人记录</view>
-            <view class="log-empty" wx:if="{{subRecordTab === 'libero' && !subLiberoRecords.length}}">暂无自由人常规换人记录</view>
+          <scroll-view class="log-list sub-log-popover-list" scroll-y="true">
+            <block wx:if="{{subRecordTab === 'normal'}}">
+              <view class="sub-record-tab-body {{subRecordContentSwitching ? 'switching' : ''}}">
+                <block wx:if="{{subNormalRecords.length}}">
+                  <block wx:for="{{subNormalRecords}}" wx:key="index" wx:for-item="item">
+                    <view class="sub-record-item">
+                      <text class="sub-record-index">{{item.index}}</text>
+                      <view class="sub-record-note">
+                        <text class="sub-record-main-text" wx:if="{{item.mainText}}">{{item.mainText}}</text>
+                        <view class="sub-record-swap-row" wx:if="{{item.hasSwap}}">
+                          <view class="sub-record-swap-action">
+                            <view class="result-log-sub-arrow result-log-sub-arrow-up"></view>
+                            <text class="sub-record-swap-num">{{item.upNoText || item.upText}}</text>
+                            <text class="sub-record-libero-mark" wx:if="{{item.upMarker}}">{{item.upMarker}}</text>
+                          </view>
+                          <view class="sub-record-swap-action">
+                            <view class="result-log-sub-arrow result-log-sub-arrow-down"></view>
+                            <text class="sub-record-swap-num">{{item.downNoText || item.downText}}</text>
+                            <text class="sub-record-libero-mark" wx:if="{{item.downMarker}}">{{item.downMarker}}</text>
+                          </view>
+                        </view>
+                      </view>
+                    </view>
+                  </block>
+                </block>
+                <view class="sub-record-empty" wx:else>暂无记录</view>
+              </view>
+            </block>
+            <block wx:if="{{subRecordTab === 'special'}}">
+              <view class="sub-record-tab-body {{subRecordContentSwitching ? 'switching' : ''}}">
+                <block wx:if="{{subSpecialRecords.length}}">
+                  <block wx:for="{{subSpecialRecords}}" wx:key="index" wx:for-item="item">
+                    <view class="sub-record-item">
+                      <text class="sub-record-index">{{item.index}}</text>
+                      <view class="sub-record-note">
+                        <text class="sub-record-main-text" wx:if="{{item.mainText}}">{{item.mainText}}</text>
+                        <view class="sub-record-swap-row" wx:if="{{item.hasSwap}}">
+                          <view class="sub-record-swap-action">
+                            <view class="result-log-sub-arrow result-log-sub-arrow-up"></view>
+                            <text class="sub-record-swap-num">{{item.upNoText || item.upText}}</text>
+                            <text class="sub-record-libero-mark" wx:if="{{item.upMarker}}">{{item.upMarker}}</text>
+                          </view>
+                          <view class="sub-record-swap-action">
+                            <view class="result-log-sub-arrow result-log-sub-arrow-down"></view>
+                            <text class="sub-record-swap-num">{{item.downNoText || item.downText}}</text>
+                            <text class="sub-record-libero-mark" wx:if="{{item.downMarker}}">{{item.downMarker}}</text>
+                          </view>
+                        </view>
+                      </view>
+                    </view>
+                  </block>
+                </block>
+                <view class="sub-record-empty" wx:else>暂无记录</view>
+              </view>
+            </block>
+            <block wx:if="{{subRecordTab === 'libero'}}">
+              <view class="sub-record-tab-body {{subRecordContentSwitching ? 'switching' : ''}}">
+                <block wx:if="{{subLiberoRecords.length}}">
+                  <block wx:for="{{subLiberoRecords}}" wx:key="index" wx:for-item="item">
+                    <view class="sub-record-item">
+                      <text class="sub-record-index">{{item.index}}</text>
+                      <view class="sub-record-note">
+                        <text class="sub-record-main-text" wx:if="{{item.mainText}}">{{item.mainText}}</text>
+                        <view class="sub-record-swap-row" wx:if="{{item.hasSwap}}">
+                          <view class="sub-record-swap-action">
+                            <view class="result-log-sub-arrow result-log-sub-arrow-up"></view>
+                            <text class="sub-record-swap-num">{{item.upNoText || item.upText}}</text>
+                            <text class="sub-record-libero-mark" wx:if="{{item.upMarker}}">{{item.upMarker}}</text>
+                          </view>
+                          <view class="sub-record-swap-action">
+                            <view class="result-log-sub-arrow result-log-sub-arrow-down"></view>
+                            <text class="sub-record-swap-num">{{item.downNoText || item.downText}}</text>
+                            <text class="sub-record-libero-mark" wx:if="{{item.downMarker}}">{{item.downMarker}}</text>
+                          </view>
+                        </view>
+                      </view>
+                    </view>
+                  </block>
+                </block>
+                <view class="sub-record-empty" wx:else>暂无记录</view>
+              </view>
+            </block>
           </scroll-view>
         </view>
       </view>

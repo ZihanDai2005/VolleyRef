@@ -37,7 +37,18 @@ type MatchLogItem = {
   revertedOpId?: string;
 };
 type DisplayLogItem = MatchLogItem & { timeText: string };
-type SubRecordRow = { index: number; text: string };
+type SubRecordRow = {
+  index: number;
+  text: string;
+  mainText: string;
+  hasSwap: boolean;
+  upText: string;
+  downText: string;
+  upNoText: string;
+  upMarker: string;
+  downNoText: string;
+  downMarker: string;
+};
 type SubRecordSummary = {
   normal: SubRecordRow[];
   special: SubRecordRow[];
@@ -49,6 +60,7 @@ type SubRecordSummary = {
 type SpecialBanState = {
   setBanNos: Set<string>;
   matchBanNos: Set<string>;
+  matchLockedNos: Set<string>;
 };
 type NormalSubPair = {
   starterNo: string;
@@ -70,6 +82,31 @@ type SetStartLineupSnapshot = {
   teamBCaptainNo: string;
   savedAt: number;
   endedAt: number;
+};
+type UndoSnapshot = {
+  aScore: number;
+  bScore: number;
+  lastScoringTeam: TeamCode | "";
+  teamACurrentCaptainNo: string;
+  teamBCurrentCaptainNo: string;
+  setTimerStartAt: number;
+  setTimerElapsedMs: number;
+  servingTeam: TeamCode;
+  teamAPlayers: PlayerSlot[];
+  teamBPlayers: PlayerSlot[];
+  teamALiberoRoster: string[];
+  teamBLiberoRoster: string[];
+  liberoRosterSetNo: number;
+  isSwapped: boolean;
+  decidingSetEightHandled: boolean;
+  decidingSetEightPending: boolean;
+  setNo: number;
+  aSetWins: number;
+  bSetWins: number;
+  isFinished: boolean;
+  setSummaries: any;
+  liberoReentryLock: any;
+  lastActionOpId: string;
 };
 type TeamRows = {
   libero: PlayerSlot[];
@@ -162,10 +199,12 @@ const CONN_WATCHDOG_RECONNECT_MS = 33000;
 const CONN_WATCHDOG_OFFLINE_MS = 52000;
 const MODAL_ANIM_MS = 180;
 const SEG_SWITCH_ANIM_MS = 180;
+const SUB_RECORD_SWITCH_ANIM_MS = 320;
 const LOCAL_OP_ID_TTL_MS = 10 * 60 * 1000;
 const NORMAL_SUB_RETURN_TO_MAIN_HINT = "请将普通球员换回场上6人区再进行普通换人";
 const SPECIAL_SUB_NOT_READY_HINT = "当前未满足特殊换人条件";
 const SPECIAL_SUB_RESTRICTED_HINT = "当前仅可对符合条件球员执行特殊换人";
+const AUTHORITATIVE_ROOM_SYNC_BLOCK_MS = 1200;
 const LIBERO_REENTRY_SAME_POINT_HINT = "同一分内该自由人不可再次替换后排球员";
 const localOpIdSeenAt = new Map<string, number>();
 const SUB_RECORD_TAB_OPTIONS: Array<{ label: string; value: SubRecordTab }> = [
@@ -353,6 +392,33 @@ function reconcileLiberoRosterWithPlayers(players: PlayerSlot[], rosterRaw: unkn
   });
 
   return out.slice(0, 2);
+}
+
+function getLiberoRosterSlotIndex(
+  players: PlayerSlot[],
+  liberoRoster: string[],
+  selectedPos: Position,
+  downNoRaw: string
+): number {
+  const displayed = markDisplayPlayersByLiberoRoster(players || [], liberoRoster || []);
+  const selected = getPlayerByPos(displayed, selectedPos);
+  if (selected && selected.liberoTag === "L1") {
+    return 0;
+  }
+  if (selected && selected.liberoTag === "L2") {
+    return 1;
+  }
+  if (selectedPos === "L1") {
+    return 0;
+  }
+  if (selectedPos === "L2") {
+    return 1;
+  }
+  const downNo = normalizeSubstituteNumber(downNoRaw);
+  if (!downNo) {
+    return -1;
+  }
+  return normalizeLiberoRosterNumbers(liberoRoster || []).findIndex((n) => normalizeSubstituteNumber(n) === downNo);
 }
 
 function getTeamLiberoCapacityForCurrentSet(room: any, team: TeamCode): number {
@@ -688,6 +754,10 @@ function shouldPromptSwitchAtEight(room: any): boolean {
   return Math.max(room.match.aScore, room.match.bScore) >= 8;
 }
 
+function isDecidingSetEightPending(room: any): boolean {
+  return !!(room && room.match && (room.match as any).decidingSetEightPending);
+}
+
 function ensureClientId(): string {
   const app = getApp<IAppOption>();
   let clientId = String((app && app.globalData && app.globalData.clientId) || "");
@@ -810,24 +880,6 @@ function withTeamSuffixForDisplay(noteRaw: string, teamANameRaw: string, teamBNa
   return note;
 }
 
-function getSpecialReasonLabelForOperationLog(actionRaw: string, noteRaw: string): string {
-  const action = String(actionRaw || "");
-  const note = String(noteRaw || "");
-  if (action.indexOf("penalty_set") >= 0 || note.indexOf("本局禁赛") >= 0) {
-    return "本局禁赛";
-  }
-  if (action.indexOf("penalty_match") >= 0 || note.indexOf("全场禁赛") >= 0) {
-    return "全场禁赛";
-  }
-  if (action.indexOf("injury") >= 0 || note.indexOf("伤病") >= 0) {
-    return "伤病";
-  }
-  if (action.indexOf("other") >= 0 || note.indexOf("其他") >= 0) {
-    return "其他";
-  }
-  return "";
-}
-
 function getNormalPenaltyLabelForOperationLog(actionRaw: string, noteRaw: string): string {
   const action = String(actionRaw || "");
   const note = String(noteRaw || "");
@@ -858,7 +910,7 @@ function formatOperationLogNoteForDisplay(actionRaw: string, noteRaw: string): s
           parsedLibero.downIsLibero
         )
       : String(body || "").replace(/自由人常规换人|自由人普通换人/g, "").trim();
-    return (teamPrefix + "自由人普通换人" + (detail ? " " + detail : "")).replace(/\s{2,}/g, " ").trim();
+    return (teamPrefix + "自由人常规换人" + (detail ? " " + detail : "")).replace(/\s{2,}/g, " ").trim();
   }
 
   const isSpecial =
@@ -867,7 +919,6 @@ function formatOperationLogNoteForDisplay(actionRaw: string, noteRaw: string): s
     body.indexOf("自由人特殊换人") >= 0 ||
     body.indexOf("特殊自由人换人") >= 0;
   if (isSpecial) {
-    const reason = getSpecialReasonLabelForOperationLog(action, body);
     const parsedSpecialLibero = parseSpecialLiberoRecordText(normalized);
     const parsedGeneric = parseGenericSubRecordText(normalized);
     const detail = parsedSpecialLibero
@@ -878,12 +929,7 @@ function formatOperationLogNoteForDisplay(actionRaw: string, noteRaw: string): s
             .replace(/自由人特殊换人|特殊自由人换人|特殊换人/g, "")
             .replace(/伤病|本局禁赛|全场禁赛|其他/g, "")
             .trim();
-    return (
-      teamPrefix +
-      "特殊换人" +
-      (reason ? "（" + reason + "）" : "") +
-      (detail ? " " + detail : "")
-    )
+    return (teamPrefix + "特殊换人" + (detail ? " " + detail : ""))
       .replace(/\s{2,}/g, " ")
       .trim();
   }
@@ -956,6 +1002,65 @@ function appendSubRecordRow(rows: string[], text: string): void {
     return;
   }
   rows.push(line);
+}
+
+function parseSubRecordRowText(textRaw: string): {
+  mainText: string;
+  hasSwap: boolean;
+  upText: string;
+  downText: string;
+  upNoText: string;
+  upMarker: string;
+  downNoText: string;
+  downMarker: string;
+} {
+  const splitLiberoMarker = (valueRaw: string): { noText: string; marker: string } => {
+    const value = String(valueRaw || "").trim();
+    if (!value) {
+      return { noText: "", marker: "" };
+    }
+    const match = value.match(/^([0-9?]{1,2})\s*(?:[（(]?\s*自\s*[）)]?)?$/);
+    if (match) {
+      const marker = /[（(]?\s*自\s*[）)]?/.test(value.replace(match[1], "")) ? "自" : "";
+      return {
+        noText: String(match[1] || "").trim(),
+        marker,
+      };
+    }
+    return {
+      noText: value.replace(/[（(]?\s*自\s*[）)]?/g, "").trim(),
+      marker: /[（(]?\s*自\s*[）)]?/.test(value) ? "自" : "",
+    };
+  };
+  const text = normalizeSwapSymbolText(String(textRaw || "")).replace(/\s+/g, " ").trim();
+  const swapMatch = text.match(/↑\s*([0-9?]{1,2}(?:[（(]?\s*自\s*[）)]?)?)\s*↓\s*([0-9?]{1,2}(?:[（(]?\s*自\s*[）)]?)?)/);
+  if (!swapMatch) {
+    return {
+      mainText: text,
+      hasSwap: false,
+      upText: "",
+      downText: "",
+      upNoText: "",
+      upMarker: "",
+      downNoText: "",
+      downMarker: "",
+    };
+  }
+  const swapText = String(swapMatch[0] || "");
+  const upText = String(swapMatch[1] || "").trim();
+  const downText = String(swapMatch[2] || "").trim();
+  const upSplit = splitLiberoMarker(upText);
+  const downSplit = splitLiberoMarker(downText);
+  return {
+    mainText: text.replace(swapText, "").trim(),
+    hasSwap: true,
+    upText,
+    downText,
+    upNoText: upSplit.noText,
+    upMarker: upSplit.marker,
+    downNoText: downSplit.noText,
+    downMarker: downSplit.marker,
+  };
 }
 
 function parseGenericSubRecordText(noteRaw: string): { upNo: string; downNo: string; downIsLibero: boolean } | null {
@@ -1223,11 +1328,26 @@ function countNormalSubstitutionsBySet(logs: MatchLogItem[], setNo: number, team
   return count;
 }
 
+function getMatchEntryLockHint(banState: SpecialBanState, numberRaw: string): string {
+  const no = normalizeSubstituteNumber(numberRaw);
+  if (!no) {
+    return "";
+  }
+  if (banState.matchBanNos.has(no)) {
+    return "该号码已被全场禁赛，不能上场";
+  }
+  if (banState.matchLockedNos.has(no)) {
+    return "该号码已执行特殊换人，不能再上场";
+  }
+  return "";
+}
+
 function buildSpecialBanStateBySet(logs: MatchLogItem[], setNo: number, team: TeamCode): SpecialBanState {
   const targetSet = Math.max(1, Number(setNo || 1));
   const hiddenOpIds = buildRevertedOpIdSet(logs);
   const setBanNos = new Set<string>();
   const matchBanNos = new Set<string>();
+  const matchLockedNos = new Set<string>();
   (logs || []).forEach((item) => {
     if (!item || item.team !== team) {
       return;
@@ -1246,23 +1366,32 @@ function buildSpecialBanStateBySet(logs: MatchLogItem[], setNo: number, team: Te
     }
     const itemSetNo = Math.max(1, Number((item as any).setNo || extractSetNoFromNote(note) || 1));
     if (
+      action === "sub_special" ||
+      action === "sub_special_injury" ||
+      action === "sub_special_other" ||
       action === "sub_special_penalty_set" ||
-      action === "sub_normal_penalty_set" ||
+      action === "sub_special_penalty_match" ||
+      action === "sub_special_libero" ||
+      action === "sub_special_libero_injury" ||
+      action === "sub_special_libero_other" ||
       action === "sub_special_libero_penalty_set" ||
-      note.indexOf("本局禁赛") >= 0
+      action === "sub_special_libero_penalty_match" ||
+      action === "substitution_special" ||
+      note.indexOf("自由人特殊换人") >= 0 ||
+      note.indexOf("特殊自由人换人") >= 0 ||
+      note.indexOf("特殊换人") >= 0
     ) {
+      matchLockedNos.add(downNo);
+      return;
+    }
+    if (action === "sub_normal_penalty_set" || note.indexOf("本局禁赛") >= 0) {
       if (itemSetNo === targetSet) {
         setBanNos.add(downNo);
       }
       return;
     }
     if (
-      action === "sub_special_injury" ||
-      action === "sub_special_penalty_match" ||
       action === "sub_normal_penalty_match" ||
-      action === "sub_special_libero_injury" ||
-      action === "sub_special_libero_penalty_match" ||
-      action === "sub_special_libero" ||
       note.indexOf("全场禁赛") >= 0
     ) {
       matchBanNos.add(downNo);
@@ -1271,6 +1400,7 @@ function buildSpecialBanStateBySet(logs: MatchLogItem[], setNo: number, team: Te
   return {
     setBanNos,
     matchBanNos,
+    matchLockedNos,
   };
 }
 
@@ -1294,6 +1424,9 @@ function getLineupBanBlockMessage(
     seen.add(no);
     if (banState.matchBanNos.has(no)) {
       return teamName + "队 " + no + "号已被全场禁赛，不能进入本局名单";
+    }
+    if (banState.matchLockedNos.has(no)) {
+      return teamName + "队 " + no + "号已执行特殊换人，不能进入本局名单";
     }
     if (includeSetBan && banState.setBanNos.has(no)) {
       return teamName + "队 " + no + "号本局禁赛，不能进入本局名单";
@@ -1351,10 +1484,21 @@ function arePlayersSameByPos(a: PlayerSlot[], b: PlayerSlot[]): boolean {
 }
 
 function toSubRecordRows(lines: string[]): SubRecordRow[] {
-  return lines.map((text, idx) => ({
-    index: idx + 1,
-    text: text,
-  }));
+  return lines.map((text, idx) => {
+    const parsed = parseSubRecordRowText(text);
+    return {
+      index: idx + 1,
+      text: text,
+      mainText: parsed.mainText,
+      hasSwap: parsed.hasSwap,
+      upText: parsed.upText,
+      downText: parsed.downText,
+      upNoText: parsed.upNoText,
+      upMarker: parsed.upMarker,
+      downNoText: parsed.downNoText,
+      downMarker: parsed.downMarker,
+    };
+  });
 }
 
 function buildNormalSubPairsFromLogs(logs: MatchLogItem[], setNo: number, team: TeamCode): NormalSubPair[] {
@@ -1484,6 +1628,12 @@ function buildSpecialPenaltyPairAllowedPosBySet(
       punishedNos.add(normalized);
     }
   });
+  banState.matchLockedNos.forEach((no) => {
+    const normalized = normalizeSubstituteNumber(no);
+    if (normalized) {
+      punishedNos.add(normalized);
+    }
+  });
   if (!punishedNos.size) {
     return {};
   }
@@ -1545,6 +1695,47 @@ function buildLiberoZoneNormalPlayerAllowedPos(
   return out;
 }
 
+function buildClosedNormalPairAllowedPosBySet(
+  logs: MatchLogItem[],
+  setNo: number,
+  team: TeamCode,
+  players: PlayerSlot[]
+): Partial<Record<Position, boolean>> {
+  const pairs = buildNormalSubPairsFromLogs(logs, setNo, team);
+  if (!pairs.length) {
+    return {};
+  }
+  const lockedNos = new Set<string>();
+  pairs.forEach((pair) => {
+    if (!pair || !pair.closed) {
+      return;
+    }
+    const starterNo = normalizeSubstituteNumber(pair.starterNo);
+    const substituteNo = normalizeSubstituteNumber(pair.substituteNo);
+    if (starterNo) {
+      lockedNos.add(starterNo);
+    }
+    if (substituteNo) {
+      lockedNos.add(substituteNo);
+    }
+  });
+  if (!lockedNos.size) {
+    return {};
+  }
+  const out: Partial<Record<Position, boolean>> = {};
+  ensureTeamPlayerOrder(players || []).forEach((slot) => {
+    if (!slot || !isPosition(String(slot.pos || ""))) {
+      return;
+    }
+    const no = normalizeSubstituteNumber(String(slot.number || ""));
+    if (!no || !lockedNos.has(no)) {
+      return;
+    }
+    out[slot.pos as Position] = true;
+  });
+  return out;
+}
+
 function buildRestrictedSpecialAllowedPosBySet(
   logs: MatchLogItem[],
   setNo: number,
@@ -1554,6 +1745,7 @@ function buildRestrictedSpecialAllowedPosBySet(
 ): Partial<Record<Position, boolean>> {
   return {
     ...buildSpecialPenaltyPairAllowedPosBySet(logs, setNo, team, players),
+    ...buildClosedNormalPairAllowedPosBySet(logs, setNo, team, players),
     ...buildLiberoZoneNormalPlayerAllowedPos(players, liberoRoster),
   };
 }
@@ -1957,8 +2149,12 @@ function pushUndoSnapshot(room: any): void {
     servingTeam: room.match.servingTeam,
     teamAPlayers: room.teamA.players.slice(),
     teamBPlayers: room.teamB.players.slice(),
+    teamALiberoRoster: normalizeLiberoRosterNumbers((room.match as any).teamALiberoRoster || []),
+    teamBLiberoRoster: normalizeLiberoRosterNumbers((room.match as any).teamBLiberoRoster || []),
+    liberoRosterSetNo: Math.max(0, Number((room.match as any).liberoRosterSetNo || 0)),
     isSwapped: !!room.match.isSwapped,
     decidingSetEightHandled: !!room.match.decidingSetEightHandled,
+    decidingSetEightPending: !!(room.match as any).decidingSetEightPending,
     setNo: room.match.setNo,
     aSetWins: room.match.aSetWins,
     bSetWins: room.match.bSetWins,
@@ -1967,7 +2163,7 @@ function pushUndoSnapshot(room: any): void {
     setSummaries: JSON.parse(JSON.stringify((room.match as any).setSummaries || {})),
     liberoReentryLock: JSON.parse(JSON.stringify((room.match as any).liberoReentryLock || null)),
     lastActionOpId: String((room.match as any).lastActionOpId || ""),
-  });
+  } as UndoSnapshot);
   if (room.match.undoStack.length > 100) {
     room.match.undoStack.shift();
   }
@@ -2253,18 +2449,21 @@ Page({
     showSubMatchLogPopover: false,
     subMatchLogPopoverClosing: false,
     subLogPopoverInlineStyle: "",
+    showSubRecordTabMenu: false,
     subRecordTab: "normal" as SubRecordTab,
     subRecordTabOptions: SUB_RECORD_TAB_OPTIONS.map((item) => item.label),
     subRecordTabIndex: 0,
+    subRecordPickerSwitching: false,
+    subRecordContentSwitching: false,
     subModeSwitching: false,
     subReasonSwitching: false,
-    subRecordTabSwitching: false,
     subSpecialDisabled: true,
     subNormalModeLimitLocked: false,
     logs: [] as DisplayLogItem[],
     logSetSwitchVisible: false,
     logSetOptions: [] as number[],
     selectedLogSet: 1,
+    logContentSwitching: false,
     hideTeamAMainNumbers: false,
     hideTeamBMainNumbers: false,
     rotateFlyItemsA: [] as RotateFlyItem[],
@@ -2306,6 +2505,8 @@ Page({
     setEndMatchFinished: false,
     setEndActionText: "继续",
     setEndWaiting: false,
+    decidingSetEightPending: false,
+    roomAuthoritySyncing: false,
     connStatusText: "信号正常",
     connStatusClass: "status-online",
     roomOwnerClientId: "",
@@ -2409,6 +2610,15 @@ Page({
   rectCacheWarmupTimer: 0 as number,
   rectCacheWarmupInFlight: false as boolean,
   rotateActionInFlight: false as boolean,
+  decidingSetEightPrompting: false as boolean,
+  decidingSetEightPromptTimer: 0 as number,
+  decidingSetEightBlockedToastAt: 0 as number,
+  decidingSetEightChoiceActive: false as boolean,
+  authoritativeRoomSyncing: false as boolean,
+  authoritativeRoomSyncToken: 0 as number,
+  authoritativeRoomSyncToastAt: 0 as number,
+  authoritativeRoomSyncStartedAt: 0 as number,
+  authoritativeRoomSyncForceReleaseTimer: 0 as number,
   pageActive: false as boolean,
   lastFrontRowLiberoHintSign: "" as string,
   frontRowLiberoFixing: false as boolean,
@@ -2442,6 +2652,8 @@ Page({
   subModeSwitchTimer: 0 as number,
   subReasonSwitchTimer: 0 as number,
   subRecordTabSwitchTimer: 0 as number,
+  subRecordContentSwitchTimer: 0 as number,
+  logContentSwitchTimer: 0 as number,
   captainConfirmContentSwitchTimer: 0 as number,
 
   getConnState(): ConnState {
@@ -2660,6 +2872,116 @@ Page({
 
   isMatchInteractionLocked(): boolean {
     return this.isBetweenSetMode() || this.isEditPlayersMode();
+  },
+
+  isAuthoritativeRoomSyncing(): boolean {
+    if (
+      this.authoritativeRoomSyncing &&
+      this.authoritativeRoomSyncStartedAt > 0 &&
+      Date.now() - this.authoritativeRoomSyncStartedAt > AUTHORITATIVE_ROOM_SYNC_BLOCK_MS + 120
+    ) {
+      this.finishAuthoritativeRoomSync();
+      return false;
+    }
+    return !!this.authoritativeRoomSyncing;
+  },
+
+  clearAuthoritativeRoomSyncForceReleaseTimer() {
+    if (!this.authoritativeRoomSyncForceReleaseTimer) {
+      return;
+    }
+    clearTimeout(this.authoritativeRoomSyncForceReleaseTimer);
+    this.authoritativeRoomSyncForceReleaseTimer = 0;
+  },
+
+  finishAuthoritativeRoomSync() {
+    this.clearAuthoritativeRoomSyncForceReleaseTimer();
+    this.authoritativeRoomSyncing = false;
+    this.authoritativeRoomSyncStartedAt = 0;
+    if (this.data.roomAuthoritySyncing) {
+      this.setData({ roomAuthoritySyncing: false });
+    }
+  },
+
+  notifyAuthoritativeRoomSyncing() {
+    const now = Date.now();
+    if (now - this.authoritativeRoomSyncToastAt < 900) {
+      return;
+    }
+    this.authoritativeRoomSyncToastAt = now;
+    showToastHint("同步中，请稍候");
+  },
+
+  hasRoomSnapshotReady(): boolean {
+    return Number(this.data.updatedAt || 0) > 0;
+  },
+
+  async refreshRoomAuthoritatively(roomId: string) {
+    const id = String(roomId || "");
+    if (!id) {
+      return;
+    }
+    if (this.authoritativeRoomSyncing) {
+      return;
+    }
+    const token = ++this.authoritativeRoomSyncToken;
+    this.authoritativeRoomSyncing = true;
+    this.authoritativeRoomSyncStartedAt = Date.now();
+    this.setData({ roomAuthoritySyncing: true });
+    this.clearAuthoritativeRoomSyncForceReleaseTimer();
+    this.authoritativeRoomSyncForceReleaseTimer = setTimeout(() => {
+      if (token === this.authoritativeRoomSyncToken && this.authoritativeRoomSyncing) {
+        this.finishAuthoritativeRoomSync();
+      }
+    }, AUTHORITATIVE_ROOM_SYNC_BLOCK_MS + 120) as unknown as number;
+    const pullOrTimeout = async () => {
+      return Promise.race([
+        forcePullRoomAsync(id),
+        new Promise<null>((resolve) => {
+          setTimeout(() => resolve(null), AUTHORITATIVE_ROOM_SYNC_BLOCK_MS);
+        }),
+      ]);
+    };
+    try {
+      await pullOrTimeout();
+      if (token !== this.authoritativeRoomSyncToken) {
+        return;
+      }
+      await this.loadRoom(id, true, true);
+    } finally {
+      if (token === this.authoritativeRoomSyncToken) {
+        this.finishAuthoritativeRoomSync();
+      }
+    }
+  },
+
+  isDecidingSetEightPendingActive(): boolean {
+    return false;
+  },
+
+  notifyDecidingSetEightPending() {
+    return;
+  },
+
+  isDecidingSetEightChoiceActive(): boolean {
+    return !!this.decidingSetEightChoiceActive;
+  },
+
+  notifyDecidingSetEightChoiceActive() {
+    const now = Date.now();
+    if (now - this.decidingSetEightBlockedToastAt < 900) {
+      return;
+    }
+    this.decidingSetEightBlockedToastAt = now;
+    showToastHint("请先处理决胜局8分换边");
+  },
+
+  scheduleDecidingSetEightModal(_roomId?: string) {
+    return;
+  },
+
+  maybeShowDecidingSetEightModal(_roomId?: string) {
+    return;
   },
 
   resolveMatchReturnState(): "prestart" | "playing" {
@@ -3062,25 +3384,37 @@ Page({
     });
   },
 
-  shouldForceCaptainReconfirm(_team: TeamCode, beforePlayers: PlayerSlot[], afterPlayers: PlayerSlot[], captainNoRaw: string): boolean {
+  shouldForceCaptainReconfirm(
+    _team: TeamCode,
+    beforePlayers: PlayerSlot[],
+    afterPlayers: PlayerSlot[],
+    captainNoRaw: string,
+    teamInitialCaptainNoRaw?: string
+  ): boolean {
     // 赛前尚未确认场上队长时，不触发“重新选择场上队长”弹窗。
     if (!this.data.preStartCaptainConfirmed) {
       return false;
     }
     const captainNo = normalizeNumberInput(String(captainNoRaw || ""));
-    if (!captainNo) {
-      return false;
+    const teamInitialCaptainNo = normalizeNumberInput(String(teamInitialCaptainNoRaw || ""));
+    // 条件1：当前场上队长被换下（不在场上6人，或已不在场上）
+    let currentCaptainMovedOut = false;
+    if (captainNo) {
+      const beforeInMain = isNumberInMain(beforePlayers || [], captainNo);
+      if (beforeInMain) {
+        const afterInMain = isNumberInMain(afterPlayers || [], captainNo);
+        const stillOnCourt = isNumberOnCourt(afterPlayers || [], captainNo);
+        currentCaptainMovedOut = !afterInMain || !stillOnCourt;
+      }
     }
-    const beforeInMain = isNumberInMain(beforePlayers || [], captainNo);
-    if (!beforeInMain) {
-      return false;
+    // 条件2：真实队长被换上到场上6人（可能造成“双队长”，必须重选）
+    let initialCaptainMovedInMain = false;
+    if (teamInitialCaptainNo) {
+      const beforeInitialInMain = isNumberInMain(beforePlayers || [], teamInitialCaptainNo);
+      const afterInitialInMain = isNumberInMain(afterPlayers || [], teamInitialCaptainNo);
+      initialCaptainMovedInMain = !beforeInitialInMain && afterInitialInMain;
     }
-    const afterInMain = isNumberInMain(afterPlayers || [], captainNo);
-    if (!afterInMain) {
-      return true;
-    }
-    const stillOnCourt = isNumberOnCourt(afterPlayers || [], captainNo);
-    return !stillOnCourt;
+    return currentCaptainMovedOut || initialCaptainMovedInMain;
   },
 
   getTeamCurrentCaptainNoFromRoom(room: any, team: TeamCode): string {
@@ -3395,6 +3729,46 @@ Page({
     this.subRecordTabSwitchTimer = 0;
   },
 
+  clearSubRecordContentSwitchTimer() {
+    if (!this.subRecordContentSwitchTimer) {
+      return;
+    }
+    clearTimeout(this.subRecordContentSwitchTimer);
+    this.subRecordContentSwitchTimer = 0;
+  },
+
+  clearLogContentSwitchTimer() {
+    if (!this.logContentSwitchTimer) {
+      return;
+    }
+    clearTimeout(this.logContentSwitchTimer);
+    this.logContentSwitchTimer = 0;
+  },
+
+  triggerLogContentSwitchAnimation() {
+    this.clearLogContentSwitchTimer();
+    const start = () => {
+      this.setData({ logContentSwitching: true });
+      this.logContentSwitchTimer = setTimeout(() => {
+        this.logContentSwitchTimer = 0;
+        if (this.data.logContentSwitching) {
+          this.setData({ logContentSwitching: false });
+        }
+      }, SUB_RECORD_SWITCH_ANIM_MS) as unknown as number;
+    };
+    if (this.data.logContentSwitching) {
+      this.setData({ logContentSwitching: false }, start);
+      return;
+    }
+    start();
+  },
+
+  onToggleSubRecordTabMenu() {
+    this.setData({
+      showSubRecordTabMenu: !this.data.showSubRecordTabMenu,
+    });
+  },
+
   triggerSubModeSwitchAnimation() {
     this.clearSubModeSwitchTimer();
     const start = () => {
@@ -3434,19 +3808,67 @@ Page({
   triggerSubRecordTabSwitchAnimation() {
     this.clearSubRecordTabSwitchTimer();
     const start = () => {
-      this.setData({ subRecordTabSwitching: true });
+      this.setData({
+        subRecordPickerSwitching: true,
+      });
       this.subRecordTabSwitchTimer = setTimeout(() => {
         this.subRecordTabSwitchTimer = 0;
-        if (this.data.subRecordTabSwitching) {
-          this.setData({ subRecordTabSwitching: false });
+        if (this.data.subRecordPickerSwitching) {
+          this.setData({
+            subRecordPickerSwitching: false,
+          });
         }
-      }, SEG_SWITCH_ANIM_MS) as unknown as number;
+      }, SUB_RECORD_SWITCH_ANIM_MS) as unknown as number;
     };
-    if (this.data.subRecordTabSwitching) {
-      this.setData({ subRecordTabSwitching: false }, start);
+    if (this.data.subRecordPickerSwitching) {
+      this.setData({
+        subRecordPickerSwitching: false,
+      }, start);
       return;
     }
     start();
+  },
+
+  triggerSubRecordContentSwitchAnimation() {
+    this.clearSubRecordContentSwitchTimer();
+    const start = () => {
+      this.setData({
+        subRecordContentSwitching: true,
+      });
+      this.subRecordContentSwitchTimer = setTimeout(() => {
+        this.subRecordContentSwitchTimer = 0;
+        if (this.data.subRecordContentSwitching) {
+          this.setData({
+            subRecordContentSwitching: false,
+          });
+        }
+      }, SUB_RECORD_SWITCH_ANIM_MS) as unknown as number;
+    };
+    if (this.data.subRecordContentSwitching) {
+      this.setData({
+        subRecordContentSwitching: false,
+      }, start);
+      return;
+    }
+    start();
+  },
+
+  switchSubRecordTab(tab: SubRecordTab) {
+    if (tab === this.data.subRecordTab) {
+      this.setData({ showSubRecordTabMenu: false });
+      return;
+    }
+    this.clearSubRecordTabSwitchTimer();
+    this.setData({
+      showSubRecordTabMenu: false,
+      subRecordTab: tab,
+      subRecordTabIndex: getSubRecordTabIndex(tab),
+      subRecordPickerSwitching: false,
+      subRecordContentSwitching: false,
+    }, () => {
+      this.triggerSubRecordTabSwitchAnimation();
+      this.triggerSubRecordContentSwitchAnimation();
+    });
   },
 
   closeLogPanelAnimated() {
@@ -3471,11 +3893,14 @@ Page({
       return;
     }
     this.clearSubRecordTabSwitchTimer();
+    this.clearSubRecordContentSwitchTimer();
     this.clearSubMatchLogPopoverCloseTimer();
     this.setData({
       showSubMatchLogPopover: false,
       subMatchLogPopoverClosing: true,
-      subRecordTabSwitching: false,
+      showSubRecordTabMenu: false,
+      subRecordPickerSwitching: false,
+      subRecordContentSwitching: false,
     });
     this.subMatchLogPopoverCloseTimer = setTimeout(() => {
       this.subMatchLogPopoverCloseTimer = 0;
@@ -3493,6 +3918,7 @@ Page({
     this.clearSubModeSwitchTimer();
     this.clearSubReasonSwitchTimer();
     this.clearSubRecordTabSwitchTimer();
+    this.clearSubRecordContentSwitchTimer();
     this.clearSubstitutionPanelCloseTimer();
     this.clearSubMatchLogPopoverCloseTimer();
     this.setData({
@@ -3509,6 +3935,7 @@ Page({
           showSubMatchLogPopover: false,
           subMatchLogPopoverClosing: false,
           subLogPopoverInlineStyle: "",
+          showSubRecordTabMenu: false,
           subRecordTab: "normal",
           subRecordTabIndex: getSubRecordTabIndex("normal"),
           subSelectedPos: "",
@@ -3518,7 +3945,7 @@ Page({
           subIncomingLockedNo: "",
           subModeSwitching: false,
           subReasonSwitching: false,
-          subRecordTabSwitching: false,
+          subRecordPickerSwitching: false,
         });
       }
     }, MODAL_ANIM_MS) as unknown as number;
@@ -3623,7 +4050,6 @@ Page({
         subIncomingLockedNo: "",
         subModeSwitching: false,
         subReasonSwitching: false,
-        subRecordTabSwitching: false,
         subNormalDisabled: autoSpecial,
         subNormalModeLimitLocked: false,
       },
@@ -3950,6 +4376,9 @@ Page({
       const teamObj = team === "A" ? room.teamA : room.teamB;
       const players = ensureTeamPlayerOrder(teamObj.players || []);
       const captainNo = this.getTeamCurrentCaptainNoFromRoom(room, team);
+      const teamInitialCaptainNo = normalizeNumberInput(
+        String((teamObj as any).captainNo || (team === "A" ? this.data.teamAInitialCaptainNo : this.data.teamBInitialCaptainNo) || "")
+      );
       const fromSlot = getPlayerByPos(players, fromPos);
       const toSlot = getPlayerByPos(players, toPos);
       if (!fromSlot || !toSlot) {
@@ -3996,7 +4425,7 @@ Page({
       const tmpNo = nextPlayers[fromIdx].number;
       nextPlayers[fromIdx].number = nextPlayers[toIdx].number;
       nextPlayers[toIdx].number = tmpNo;
-      if (this.shouldForceCaptainReconfirm(team, players, nextPlayers, captainNo)) {
+      if (this.shouldForceCaptainReconfirm(team, players, nextPlayers, captainNo, teamInitialCaptainNo)) {
         shouldForceCaptainReconfirmForTeam = team;
       }
       const opId = createLogId();
@@ -4119,7 +4548,7 @@ Page({
     }
     this.bindNetworkStatus();
     this.refreshNetworkState();
-    this.loadRoom(roomId, true);
+    void this.refreshRoomAuthoritatively(roomId);
   },
 
   onShow() {
@@ -4138,7 +4567,7 @@ Page({
     this.refreshNetworkState();
     const roomId = String(this.data.roomId || "");
     if (roomId) {
-      void this.loadRoom(roomId, true, true);
+      void this.refreshRoomAuthoritatively(roomId);
     }
     this.startHeartbeat();
     this.startConnWatchdog();
@@ -4173,6 +4602,8 @@ Page({
     this.clearSubModeSwitchTimer();
     this.clearSubReasonSwitchTimer();
     this.clearSubRecordTabSwitchTimer();
+    this.clearLogContentSwitchTimer();
+    this.clearAuthoritativeRoomSyncForceReleaseTimer();
     this.clearSwapDragVisual();
     this.clearQuickSubFlashTimer();
     this.clearFlowSwitchInTimer();
@@ -4194,8 +4625,7 @@ Page({
       this.data.captainConfirmContentSwitching ||
       this.data.subMatchLogPopoverClosing ||
       this.data.subModeSwitching ||
-      this.data.subReasonSwitching ||
-      this.data.subRecordTabSwitching
+      this.data.subReasonSwitching
     ) {
       this.setData({
         setEndModalClosing: false,
@@ -4206,7 +4636,10 @@ Page({
         subMatchLogPopoverClosing: false,
         subModeSwitching: false,
         subReasonSwitching: false,
-        subRecordTabSwitching: false,
+        showSubRecordTabMenu: false,
+        subRecordPickerSwitching: false,
+        subRecordContentSwitching: false,
+        logContentSwitching: false,
       });
     }
     this.hideRoomPassword();
@@ -4256,6 +4689,13 @@ Page({
     this.clearSubModeSwitchTimer();
     this.clearSubReasonSwitchTimer();
     this.clearSubRecordTabSwitchTimer();
+    this.clearSubRecordContentSwitchTimer();
+    this.clearLogContentSwitchTimer();
+    this.clearAuthoritativeRoomSyncForceReleaseTimer();
+    if (this.decidingSetEightPromptTimer) {
+      clearTimeout(this.decidingSetEightPromptTimer);
+      this.decidingSetEightPromptTimer = 0;
+    }
     this.clearSwapDragVisual();
     this.clearQuickSubFlashTimer();
     this.clearFlowSwitchInTimer();
@@ -4277,8 +4717,7 @@ Page({
       this.data.captainConfirmContentSwitching ||
       this.data.subMatchLogPopoverClosing ||
       this.data.subModeSwitching ||
-      this.data.subReasonSwitching ||
-      this.data.subRecordTabSwitching
+      this.data.subReasonSwitching
     ) {
       this.setData({
         setEndModalClosing: false,
@@ -4289,7 +4728,10 @@ Page({
         subMatchLogPopoverClosing: false,
         subModeSwitching: false,
         subReasonSwitching: false,
-        subRecordTabSwitching: false,
+        showSubRecordTabMenu: false,
+        subRecordPickerSwitching: false,
+        subRecordContentSwitching: false,
+        logContentSwitching: false,
       });
     }
     this.hideRoomPassword();
@@ -5271,8 +5713,9 @@ Page({
       if (this.data.matchFlowMode === "between_sets") {
         const setNo = Math.max(1, Number(this.data.setNo || 1));
         const banState = buildSpecialBanStateBySet(this.allLogs || [], setNo, team as TeamCode);
-        if (banState.matchBanNos.has(normalized)) {
-          showToastHint("该号码已被全场禁赛，不能上场");
+        const banHint = getMatchEntryLockHint(banState, normalized);
+        if (banHint) {
+          showToastHint(banHint);
         }
       }
     }
@@ -5552,6 +5995,13 @@ Page({
         const teamObj = candidate.team === "A" ? room.teamA : room.teamB;
         const players = ensureTeamPlayerOrder(teamObj.players || []);
         const captainNo = this.getTeamCurrentCaptainNoFromRoom(room, candidate.team);
+        const teamInitialCaptainNo = normalizeNumberInput(
+          String(
+            (teamObj as any).captainNo ||
+              (candidate.team === "A" ? this.data.teamAInitialCaptainNo : this.data.teamBInitialCaptainNo) ||
+              ""
+          )
+        );
         const roster = getLiberoRosterForTeam(room, candidate.team, candidate.team === "A" ? this.data.teamALiberoRosterNos || [] : this.data.teamBLiberoRosterNos || []);
         const rosterSet = buildLiberoRosterSet(roster);
         const frontSlot = getPlayerByPos(players, candidate.frontPos as Position);
@@ -5583,7 +6033,7 @@ Page({
         const tmpNo = nextPlayers[frontIdx].number;
         nextPlayers[frontIdx].number = nextPlayers[liberoIdx].number;
         nextPlayers[liberoIdx].number = tmpNo;
-        if (this.shouldForceCaptainReconfirm(candidate.team, players, nextPlayers, captainNo)) {
+        if (this.shouldForceCaptainReconfirm(candidate.team, players, nextPlayers, captainNo, teamInitialCaptainNo)) {
           shouldForceCaptainReconfirmForTeam = candidate.team;
         }
         teamObj.players = nextPlayers;
@@ -5922,11 +6372,11 @@ Page({
         showSubMatchLogPopover: false,
         subMatchLogPopoverClosing: false,
         subLogPopoverInlineStyle: "",
+        showSubRecordTabMenu: false,
         subRecordTab: draft.mode === "special" ? "special" : "normal",
         subRecordTabIndex: getSubRecordTabIndex(draft.mode === "special" ? "special" : "normal"),
         subModeSwitching: false,
         subReasonSwitching: false,
-        subRecordTabSwitching: false,
       },
       () => {
         this.persistSubstitutionDraft();
@@ -7186,6 +7636,11 @@ Page({
         (effectiveCanStartMatch || keepCaptainConfirmInPlaying) &&
         !!this.data.showCaptainConfirmModal;
       const playerCardsEditable = controlRole === "operator" && (flowMode === "edit_players" || flowMode === "between_sets");
+      const enteringBetweenSets = flowMode === "between_sets" && this.data.matchFlowMode !== "between_sets";
+      if (enteringBetweenSets) {
+        this.editDisplayRoleMapA = buildDisplayRoleMapFromDisplayedPlayers(roomADisplayPlayers);
+        this.editDisplayRoleMapB = buildDisplayRoleMapFromDisplayedPlayers(roomBDisplayPlayers);
+      }
       if ((flowMode === "edit_players" || flowMode === "between_sets") && controlRole === "operator") {
         const roleMapA = this.ensureEditDisplayRoleMap("A", roomADisplayPlayers);
         const roleMapB = this.ensureEditDisplayRoleMap("B", roomBDisplayPlayers);
@@ -7332,6 +7787,7 @@ Page({
         matchFlowReturnState: roomFlowReturnState,
         playerCardsEditable: playerCardsEditable,
         isDecidingSet: isDecidingSet,
+        decidingSetEightPending: isDecidingSetEightPending(room),
         teamASideText: nextSwapped ? "右场区" : "左场区",
         teamBSideText: nextSwapped ? "左场区" : "右场区",
         betweenHeadTitle: "确认下一局的球员配置",
@@ -7399,6 +7855,7 @@ Page({
         }, MODAL_ANIM_MS) as unknown as number;
       }
       this.finishFlowModeSwitchIn(shouldAnimateFlowChange);
+      this.maybeShowDecidingSetEightModal(roomId);
       if (!freezeSetEndDisplay && controlRole !== "operator") {
         const latestLocalObserverSide =
           this.observerViewSideLocal === "A" || this.observerViewSideLocal === "B"
@@ -7562,6 +8019,18 @@ Page({
   },
 
   onScoreChange(e: WechatMiniprogram.CustomEvent) {
+    if (!this.hasRoomSnapshotReady()) {
+      this.notifyAuthoritativeRoomSyncing();
+      return;
+    }
+    if (this.isDecidingSetEightChoiceActive()) {
+      this.notifyDecidingSetEightChoiceActive();
+      return;
+    }
+    if (this.isDecidingSetEightPendingActive()) {
+      this.notifyDecidingSetEightPending();
+      return;
+    }
     const raw = (e && e.detail ? (e.detail as { team?: TeamCode; type?: "add" | "sub" }) : {}) || {};
     const detail = {
       team: raw.team,
@@ -7571,7 +8040,19 @@ Page({
   },
 
   async handleScoreChange(detail: { team?: TeamCode; type?: "add" | "sub" }) {
+    if (!this.hasRoomSnapshotReady()) {
+      this.notifyAuthoritativeRoomSyncing();
+      return;
+    }
+    if (this.isDecidingSetEightChoiceActive()) {
+      this.notifyDecidingSetEightChoiceActive();
+      return;
+    }
     if (this.isMatchInteractionLocked()) {
+      return;
+    }
+    if (this.isDecidingSetEightPendingActive()) {
+      this.notifyDecidingSetEightPending();
       return;
     }
     if (this.data.showSetEndModal) {
@@ -7808,6 +8289,7 @@ Page({
               room.match.servingTeam = setWinner;
               room.match.isSwapped = false;
               room.match.decidingSetEightHandled = false;
+              (room.match as any).decidingSetEightPending = false;
               (room.match as any).timeoutActive = false;
               (room.match as any).timeoutTeam = "";
               (room.match as any).timeoutEndAt = 0;
@@ -7847,6 +8329,7 @@ Page({
         if (!needDecidingSetSwitchChoice) {
           return;
         }
+        this.decidingSetEightChoiceActive = true;
         wx.showModal({
           title: "决胜局8分",
           content: "是否现在换边？",
@@ -7854,14 +8337,20 @@ Page({
           cancelText: "不换边",
           success: (res) => {
             if (res.confirm) {
-              void this.switchSidesWithAnimation("自动换边（决胜局）");
+              void this.switchSidesWithAnimation("自动换边（决胜局）").finally(() => {
+                this.decidingSetEightChoiceActive = false;
+              });
               return;
             }
-            void this.loadRoom(roomId, true);
+            void this.loadRoom(roomId, true).finally(() => {
+              this.decidingSetEightChoiceActive = false;
+            });
+          },
+          fail: () => {
+            this.decidingSetEightChoiceActive = false;
           },
         });
       };
-
       if (!rotatedTeam) {
         this.applyLocalScoreFromRoom(next);
         releaseRotateLock();
@@ -7882,6 +8371,7 @@ Page({
           "forward"
         );
       }
+      this.maybeShowFrontRowLiberoHint(next);
       releaseRotateLock();
       this.clearPendingRoomLoadRetry();
       this.roomLoadPending = false;
@@ -7893,8 +8383,9 @@ Page({
     }
   },
 
-  switchSidesWithAnimation(logNote: string) {
+  switchSidesWithAnimation(logNote: string, options?: { clearDecidingSetEightPending?: boolean }) {
     const roomId = this.data.roomId;
+    const clearDecidingSetEightPending = !!(options && options.clearDecidingSetEightPending);
     return new Promise<void>((resolve) => {
       this.setData({ switchingOut: true, switchingIn: false });
       setTimeout(() => {
@@ -7903,6 +8394,9 @@ Page({
           (room.match as any).currentOpId = opId;
           pushUndoSnapshot(room);
           room.match.isSwapped = !room.match.isSwapped;
+          if (clearDecidingSetEightPending) {
+            (room.match as any).decidingSetEightPending = false;
+          }
           appendMatchLog(room, "switch_sides", logNote, undefined, opId);
           (room.match as any).lastActionOpId = opId;
           return room;
@@ -7932,6 +8426,14 @@ Page({
   onSwitchSides() {
     if (this.isBetweenSetMode()) {
       this.onToggleCourtSide();
+      return;
+    }
+    if (!this.hasRoomSnapshotReady()) {
+      this.notifyAuthoritativeRoomSyncing();
+      return;
+    }
+    if (this.isDecidingSetEightPendingActive()) {
+      this.notifyDecidingSetEightPending();
       return;
     }
     if (this.switchConfirming) {
@@ -8032,7 +8534,15 @@ Page({
   },
 
   async onTeamTimeoutTap(e: WechatMiniprogram.TouchEvent) {
+    if (!this.hasRoomSnapshotReady()) {
+      this.notifyAuthoritativeRoomSyncing();
+      return;
+    }
     if (this.isMatchInteractionLocked()) {
+      return;
+    }
+    if (this.isDecidingSetEightPendingActive()) {
+      this.notifyDecidingSetEightPending();
       return;
     }
     if (!this.data.hasOperationAuthority) {
@@ -8209,6 +8719,14 @@ Page({
     if (team !== "A" && team !== "B") {
       return;
     }
+    if (!this.hasRoomSnapshotReady()) {
+      this.notifyAuthoritativeRoomSyncing();
+      return;
+    }
+    if (this.isDecidingSetEightPendingActive()) {
+      this.notifyDecidingSetEightPending();
+      return;
+    }
     if (this.isPlayerCardsEditable()) {
       const beforeRotateRectsPromise = this.measureTeamMainPosRectsStable(team, 800);
       const beforeRotateNoMap = this.getTeamMainNumberMap(team);
@@ -8323,6 +8841,7 @@ Page({
       room.match.bSetWins = 0;
       room.match.setNo = 1;
       room.match.decidingSetEightHandled = false;
+      (room.match as any).decidingSetEightPending = false;
       (room.match as any).teamATimeoutCount = 0;
       (room.match as any).teamBTimeoutCount = 0;
       (room.match as any).timeoutActive = false;
@@ -8394,7 +8913,7 @@ Page({
       if (!stack || stack.length === 0) {
         return room;
       }
-      let last = stack.pop();
+      let last = stack.pop() as UndoSnapshot | undefined;
       while (
         last &&
         last.aScore === room.match.aScore &&
@@ -8403,14 +8922,19 @@ Page({
         last.servingTeam === room.match.servingTeam &&
         !!last.isSwapped === !!room.match.isSwapped &&
         !!last.decidingSetEightHandled === !!room.match.decidingSetEightHandled &&
+        !!(last as any).decidingSetEightPending === !!(room.match as any).decidingSetEightPending &&
         (last.setNo || room.match.setNo) === room.match.setNo &&
         (last.aSetWins || 0) === room.match.aSetWins &&
         (last.bSetWins || 0) === room.match.bSetWins &&
         !!last.isFinished === !!room.match.isFinished &&
+        normalizeLiberoRosterNumbers(last.teamALiberoRoster || []).join(",") ===
+          normalizeLiberoRosterNumbers((room.match as any).teamALiberoRoster || []).join(",") &&
+        normalizeLiberoRosterNumbers(last.teamBLiberoRoster || []).join(",") ===
+          normalizeLiberoRosterNumbers((room.match as any).teamBLiberoRoster || []).join(",") &&
         samePlayers(last.teamAPlayers || [], room.teamA.players || []) &&
         samePlayers(last.teamBPlayers || [], room.teamB.players || [])
       ) {
-        last = stack.pop();
+        last = stack.pop() as UndoSnapshot | undefined;
       }
       if (!last) {
         return room;
@@ -8433,10 +8957,14 @@ Page({
       room.match.servingTeam = last.servingTeam;
       room.match.isSwapped = !!last.isSwapped;
       room.match.decidingSetEightHandled = !!last.decidingSetEightHandled;
+      (room.match as any).decidingSetEightPending = !!(last as any).decidingSetEightPending;
       room.match.setNo = last.setNo || room.match.setNo || 1;
       room.match.aSetWins = last.aSetWins || 0;
       room.match.bSetWins = last.bSetWins || 0;
       room.match.isFinished = !!last.isFinished;
+      (room.match as any).teamALiberoRoster = normalizeLiberoRosterNumbers(last.teamALiberoRoster || []);
+      (room.match as any).teamBLiberoRoster = normalizeLiberoRosterNumbers(last.teamBLiberoRoster || []);
+      (room.match as any).liberoRosterSetNo = Math.max(0, Number(last.liberoRosterSetNo || room.match.setNo || 0));
       (room.match as any).setSummaries = JSON.parse(JSON.stringify((last as any).setSummaries || {}));
       const snapshotLiberoReentryLock = normalizeLiberoReentryLock((last as any).liberoReentryLock);
       if (snapshotLiberoReentryLock) {
@@ -8530,6 +9058,10 @@ Page({
 
   onUndoLastScore() {
     void this.enqueueAction(async () => {
+      if (!this.hasRoomSnapshotReady()) {
+        this.notifyAuthoritativeRoomSyncing();
+        return;
+      }
       if (this.data.showSetEndModal) {
         return;
       }
@@ -8570,9 +9102,12 @@ Page({
         substitutionPanelClosing: false,
         showSubMatchLogPopover: false,
         subMatchLogPopoverClosing: false,
+        showSubRecordTabMenu: false,
         subModeSwitching: false,
         subReasonSwitching: false,
-        subRecordTabSwitching: false,
+        subRecordPickerSwitching: false,
+        subRecordContentSwitching: false,
+        logContentSwitching: false,
         selectedLogSet: targetSetNo,
         logs: this.getDisplayLogsBySet(this.allLogs, targetSetNo),
       });
@@ -8671,7 +9206,10 @@ Page({
     }
     this.setData({
       selectedLogSet: setNo,
+      logContentSwitching: false,
       logs: this.getDisplayLogsBySet(this.allLogs, setNo),
+    }, () => {
+      this.triggerLogContentSwitchAnimation();
     });
   },
 
@@ -8928,6 +9466,14 @@ Page({
   },
 
   onOpenSubstitutionPanel(e: WechatMiniprogram.TouchEvent) {
+    if (this.isAuthoritativeRoomSyncing() && !this.data.updatedAt) {
+      this.notifyAuthoritativeRoomSyncing();
+      return;
+    }
+    if (this.isDecidingSetEightPendingActive()) {
+      this.notifyDecidingSetEightPending();
+      return;
+    }
     if (this.isMatchInteractionLocked()) {
       return;
     }
@@ -8954,8 +9500,11 @@ Page({
         showSubMatchLogPopover: false,
         subMatchLogPopoverClosing: false,
         subLogPopoverInlineStyle: "",
+        showSubRecordTabMenu: false,
         subRecordTab: defaultTab,
         subRecordTabIndex: getSubRecordTabIndex(defaultTab),
+        subRecordPickerSwitching: false,
+        subRecordContentSwitching: false,
         subMode: defaultMode,
         subReason: "injury",
         subNormalPenalty: "none",
@@ -8965,7 +9514,6 @@ Page({
         subIncomingLockedNo: "",
         subModeSwitching: false,
         subReasonSwitching: false,
-        subRecordTabSwitching: false,
       },
       () => {
         this.persistSubstitutionDraft();
@@ -8988,50 +9536,20 @@ Page({
     this.setData({
       showSubMatchLogPopover: opening,
       subMatchLogPopoverClosing: false,
-      subRecordTabSwitching: false,
+      showSubRecordTabMenu: false,
       subRecordTab: nextTab,
       subRecordTabIndex: getSubRecordTabIndex(nextTab),
+      subRecordPickerSwitching: false,
+      subRecordContentSwitching: false,
     }, () => {
       this.syncSubMatchLogPopoverSize();
     });
   },
 
   syncSubMatchLogPopoverSize(done?: () => void) {
-    const finish = () => {
-      if (typeof done === "function") {
-        done();
-      }
-    };
-    wx.nextTick(() => {
-      const query = this.createSelectorQuery();
-      query.select(".substitution-panel").boundingClientRect();
-      query.select("#sub-log-tab-seg").boundingClientRect();
-      query.exec((res) => {
-        const panelRect = (res && res[0]) as WechatMiniprogram.BoundingClientRectCallbackResult | null;
-        const tabRect = (res && res[1]) as WechatMiniprogram.BoundingClientRectCallbackResult | null;
-        if (!panelRect || !tabRect || !panelRect.width || !tabRect.width) {
-          finish();
-          return;
-        }
-        const panelWidth = Math.max(0, Number(panelRect.width) || 0);
-        const tabWidth = Math.max(0, Number(tabRect.width) || 0);
-        if (!panelWidth || !tabWidth) {
-          finish();
-          return;
-        }
-        const contentPadding = 24;
-        const desiredWidth = Math.ceil(tabWidth + contentPadding);
-        const minWidth = 250;
-        const maxWidth = Math.max(minWidth, Math.floor(panelWidth - 20));
-        const width = Math.min(maxWidth, Math.max(minWidth, desiredWidth));
-        const inlineStyle = "width:" + width + "px;";
-        if (this.data.subLogPopoverInlineStyle === inlineStyle) {
-          finish();
-          return;
-        }
-        this.setData({ subLogPopoverInlineStyle: inlineStyle }, finish);
-      });
-    });
+    if (typeof done === "function") {
+      done();
+    }
   },
 
   onCloseSubMatchLogPopover() {
@@ -9045,29 +9563,13 @@ Page({
     if (tab !== "normal" && tab !== "special" && tab !== "libero") {
       return;
     }
-    if (tab === this.data.subRecordTab) {
-      return;
-    }
-    this.setData({
-      subRecordTab: tab as SubRecordTab,
-      subRecordTabIndex: getSubRecordTabIndex(tab),
-    }, () => {
-      this.triggerSubRecordTabSwitchAnimation();
-    });
+    this.switchSubRecordTab(tab as SubRecordTab);
   },
 
   onSubRecordTabPickerChange(e: WechatMiniprogram.PickerChange) {
     const index = Number((e && e.detail && (e.detail as any).value) || 0);
     const tab = getSubRecordTabByIndex(index);
-    if (tab === this.data.subRecordTab) {
-      return;
-    }
-    this.setData({
-      subRecordTab: tab,
-      subRecordTabIndex: getSubRecordTabIndex(tab),
-    }, () => {
-      this.triggerSubRecordTabSwitchAnimation();
-    });
+    this.switchSubRecordTab(tab);
   },
 
   getSubPlayerDisabledHint(pos: Position, numberRaw: string, _isLiberoCard: boolean): string {
@@ -9316,8 +9818,9 @@ Page({
     const selectedIsLiberoNo = liberoRoster.indexOf(downNo) >= 0;
     const downIsLibero = selectedIsLiberoNo || isLiberoPosition(selectedPos);
     const banState = buildSpecialBanStateBySet(logs, setNo, team);
-    if (banState.matchBanNos.has(upNo)) {
-      return "该号码已被全场禁赛，不能上场";
+    const matchEntryLockHint = getMatchEntryLockHint(banState, upNo);
+    if (matchEntryLockHint) {
+      return matchEntryLockHint;
     }
     if (banState.setBanNos.has(upNo)) {
       return "该号码本局禁赛，不能上场";
@@ -9413,7 +9916,6 @@ Page({
     let liveBadgePos: "" | Position = "";
     let liveBadgeDownNo = "";
     const mode: "normal" | "special" = this.data.subMode === "special" ? "special" : "normal";
-    const specialReason = this.data.subReason;
     const next = await updateRoomAsync(roomId, (room) => {
       if (!room || !room.match || !room.teamA || !room.teamB) {
         updateError = "房间状态异常";
@@ -9454,6 +9956,9 @@ Page({
         }
       }
       const captainNo = this.getTeamCurrentCaptainNoFromRoom(room, team);
+      const teamInitialCaptainNo = normalizeNumberInput(
+        String((teamObj as any).captainNo || (team === "A" ? this.data.teamAInitialCaptainNo : this.data.teamBInitialCaptainNo) || "")
+      );
       const selectedSlot = getPlayerByPos(nextPlayers, selectedPos as Position);
       if (!selectedSlot) {
         updateError = "被换下球员位置无效";
@@ -9482,8 +9987,9 @@ Page({
         updateError = "该号码已在场上";
         return room;
       }
-      if (banState.matchBanNos.has(incomingNo)) {
-        updateError = "该号码已被全场禁赛，不能上场";
+      const matchEntryLockHint = getMatchEntryLockHint(banState, incomingNo);
+      if (matchEntryLockHint) {
+        updateError = matchEntryLockHint;
         return room;
       }
       if (banState.setBanNos.has(incomingNo)) {
@@ -9499,6 +10005,10 @@ Page({
       }
 
       const downIsLibero = roster.indexOf(downNo) >= 0 || isLiberoPosition(selectedPos as Position);
+      const liberoRosterIndex =
+        mode === "special" && downIsLibero
+          ? getLiberoRosterSlotIndex(nextPlayers, roster, selectedPos as Position, downNo)
+          : -1;
       if (mode === "normal" && downIsLibero) {
         updateError = "普通换人仅支持场上6人，不可选择自由人";
         return room;
@@ -9535,40 +10045,25 @@ Page({
       (room.match as any).currentOpId = opId;
       pushUndoSnapshot(room);
       nextPlayers[selectedIdx].number = incomingNo;
-      if (this.shouldForceCaptainReconfirm(team, teamObj.players || [], nextPlayers, captainNo)) {
+      if (this.shouldForceCaptainReconfirm(team, teamObj.players || [], nextPlayers, captainNo, teamInitialCaptainNo)) {
         shouldForceCaptainReconfirmForTeam = team;
       }
       if (mode === "special" && (roster.indexOf(downNo) >= 0 || isLiberoPosition(selectedPos as Position))) {
         const rosterKey = team === "A" ? "teamALiberoRoster" : "teamBLiberoRoster";
         const nextRoster = normalizeLiberoRosterNumbers(getLiberoRosterForTeam(room, team));
-        let downIdx = nextRoster.findIndex((n) => normalizeSubstituteNumber(n) === downNo);
-      if (downIdx < 0) {
-        // 名单漂移兜底：仅按当前槽位或当前L位号码定位，不再盲目回退到第一个自由人槽位，
-        // 避免把普通球员误标进自由人名单。
-        if (selectedPos === "L1") {
-          downIdx = 0;
-        } else if (selectedPos === "L2") {
-          downIdx = 1;
-        } else {
-            const slotL1No = normalizeSubstituteNumber(
-              String((getPlayerByPos(nextPlayers, "L1" as Position) && getPlayerByPos(nextPlayers, "L1" as Position)!.number) || "")
-            );
-            const slotL2No = normalizeSubstituteNumber(
-              String((getPlayerByPos(nextPlayers, "L2" as Position) && getPlayerByPos(nextPlayers, "L2" as Position)!.number) || "")
-            );
-            if (slotL1No && slotL1No === downNo) {
-              downIdx = 0;
-            } else if (slotL2No && slotL2No === downNo) {
-              downIdx = 1;
-            }
-          }
+        const rosterCap = getTeamLiberoCapacityForCurrentSet(room, team);
+        let downIdx = liberoRosterIndex;
+        if (downIdx < 0) {
+          downIdx = nextRoster.findIndex((n) => normalizeSubstituteNumber(n) === downNo);
         }
-        if (downIdx >= 0 && downIdx < 2) {
+        if (downIdx >= 0 && downIdx < rosterCap) {
           nextRoster[downIdx] = incomingNo;
-        } else if (nextRoster.length < 2) {
+        } else if (nextRoster.length < rosterCap) {
           nextRoster.push(incomingNo);
+        } else if (rosterCap === 1 && nextRoster.length) {
+          nextRoster[0] = incomingNo;
         }
-        (room.match as any)[rosterKey] = normalizeLiberoRosterNumbers(nextRoster).slice(0, 2);
+        (room.match as any)[rosterKey] = normalizeLiberoRosterNumbers(nextRoster).slice(0, rosterCap);
       }
       teamObj.players = nextPlayers;
 
@@ -9593,31 +10088,9 @@ Page({
         appendMatchLog(room, action, note, team, opId);
       } else {
         const downIsLibero = roster.indexOf(downNo) >= 0 || isLiberoPosition(selectedPos as Position);
-        const reasonTextMap: Record<string, string> = {
-          injury: "伤病",
-          penalty_set: "本局禁赛",
-          penalty_match: "全场禁赛",
-          other: "其他",
-        };
-        const reasonText = reasonTextMap[specialReason] || "其他";
-        const action =
-          specialReason === "penalty_set"
-            ? downIsLibero
-              ? "sub_special_libero_penalty_set"
-              : "sub_special_penalty_set"
-            : specialReason === "penalty_match"
-              ? downIsLibero
-                ? "sub_special_libero_penalty_match"
-                : "sub_special_penalty_match"
-              : specialReason === "injury"
-                ? downIsLibero
-                  ? "sub_special_libero_injury"
-                  : "sub_special_injury"
-                : downIsLibero
-                  ? "sub_special_libero_other"
-                  : "sub_special_other";
+        const action = downIsLibero ? "sub_special_libero" : "sub_special";
         const detailText = downIsLibero ? buildSpecialLiberoRecordText(incomingNo, downNo) : detail;
-        appendMatchLog(room, action, teamName + "队 特殊换人 " + reasonText + " " + detailText, team, opId);
+        appendMatchLog(room, action, teamName + "队 特殊换人 " + detailText, team, opId);
       }
       (room.match as any).lastActionOpId = opId;
       return room;
@@ -9639,7 +10112,7 @@ Page({
         panelOpen: true,
         team,
         mode,
-        reason: specialReason,
+        reason: "injury",
         normalPenalty,
         selectedPos: "",
         incomingNoInput: "",

@@ -9,7 +9,12 @@
         <text class="quick-resume-title">{{quickResumeTitle}}</text>
         <text class="quick-resume-subtitle">{{quickResumeSubtitle}}</text>
       </view>
-      <view class="quick-resume-action">
+      <view
+        class="quick-resume-action {{quickResumeBtnFx ? 'entry-btn-fx' : ''}}"
+        hover-class="entry-btn-hover"
+        hover-stop-propagation="true"
+        catchtap="onQuickResumeTap"
+      >
         <text class="quick-resume-action-text">进入</text>
         <view class="quick-resume-action-icon"></view>
       </view>
@@ -48,14 +53,18 @@
     </view>
 
     <view class="version-row">
-      <text class="version-tag">V1.5.4</text>
-      <text class="version-sep">|</text>
+      <button class="version-link version-meta-btn" bindtap="onVersionMetaTap">
+        <view class="version-meta">
+          <text class="version-tag">V1.5.5</text>
+          <text class="version-sep">|</text>
+        </view>
+      </button>
       <button class="version-link version-link-contact" open-type="contact" hover-class="version-link-hover">
         <text class="version-link-text">联系我们</text>
       </button>
-      <view class="version-link version-guide-entry pressable" hover-class="version-link-hover" bindtap="onOpenGuidePage">
+      <button class="version-link version-guide-entry" hover-class="version-link-hover" bindtap="onOpenGuidePage">
         <text class="version-link-text">使用指南</text>
-      </view>
+      </button>
     </view>
   </view>
 </view>

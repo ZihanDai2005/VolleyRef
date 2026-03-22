@@ -1,4 +1,4 @@
-import { getRoomAsync, isRoomIdBlockedAsync, reserveRoomIdAsync, verifyRoomPasswordAsync } from "../../utils/room-service";
+import { forcePullRoomAsync, getRoomAsync, isRoomIdBlockedAsync, reserveRoomIdAsync, verifyRoomPasswordAsync } from "../../utils/room-service";
 import { showBlockHint } from "../../utils/hint";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { clearLastRoomEntry, readLastRoomEntry } from "../../utils/last-room-entry";
@@ -8,6 +8,7 @@ Page({
   data: {
     createBtnFx: false,
     joinBtnFx: false,
+    quickResumeBtnFx: false,
     quickResumeVisible: false,
     quickResumeRoomId: "",
     quickResumeTitle: "",
@@ -23,6 +24,7 @@ Page({
   pageAlive: true as boolean,
   createTapTimer: null as null | ReturnType<typeof setTimeout>,
   joinTapTimer: null as null | ReturnType<typeof setTimeout>,
+  quickResumeTapTimer: null as null | ReturnType<typeof setTimeout>,
 
   onLoad() {
     this.applyNavigationTheme();
@@ -77,6 +79,10 @@ Page({
     if (this.joinTapTimer) {
       clearTimeout(this.joinTapTimer);
       this.joinTapTimer = null;
+    }
+    if (this.quickResumeTapTimer) {
+      clearTimeout(this.quickResumeTapTimer);
+      this.quickResumeTapTimer = null;
     }
   },
 
@@ -243,6 +249,8 @@ Page({
     });
   },
 
+  onVersionMetaTap() {},
+
   async refreshQuickResumeEntry() {
     const token = ++this.quickResumeCheckToken;
     const cached = readLastRoomEntry();
@@ -270,7 +278,7 @@ Page({
         });
         return;
       }
-      const room = await getRoomAsync(cached.roomId);
+      const room = (await forcePullRoomAsync(cached.roomId)) || (await getRoomAsync(cached.roomId));
       if (token !== this.quickResumeCheckToken) {
         return;
       }
@@ -303,7 +311,25 @@ Page({
     }
   },
 
-  async onQuickResumeTap() {
+  onQuickResumeTap() {
+    if (this.data.quickResumeBusy || this.creating || this.navBusy || !this.pageAlive) {
+      return;
+    }
+    this.setData({ quickResumeBtnFx: true });
+    if (this.quickResumeTapTimer) {
+      clearTimeout(this.quickResumeTapTimer);
+    }
+    this.quickResumeTapTimer = setTimeout(() => {
+      this.quickResumeTapTimer = null;
+      if (!this.pageAlive) {
+        return;
+      }
+      this.setData({ quickResumeBtnFx: false });
+      void this.onQuickResumeSubmit();
+    }, 150);
+  },
+
+  async onQuickResumeSubmit() {
     if (this.data.quickResumeBusy || this.creating || this.navBusy || !this.pageAlive) {
       return;
     }
