@@ -42,6 +42,7 @@
       enable-flex="true"
       scroll-with-animation="true"
       scroll-into-view="{{scrollIntoView}}"
+      bindscroll="onContentScroll"
     >
       <view class="guide-scroll-content">
         <block wx:if="{{displaySections.length}}">

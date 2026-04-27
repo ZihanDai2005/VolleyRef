@@ -1,4 +1,5 @@
 const cloud = require("wx-server-sdk");
+const { exportResultPdf } = require("./resultPdf");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -647,6 +648,28 @@ exports.main = async (event) => {
       }
       const room = await getRoomDoc(roomId);
       return { ok: true, room: room || null };
+    }
+
+    if (action === "exportResultPdf") {
+      const roomId = String(event.roomId || "");
+      const theme = String(event.theme || "light");
+      if (!roomId) {
+        return err("missing roomId");
+      }
+      const room = await getRoomDoc(roomId);
+      if (!room) {
+        return err("room not found");
+      }
+      if (room.status !== "result") {
+        return err("room not in result status");
+      }
+      const exportRes = await exportResultPdf(roomId, room, theme);
+      return {
+        ok: true,
+        roomId: String(exportRes.roomId || roomId),
+        pdfBase64: String(exportRes.pdfBase64 || ""),
+        size: Number(exportRes.size || 0),
+      };
     }
 
     if (action === "upsertRoom") {

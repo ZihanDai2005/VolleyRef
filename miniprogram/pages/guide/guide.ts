@@ -27,6 +27,13 @@ type GuideSectionView = Omit<GuideSection, "items"> & {
   items: GuideItemView[];
 };
 
+type GuideSectionAnchor = {
+  id: string;
+  top: number;
+};
+
+const GUIDE_SECTION_SWITCH_OFFSET = 56;
+
 const GUIDE_SECTIONS: GuideSection[] = [
   {
     id: "welcome",
@@ -357,8 +364,14 @@ Page({
     activeSectionId: "",
   },
   themeOff: null as null | (() => void),
+  sectionAnchors: [] as GuideSectionAnchor[],
+  sectionMeasureTimer: 0 as number,
+  pageActive: true as boolean,
+  routePending: false as boolean,
 
   onLoad() {
+    this.pageActive = true;
+    this.routePending = false;
     this.syncCustomNavTop();
     this.applyNavigationTheme();
     const sections = buildSectionViews(GUIDE_SECTIONS);
@@ -369,7 +382,14 @@ Page({
     });
   },
 
+  onReady() {
+    this.measureSectionAnchors();
+    this.scheduleSectionAnchorMeasure();
+  },
+
   onShow() {
+    this.pageActive = true;
+    this.routePending = false;
     this.syncCustomNavTop();
     this.applyNavigationTheme();
     if (!this.themeOff) {
@@ -377,12 +397,22 @@ Page({
         this.applyNavigationTheme();
       });
     }
+    this.scheduleSectionAnchorMeasure();
+  },
+
+  onHide() {
+    this.pageActive = false;
   },
 
   onUnload() {
+    this.pageActive = false;
     if (this.themeOff) {
       this.themeOff();
       this.themeOff = null;
+    }
+    if (this.sectionMeasureTimer) {
+      clearTimeout(this.sectionMeasureTimer);
+      this.sectionMeasureTimer = 0;
     }
   },
 
@@ -413,6 +443,67 @@ Page({
     applyNavigationBarTheme();
   },
 
+  scheduleSectionAnchorMeasure() {
+    if (this.sectionMeasureTimer) {
+      clearTimeout(this.sectionMeasureTimer);
+    }
+    this.sectionMeasureTimer = setTimeout(() => {
+      this.sectionMeasureTimer = 0;
+      this.measureSectionAnchors();
+    }, 120) as unknown as number;
+  },
+
+  measureSectionAnchors() {
+    const sections = Array.isArray(this.data.displaySections) ? this.data.displaySections : [];
+    if (!sections.length) {
+      this.sectionAnchors = [];
+      return;
+    }
+    wx.nextTick(() => {
+      const query = this.createSelectorQuery();
+      query.select(".guide-scroll-content").boundingClientRect();
+      query.selectAll(".guide-section").boundingClientRect();
+      query.exec((res) => {
+        const contentRect = (res && res[0]) as WechatMiniprogram.BoundingClientRectCallbackResult | null;
+        const sectionRects = (res && res[1]) as WechatMiniprogram.BoundingClientRectCallbackResult[] | null;
+        if (!contentRect || !Array.isArray(sectionRects) || !sectionRects.length) {
+          return;
+        }
+        this.sectionAnchors = sections
+          .map((section, index) => {
+            const rect = sectionRects[index];
+            if (!rect || typeof rect.top !== "number") {
+              return null;
+            }
+            return {
+              id: section.id,
+              top: rect.top - contentRect.top,
+            };
+          })
+          .filter((item): item is GuideSectionAnchor => Boolean(item));
+      });
+    });
+  },
+
+  updateActiveSectionByScrollTop(scrollTop: number) {
+    const anchors = Array.isArray(this.sectionAnchors) ? this.sectionAnchors : [];
+    if (!anchors.length) {
+      return;
+    }
+    const currentTop = Math.max(0, Number(scrollTop || 0) + GUIDE_SECTION_SWITCH_OFFSET);
+    let nextSectionId = anchors[0].id;
+    anchors.forEach((anchor) => {
+      if (currentTop >= anchor.top) {
+        nextSectionId = anchor.id;
+      }
+    });
+    if (nextSectionId !== this.data.activeSectionId) {
+      this.setData({
+        activeSectionId: nextSectionId,
+      });
+    }
+  },
+
   onJumpSection(e: WechatMiniprogram.TouchEvent) {
     const id = String(((e.currentTarget && e.currentTarget.dataset) as { id?: string }).id || "");
     if (!id) {
@@ -422,6 +513,11 @@ Page({
       activeSectionId: id,
       scrollIntoView: "guide-section-" + id,
     });
+  },
+
+  onContentScroll(e: WechatMiniprogram.ScrollViewScroll) {
+    const scrollTop = Number((e.detail && e.detail.scrollTop) || 0);
+    this.updateActiveSectionByScrollTop(scrollTop);
   },
 
   onBackTap() {

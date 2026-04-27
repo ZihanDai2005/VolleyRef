@@ -62,6 +62,44 @@
         <view class="create-head-divider"></view>
       </view>
 
+      <text class="create-head-hint">赛制模式</text>
+      <picker
+        mode="selector"
+        range="{{matchModes}}"
+        range-key="label"
+        value="{{matchModeIndex}}"
+        disabled="{{!createMode}}"
+        bindchange="onMatchModeChange"
+      >
+        <view class="create-head-input-wrap create-head-mode-wrap">
+          <view class="create-head-input create-head-input-mode">
+            <text class="create-head-mode-text">{{matchModes[matchModeIndex].label}}</text>
+          </view>
+          <view class="create-head-mode-arrow"></view>
+        </view>
+      </picker>
+
+      <text class="create-head-hint">是否设置队长</text>
+      <picker
+        mode="selector"
+        range="{{setupCaptainOptions}}"
+        range-key="label"
+        value="{{setupCaptainIndex}}"
+        disabled="{{!createMode}}"
+        bindchange="onSetupCaptainChange"
+      >
+        <view class="create-head-input-wrap create-head-mode-wrap">
+          <view class="create-head-input create-head-input-mode">
+            <text class="create-head-mode-text">{{setupCaptainOptions[setupCaptainIndex].label}}</text>
+          </view>
+          <view class="create-head-mode-arrow"></view>
+        </view>
+      </picker>
+
+      <view class="create-head-divider-wrap">
+        <view class="create-head-divider"></view>
+      </view>
+
       <text class="create-head-section-title">甲队设置</text>
       <view class="create-head-color-draw-wrap">
         <view class="create-head-color-col">
@@ -184,7 +222,7 @@
         </view>
       </view>
 
-      <view class="create-head-captain-row">
+      <view hidden="{{setupCaptainIndex !== 0}}" class="create-head-captain-row">
         <text class="create-head-hint">球队队长号码</text>
         <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamACaptainNo">
           <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
@@ -332,7 +370,7 @@
         </view>
       </view>
 
-      <view class="create-head-captain-row">
+      <view hidden="{{setupCaptainIndex !== 0}}" class="create-head-captain-row">
         <text class="create-head-hint">球队队长号码</text>
         <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamBCaptainNo">
           <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
@@ -354,26 +392,6 @@
         </view>
       </view>
 
-      <view class="create-head-divider-wrap">
-        <view class="create-head-divider"></view>
-      </view>
-
-      <text class="create-head-hint">赛制模式</text>
-      <picker
-        mode="selector"
-        range="{{matchModes}}"
-        range-key="label"
-        value="{{matchModeIndex}}"
-        disabled="{{!createMode}}"
-        bindchange="onMatchModeChange"
-      >
-        <view class="create-head-input-wrap create-head-mode-wrap">
-          <view class="create-head-input create-head-input-mode">
-            <text class="create-head-mode-text">{{matchModes[matchModeIndex].label}}</text>
-          </view>
-          <view class="create-head-mode-arrow"></view>
-        </view>
-      </picker>
     </view>
   </view>
 
@@ -414,7 +432,7 @@
       </view>
     </view>
 
-    <view class="setting-row captain-row">
+    <view hidden="{{setupCaptainIndex !== 0}}" class="setting-row captain-row">
       <text class="label">队长号码</text>
       <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
         class="input team-name input-left"
@@ -465,7 +483,7 @@
       </view>
     </view>
 
-    <view class="setting-row captain-row">
+    <view hidden="{{setupCaptainIndex !== 0}}" class="setting-row captain-row">
       <text class="label">队长号码</text>
       <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
         class="input team-name input-left"
@@ -488,13 +506,13 @@
         <text class="create-invite-reminder">发送邀请后 需先进入房间 其他裁判方可加入</text>
       </view>
     </view>
-    <button class="entry-btn create-invite-btn {{createInviteBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateInviteTap" open-type="{{inviteShareReady ? 'share' : ''}}">
+    <button class="entry-btn create-invite-btn {{createInviteBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" catchtap="onCreateInviteTap" open-type="{{inviteShareReady ? 'share' : ''}}">
       <view class="entry-btn-content">
         <view class="entry-btn-copy-icon"></view>
         <text class="entry-btn-text">邀请其他裁判</text>
       </view>
     </button>
-    <button class="entry-btn {{createContinueBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" bindtap="onCreateContinueTap">
+    <button class="entry-btn {{createContinueBtnFx ? 'entry-btn-fx' : ''}}" hover-class="entry-btn-hover" catchtap="onCreateContinueTap">
       <view class="entry-btn-content">
         <text class="entry-btn-text">继续</text>
         <view class="entry-btn-icon"></view>

@@ -124,6 +124,13 @@ type FrontRowLiberoFixCandidate = {
   liberoNo: string;
   normalNo: string;
 };
+
+function isCaptainModeEnabledFromSettings(settings: unknown): boolean {
+  if (!settings || typeof settings !== "object") {
+    return true;
+  }
+  return (settings as { captainEnabled?: boolean }).captainEnabled !== false;
+}
 type LiberoReentryLock = {
   team: TeamCode;
   liberoNo: string;
@@ -2355,6 +2362,7 @@ Page({
     roomPassword: "",
     showRoomPassword: false,
     passwordEyeFx: false,
+    captainModeEnabled: true,
     teamACaptainNo: "",
     teamBCaptainNo: "",
     teamAInitialCaptainNo: "",
@@ -2460,6 +2468,7 @@ Page({
     subSpecialDisabled: true,
     subNormalModeLimitLocked: false,
     logs: [] as DisplayLogItem[],
+    logScrollIntoView: "",
     logSetSwitchVisible: false,
     logSetOptions: [] as number[],
     selectedLogSet: 1,
@@ -2831,8 +2840,6 @@ Page({
         const itemSetNo = Math.max(1, Number((item as any).setNo || noteSetNo || 1));
         return itemSetNo === targetSet;
       })
-      .slice()
-      .reverse()
       .map(function (item: MatchLogItem) {
         const noteWithTeam = withTeamSuffixForDisplay(String(item.note || ""), teamAName, teamBName);
         const note = formatOperationLogNoteForDisplay(String(item.action || ""), noteWithTeam);
@@ -2846,6 +2853,26 @@ Page({
           timeText: formatLogTime(item.ts),
         };
       });
+  },
+
+  scrollLogPanelToBottom(done?: () => void) {
+    const logs = Array.isArray(this.data.logs) ? this.data.logs : [];
+    const targetId = logs.length ? "match-log-item-" + String(logs.length - 1) : "";
+    this.setData({ logScrollIntoView: "" }, () => {
+      if (!targetId) {
+        if (typeof done === "function") {
+          done();
+        }
+        return;
+      }
+      wx.nextTick(() => {
+        this.setData({ logScrollIntoView: targetId }, () => {
+          if (typeof done === "function") {
+            done();
+          }
+        });
+      });
+    });
   },
 
   enqueueAction(task: () => Promise<void>) {
@@ -3336,6 +3363,9 @@ Page({
   },
 
   openCaptainConfirmModal(reason: CaptainConfirmReason, options?: CaptainConfirmOpenOptions) {
+    if (!this.data.captainModeEnabled) {
+      return;
+    }
     this.captainConfirmReason = reason;
     const showCancel = !!(options && options.showCancel);
     const scopedTeam: "" | TeamCode =
@@ -3377,6 +3407,9 @@ Page({
   },
 
   openForcedCaptainConfirmAfterSubstitution(team: TeamCode, options?: { switchFromSubPanel?: boolean }) {
+    if (!this.data.captainModeEnabled) {
+      return;
+    }
     this.openCaptainConfirmModal("post_sub", {
       showCancel: false,
       scopedTeam: team,
@@ -3391,6 +3424,9 @@ Page({
     captainNoRaw: string,
     teamInitialCaptainNoRaw?: string
   ): boolean {
+    if (!this.data.captainModeEnabled) {
+      return false;
+    }
     // 赛前尚未确认场上队长时，不触发“重新选择场上队长”弹窗。
     if (!this.data.preStartCaptainConfirmed) {
       return false;
@@ -3418,6 +3454,9 @@ Page({
   },
 
   getTeamCurrentCaptainNoFromRoom(room: any, team: TeamCode): string {
+    if (!isCaptainModeEnabledFromSettings(room && room.settings)) {
+      return "";
+    }
     if (!room || !room.match) {
       return normalizeNumberInput(String(team === "A" ? this.data.teamACaptainNo || "" : this.data.teamBCaptainNo || ""));
     }
@@ -4893,7 +4932,7 @@ Page({
     if (!roomId) {
       return;
     }
-    if (!this.data.preStartCaptainConfirmed) {
+    if (this.data.captainModeEnabled && !this.data.preStartCaptainConfirmed) {
       showToastHint("请先确认场上队长");
       return;
     }
@@ -4927,7 +4966,7 @@ Page({
   },
 
   onOpenCaptainConfirmModal() {
-    if (!this.data.canStartMatch || this.data.showSetEndModal || this.data.matchFlowMode !== "normal") {
+    if (!this.data.captainModeEnabled || !this.data.canStartMatch || this.data.showSetEndModal || this.data.matchFlowMode !== "normal") {
       return;
     }
     this.openCaptainConfirmModal("prestart", { showCancel: true });
@@ -4944,6 +4983,9 @@ Page({
   },
 
   onCaptainConfirmSelect(e: WechatMiniprogram.TouchEvent) {
+    if (!this.data.captainModeEnabled) {
+      return;
+    }
     const dataset = (e.currentTarget && e.currentTarget.dataset) as { team?: string; number?: string; pos?: string };
     const team = dataset && dataset.team === "B" ? "B" : dataset && dataset.team === "A" ? "A" : "";
     const posRaw = String((dataset && dataset.pos) || "");
@@ -4982,6 +5024,10 @@ Page({
     const isPostSubReconfirm = this.captainConfirmReason === "post_sub";
     const scopedTeam = this.normalizeCaptainConfirmScopedTeam();
     if (!roomId || !this.data.hasOperationAuthority) {
+      this.closeCaptainConfirmModalAnimated();
+      return;
+    }
+    if (!this.data.captainModeEnabled) {
       this.closeCaptainConfirmModalAnimated();
       return;
     }
@@ -7040,6 +7086,7 @@ Page({
     const bRows = buildTeamRows(displayBPlayers);
     const timerStartAt = Math.max(0, Number((room.match as any).setTimerStartAt) || 0);
     const timerElapsedMs = Math.max(0, Number((room.match as any).setTimerElapsedMs) || 0);
+    const captainModeEnabled = isCaptainModeEnabledFromSettings(room.settings);
     const canStartMatch =
       !room.match.isFinished &&
       Number(room.match.aScore || 0) === 0 &&
@@ -7047,16 +7094,26 @@ Page({
       timerStartAt <= 0 &&
       timerElapsedMs <= 0;
     const setNo = Math.max(1, Number(room.match.setNo || 1));
-    const preStartCaptainConfirmed =
-      !!(room.match as any).preStartCaptainConfirmed &&
-      Math.max(0, Number((room.match as any).preStartCaptainConfirmSetNo || 0)) === setNo;
+    const preStartCaptainConfirmed = captainModeEnabled
+      ? !!(room.match as any).preStartCaptainConfirmed &&
+        Math.max(0, Number((room.match as any).preStartCaptainConfirmSetNo || 0)) === setNo
+      : true;
     const rawCurrentTeamACaptain = normalizeNumberInput(String((room.match as any).teamACurrentCaptainNo || ""));
     const rawCurrentTeamBCaptain = normalizeNumberInput(String((room.match as any).teamBCurrentCaptainNo || ""));
-    const currentTeamACaptain = canStartMatch && !preStartCaptainConfirmed ? "" : rawCurrentTeamACaptain;
-    const currentTeamBCaptain = canStartMatch && !preStartCaptainConfirmed ? "" : rawCurrentTeamBCaptain;
-    const initialTeamACaptain = normalizeNumberInput(String((room.teamA as any).captainNo || ""));
-    const initialTeamBCaptain = normalizeNumberInput(String((room.teamB as any).captainNo || ""));
+    const currentTeamACaptain = captainModeEnabled
+      ? canStartMatch && !preStartCaptainConfirmed
+        ? ""
+        : rawCurrentTeamACaptain
+      : "";
+    const currentTeamBCaptain = captainModeEnabled
+      ? canStartMatch && !preStartCaptainConfirmed
+        ? ""
+        : rawCurrentTeamBCaptain
+      : "";
+    const initialTeamACaptain = captainModeEnabled ? normalizeNumberInput(String((room.teamA as any).captainNo || "")) : "";
+    const initialTeamBCaptain = captainModeEnabled ? normalizeNumberInput(String((room.teamB as any).captainNo || "")) : "";
     this.setData({
+      captainModeEnabled: captainModeEnabled,
       isSwapped: nextSwapped,
       servingTeam: room.match.servingTeam === "B" ? "B" : "A",
       teamACaptainNo: currentTeamACaptain,
@@ -7483,10 +7540,11 @@ Page({
       let prevBMainGrid = buildMainGridByOrder(prevBDisplayPlayers, getMainOrderForTeam("B", teamASide));
       const teamAColor = room.teamA.color || TEAM_COLOR_OPTIONS[0].value;
       const teamBColor = room.teamB.color || TEAM_COLOR_OPTIONS[1].value;
+      const captainModeEnabled = isCaptainModeEnabledFromSettings(room.settings);
       const rawCurrentTeamACaptain = normalizeNumberInput(String((room.match as any).teamACurrentCaptainNo || ""));
       const rawCurrentTeamBCaptain = normalizeNumberInput(String((room.match as any).teamBCurrentCaptainNo || ""));
-      const initialTeamACaptain = normalizeNumberInput(String((room.teamA as any).captainNo || ""));
-      const initialTeamBCaptain = normalizeNumberInput(String((room.teamB as any).captainNo || ""));
+      const initialTeamACaptain = captainModeEnabled ? normalizeNumberInput(String((room.teamA as any).captainNo || "")) : "";
+      const initialTeamBCaptain = captainModeEnabled ? normalizeNumberInput(String((room.teamB as any).captainNo || "")) : "";
       const leftTeam: TeamCode = nextSwapped ? "B" : "A";
       const rightTeam: TeamCode = leftTeam === "A" ? "B" : "A";
       const leftScore = leftTeam === "A" ? room.match.aScore : room.match.bScore;
@@ -7622,15 +7680,25 @@ Page({
       }
       const cloudPreStartCaptainConfirmed = !!(room.match as any).preStartCaptainConfirmed;
       const cloudPreStartCaptainConfirmSetNo = Math.max(0, Number((room.match as any).preStartCaptainConfirmSetNo || 0));
-      const preStartCaptainConfirmed =
-        cloudPreStartCaptainConfirmed &&
-        cloudPreStartCaptainConfirmSetNo === effectiveSetNo;
+      const preStartCaptainConfirmed = captainModeEnabled
+        ? cloudPreStartCaptainConfirmed &&
+          cloudPreStartCaptainConfirmSetNo === effectiveSetNo
+        : true;
       const preStartCaptainConfirmSetNo = preStartCaptainConfirmed ? effectiveSetNo : 0;
-      const currentTeamACaptain = effectiveCanStartMatch && !preStartCaptainConfirmed ? "" : rawCurrentTeamACaptain;
-      const currentTeamBCaptain = effectiveCanStartMatch && !preStartCaptainConfirmed ? "" : rawCurrentTeamBCaptain;
+      const currentTeamACaptain = captainModeEnabled
+        ? effectiveCanStartMatch && !preStartCaptainConfirmed
+          ? ""
+          : rawCurrentTeamACaptain
+        : "";
+      const currentTeamBCaptain = captainModeEnabled
+        ? effectiveCanStartMatch && !preStartCaptainConfirmed
+          ? ""
+          : rawCurrentTeamBCaptain
+        : "";
       const keepCaptainConfirmInPlaying =
         this.captainConfirmReason === "post_edit" || this.captainConfirmReason === "post_sub";
       const showCaptainConfirmModal =
+        captainModeEnabled &&
         flowMode === "normal" &&
         controlRole === "operator" &&
         (effectiveCanStartMatch || keepCaptainConfirmInPlaying) &&
@@ -7727,6 +7795,7 @@ Page({
         await this.delayAsync(Math.max(flowOutWaitMs, swapOutWaitMs));
       }
       this.setData({
+        captainModeEnabled: captainModeEnabled,
         participantCount: Math.max(1, Object.keys((room as any).participants || {}).length),
         teamAName: room.teamA.name,
         teamBName: room.teamB.name,
@@ -9110,6 +9179,8 @@ Page({
         logContentSwitching: false,
         selectedLogSet: targetSetNo,
         logs: this.getDisplayLogsBySet(this.allLogs, targetSetNo),
+      }, () => {
+        this.scrollLogPanelToBottom();
       });
     };
     this.syncLogPanelSizeFromSubPanel(openPanel);
@@ -9209,6 +9280,7 @@ Page({
       logContentSwitching: false,
       logs: this.getDisplayLogsBySet(this.allLogs, setNo),
     }, () => {
+      this.scrollLogPanelToBottom();
       this.triggerLogContentSwitchAnimation();
     });
   },

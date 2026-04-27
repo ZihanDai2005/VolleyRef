@@ -14,7 +14,18 @@
 
   <view class="result-content">
     <view class="result-score-panel">
-      <view class="result-sheet-btn pressable" hover-class="tap-active" bindtap="onScoreSheetTap">记分表</view>
+      <view class="result-panel-action-btn result-share-btn pressable" hover-class="tap-active" bindtap="onDownloadPageTap">
+        <view class="result-panel-action-content">
+          <view class="result-panel-action-icon result-share-icon"></view>
+          <text class="result-panel-action-text">导出页面</text>
+        </view>
+      </view>
+      <view class="result-panel-action-btn result-sheet-btn pressable" hover-class="tap-active" bindtap="onScoreSheetTap">
+        <view class="result-panel-action-content">
+          <view class="result-panel-action-icon result-sheet-icon"></view>
+          <text class="result-panel-action-text">记分表</text>
+        </view>
+      </view>
       <text class="result-section-label">比局</text>
       <view class="result-compare-line">
         <text class="result-compare-left">{{teamAName}}</text>
@@ -181,5 +192,12 @@
     canvas-id="scoreSheetCanvas"
     class="score-sheet-canvas"
     style="width: 640px; height: 635px;"
+  ></canvas>
+  <canvas
+    type="2d"
+    id="resultExportCanvas"
+    canvas-id="resultExportCanvas"
+    class="result-export-canvas"
+    style="width: 390px; height: 844px;"
   ></canvas>
 </view>

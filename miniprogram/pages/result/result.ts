@@ -1,6 +1,7 @@
 import { getRoomAsync } from "../../utils/room-service";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { buildJoinSharePath, buildShareCardTitle, SHARE_IMAGE_URL, showMiniProgramShareMenu } from "../../utils/share";
+import { BEBAS_GLYPHS, type BebasCommand } from "./bebasGlyphs";
 
 type MatchLogItem = {
   id: string;
@@ -98,6 +99,154 @@ type ScoreSheetSetRow = {
 };
 
 type ScoreSheetTotalRow = Omit<ScoreSheetSetRow, "setNo">;
+
+type ResultExportSetView = {
+  setNo: number;
+  smallScoreA: string;
+  smallScoreB: string;
+  leadingTeam: "" | "A" | "B";
+  durationText: string;
+  progress: ScoreProgressData;
+  logs: DisplayLogRow[];
+};
+
+type ResultExportPalette = {
+  pageBg: string;
+  surface: string;
+  surfaceSoft: string;
+  strongSurface: string;
+  textMain: string;
+  textSecondary: string;
+  textMuted: string;
+  lineSoft: string;
+  badgeText: string;
+  activeChipBg: string;
+  activeChipText: string;
+  inactiveTrack: string;
+  signalUp: string;
+  signalDown: string;
+};
+
+const RESULT_EXPORT_UI_FONT_FAMILY = "\"PingFang SC\",\"SF Pro Text\",\"Helvetica Neue\",Arial,sans-serif";
+const RESULT_EXPORT_BEBAS_DATA_URL =
+  "data:font/ttf;base64,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OEIVRiYSCxsBfoNdPxoONy2bZA1tMSUCAjsdNk5NNWpbSFFfq1g1LSN+UiFNKx8uJTdWWSIuNxZGRCAbQwAAAQBBAEYDCQUrAAYAbEAvAQcHQAgFAwUBAwIDBAYEBQYGAAUFBgIBAgMGAwQBAQIAAAEFBAIDAQEGAAABAUZ2LzcYAD88Pxc8AYcuCMQI/AjEhy4IxAj8CMQBLi4ALjEwAUlouQABAAdJaGGwQFJYOBE3uQAH/8A4WSUDMxMTMwMBIeDGnZ/G5EYE5fwxA8/7GwABACMBpgFZAjMAAwAYQBUAAAEBAFcAAAABXwABAAFPERACCBgrEyEVISMBNv7KAjONAAAAAAABAAADwgABAJ4DAAAHALQABAAEACEABAAFABcABAAGABQABAAJABsABAAKACIABAAMAB8ABAANAB0ABAAQACQABAARACUABAASACUABAATABkABQAEACQABQAFABkABQAGABkABQAHABQABQAIABUABQAJAB4ABQAKACUABQAMACMABQANACAABQAPABwABQAQACcABQARACcABQASACcABQATABwABQAUABwABgAEABoABgAI/4cABgAKABoABgANABUABgAQABwABgARAB0ABgASAB0ABgAU/+gABwAEAB8ABwAJABkABwAKACAABwAMAB0ABwANABsABwAQACIABwARACMABwASACMABwATABcABwAU/+cACAAEABoACAAF/6IACAAG/90ACAAJABQACAAKABoACAAL/5sACAAMABgACAANABUACAAP/+oACAAQAB0ACAARAB0ACAASAB0ACAAU/6UACQAEAB0ACQAJABcACQAKAB0ACQAMABsACQANABgACQAQACAACQARAB8ACQASAB8ACgAEAB0ACgAJABcACgAKAB0ACgAMABsACgANABgACgAQACAACgARACAACgASACAACgATABQACwAH/+cACwAI/4gACwAP/3EACwAQABwACwARABwACwASABwADAAEAB8ADAAJABoADAAKACAADAAMAB4ADAANABsADAAQACMADAARACMADAASACMADAATABcADAAU/+YADQAEACIADQAFABcADQAGABQADQAJABwADQAKACIADQAMACAADQANAB0ADQAQACUADQARACUADQASACUADQATABkADwAF/4AADwAH/+YADwAI/+QADwAL/54ADwAQAB0ADwARAB0ADwASAB0ADwAT/+QADwAU/1gAEAAEAB8AEAAJABgAEAAKAB8AEAAL/+IAEAAMAB0AEAANABkAEAAQACEAEAARACIAEAASACIAEAATABYAEAAU/9QAEQAEACUAEQAFABkAEQAGABkAEQAHABUAEQAIABYAEQAJAB4AEQAKACUAEQAMACMAEQANACAAEQAPABwAEQAQACcAEQARACcAEQASACcAEQATABwAEQAUABwAEgAF/24AEgAI/tUAEgAL/40AEgAT/+gAEgAU/1cAEwAEABgAEwAKABkAEwAMABYAEwAP/+sAEwAQABsAEwARABsAEwASABsAEwAU/+EAFAAG/94AFAAH/8kAFAAI/4wAFAAM/+YAFAAP/1UAFAAQABwAFAARABwAFAASABwAFAAT/9cAAAAAABgBJgAAAAAAAAAAAFwAAAAAAAAAAAABAAoAXAAAAAAAAAACAA4AZgAAAAAAAAADAEgAdAAAAAAAAAAEAAoAXAAAAAAAAAAFACAAvAAAAAAAAAAGAAoAXAAAAAAAAAAHAAAA3AABAAAAAAAAAC4A3AABAAAAAAABAAUBCgABAAAAAAACAAcBDwABAAAAAAADACQBFgABAAAAAAAEAAUBCgABAAAAAAAFABABOgABAAAAAAAGAAUBCgABAAAAAAAHAAAA3AADAAEECQAAAFwAAAADAAEECQABAAoAXAADAAEECQACAA4AZgADAAEECQADAEgAdAADAAEECQAEAAoAXAADAAEECQAFACAAvAADAAEECQAGAAoAXAADAAEECQAHAAAA3ABSAHkAbwBpAGMAaABpACAAVABzAHUAbgBlAGsAYQB3AGEAIABCAGEAZwBlAGwAJgBDAG8AIABBAGwAbAAgAHIAaQBnAGgAdABzACAAcgBlAHMAZQByAHYAZQBkAEIAZQBiAGEAcwBSAGUAZwB1AGwAYQByAE0AYQBjAHIAbwBtAGUAZABpAGEAIABGAG8AbgB0AG8AZwByAGEAcABoAGUAcgAgADQALgAxACAAMAA1AC8AMAA3AC8AMgA5AEIAZQBiAGEAcwAgAHYAZQByAHMAbwBpAG4AMQAuADBSeW9pY2hpIFRzdW5la2F3YSBCYWdlbCZDbyBBbGwgcmlnaHRzIHJlc2VydmVkQmViYXNSZWd1bGFyTWFjcm9tZWRpYSBGb250b2dyYXBoZXIgNC4xIDA1LzA3LzI5QmViYXMgdmVyc29pbjEuMAACAAAAAAAA/7UAMgAAAAAAAAAAAAAAAAAAAAAAAAAAABYAAAABAAIAAwATABQAFQAWABcAGAAZABoAGwAcACIAJAAlACwALwA2ADkAEAAA";
+const RESULT_EXPORT_BEBAS_FONT_SOURCES = [
+  `url("${RESULT_EXPORT_BEBAS_DATA_URL}")`,
+  "url('/assets/fonts/BebasNeue-NumRomanL-subset.ttf')",
+  "url('assets/fonts/BebasNeue-NumRomanL-subset.ttf')",
+  "url('./assets/fonts/BebasNeue-NumRomanL-subset.ttf')",
+];
+const RESULT_EXPORT_BEBAS_FALLBACK_ADVANCE = 0.42;
+
+function getBebasTextMetrics(text: string, letterSpacing = 0) {
+  const chars = Array.from(String(text || ""));
+  let cursor = 0;
+  let xMin = Number.POSITIVE_INFINITY;
+  let xMax = Number.NEGATIVE_INFINITY;
+  let yMin = Number.POSITIVE_INFINITY;
+  let yMax = Number.NEGATIVE_INFINITY;
+  chars.forEach((char, idx) => {
+    const glyph = BEBAS_GLYPHS[char];
+    if (glyph) {
+      xMin = Math.min(xMin, cursor + glyph.xMin);
+      xMax = Math.max(xMax, cursor + glyph.xMax);
+      yMin = Math.min(yMin, glyph.yMin);
+      yMax = Math.max(yMax, glyph.yMax);
+      cursor += glyph.advanceWidth;
+    } else {
+      cursor += RESULT_EXPORT_BEBAS_FALLBACK_ADVANCE;
+    }
+    if (idx < chars.length - 1) {
+      cursor += letterSpacing;
+    }
+  });
+  if (!Number.isFinite(xMin)) {
+    xMin = 0;
+    xMax = cursor;
+    yMin = -0.85;
+    yMax = -0.15;
+  }
+  return {
+    width: Math.max(cursor, xMax - xMin),
+    xMin,
+    xMax,
+    yMin,
+    yMax,
+  };
+}
+
+function drawBebasText(
+  ctx: any,
+  text: string,
+  x: number,
+  y: number,
+  options: {
+    align?: "left" | "right" | "center";
+    color?: string;
+    fontSize?: number;
+    letterSpacing?: number;
+  }
+) {
+  const value = String(text || "");
+  if (!value) {
+    return;
+  }
+  const fontSize = Number(options.fontSize) || 16;
+  const letterSpacing = Number(options.letterSpacing) || 0;
+  const metrics = getBebasTextMetrics(value, letterSpacing);
+  let originX = x;
+  if (options.align === "center") {
+    originX = x - ((metrics.xMin + metrics.xMax) / 2) * fontSize;
+  } else if (options.align === "right") {
+    originX = x - metrics.xMax * fontSize;
+  } else {
+    originX = x - metrics.xMin * fontSize;
+  }
+  const originY = y - ((metrics.yMin + metrics.yMax) / 2) * fontSize;
+  let cursor = 0;
+  ctx.save();
+  ctx.fillStyle = options.color || "#ffffff";
+  ctx.beginPath();
+  Array.from(value).forEach((char, idx) => {
+    const glyph = BEBAS_GLYPHS[char];
+    if (glyph) {
+      glyph.commands.forEach((command: BebasCommand) => {
+        const [type, ...rest] = command;
+        if (type === "M") {
+          ctx.moveTo(originX + (cursor + rest[0]) * fontSize, originY + rest[1] * fontSize);
+        } else if (type === "L") {
+          ctx.lineTo(originX + (cursor + rest[0]) * fontSize, originY + rest[1] * fontSize);
+        } else if (type === "Q") {
+          ctx.quadraticCurveTo(
+            originX + (cursor + rest[2]) * fontSize,
+            originY + rest[3] * fontSize,
+            originX + (cursor + rest[0]) * fontSize,
+            originY + rest[1] * fontSize
+          );
+        } else if (type === "C") {
+          ctx.bezierCurveTo(
+            originX + (cursor + rest[2]) * fontSize,
+            originY + rest[3] * fontSize,
+            originX + (cursor + rest[4]) * fontSize,
+            originY + rest[5] * fontSize,
+            originX + (cursor + rest[0]) * fontSize,
+            originY + rest[1] * fontSize
+          );
+        } else if (type === "Z") {
+          ctx.closePath();
+        }
+      });
+      cursor += glyph.advanceWidth;
+    } else {
+      cursor += RESULT_EXPORT_BEBAS_FALLBACK_ADVANCE;
+    }
+    if (idx < value.length - 1) {
+      cursor += letterSpacing;
+    }
+  });
+  ctx.fill();
+  ctx.restore();
+}
 
 function pad2(n: number): string {
   return n < 10 ? "0" + String(n) : String(n);
@@ -530,6 +679,106 @@ function getMatchTimeStats(
   };
 }
 
+function buildCanvasRoundRectPath(
+  ctx: any,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number
+) {
+  const r = Math.max(0, Math.min(radius, width / 2, height / 2));
+  ctx.beginPath();
+  ctx.moveTo(x + r, y);
+  ctx.arcTo(x + width, y, x + width, y + height, r);
+  ctx.arcTo(x + width, y + height, x, y + height, r);
+  ctx.arcTo(x, y + height, x, y, r);
+  ctx.arcTo(x, y, x + width, y, r);
+  ctx.closePath();
+}
+
+function fillCanvasRoundRect(
+  ctx: any,
+  x: number,
+  y: number,
+  width: number,
+  height: number,
+  radius: number,
+  fillStyle: string
+) {
+  ctx.save();
+  ctx.fillStyle = fillStyle;
+  buildCanvasRoundRectPath(ctx, x, y, width, height, radius);
+  ctx.fill();
+  ctx.restore();
+}
+
+function fitTextWithEllipsis(
+  ctx: any,
+  text: string,
+  maxWidth: number
+): string {
+  const raw = String(text || "");
+  if (!raw || maxWidth <= 0 || ctx.measureText(raw).width <= maxWidth) {
+    return raw;
+  }
+  const ellipsis = "...";
+  const ellipsisWidth = ctx.measureText(ellipsis).width;
+  if (ellipsisWidth >= maxWidth) {
+    return "";
+  }
+  let result = raw;
+  while (result.length > 0 && ctx.measureText(result).width + ellipsisWidth > maxWidth) {
+    result = result.slice(0, -1);
+  }
+  return result ? result + ellipsis : "";
+}
+
+function getResultExportErrorText(err: unknown): string {
+  const raw = String(
+    (err && typeof err === "object" && "message" in err && (err as { message?: unknown }).message) || err || ""
+  ).trim();
+  if (!raw) {
+    return "导出失败，请稍后重试";
+  }
+  if (
+    raw.indexOf("unknown action") >= 0 ||
+    raw.indexOf("Cannot find module") >= 0 ||
+    raw.indexOf("function not found") >= 0
+  ) {
+    return "导出功能暂不可用，请稍后重试";
+  }
+  if (raw.indexOf("room not found") >= 0) {
+    return "房间不存在或已过期";
+  }
+  if (raw.indexOf("room not in result status") >= 0) {
+    return "当前比赛结果还不可导出";
+  }
+  if (
+    raw.indexOf("TIME_LIMIT_EXCEEDED") >= 0 ||
+    raw.indexOf("timed out") >= 0 ||
+    raw.indexOf("timeout") >= 0
+  ) {
+    return "导出超时，请稍后重试";
+  }
+  if (raw.indexOf("write-result-image-failed") >= 0 || raw.indexOf("export page image failed") >= 0) {
+    return "图片生成失败，请稍后重试";
+  }
+  return "导出失败，请稍后重试";
+}
+
+function loadFontFaceAsync(family: string, source: string): Promise<boolean> {
+  return new Promise((resolve) => {
+    wx.loadFontFace({
+      family,
+      source,
+      global: true,
+      success: () => resolve(true),
+      fail: () => resolve(false),
+    });
+  });
+}
+
 Page({
   data: {
     roomId: "",
@@ -567,19 +816,21 @@ Page({
   isSheetGenerating: false,
   scoreSheetTempFilePath: "",
   scoreSheetPreparingPromise: null as null | Promise<string>,
-  scoreSheetFontFamily: "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Helvetica Neue\", sans-serif",
-  scoreSheetSetNoFamily: "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Helvetica Neue\", sans-serif",
-  scoreSheetSystemFamily: "-apple-system, BlinkMacSystemFont, \"PingFang SC\", \"Helvetica Neue\", sans-serif",
+  resultPageImagePreparingPromise: null as null | Promise<string[]>,
+  scoreSheetFontFamily: RESULT_EXPORT_UI_FONT_FAMILY,
+  scoreSheetSetNoFamily: RESULT_EXPORT_UI_FONT_FAMILY,
+  scoreSheetSystemFamily: RESULT_EXPORT_UI_FONT_FAMILY,
   scoreSheetMonoFamily: "Courier New",
   scoreSheetScoreFamily: "Arial",
   scoreSheetFontLoadPromise: null as null | Promise<void>,
   scoreSheetFontsReady: false as boolean,
+  resultPageImagePaths: [] as string[],
+  resultPageImageTheme: "",
   pageActive: false as boolean,
   roomEnsureInFlight: false as boolean,
   roomEnsurePending: false as boolean,
   statusRouteRedirecting: false as boolean,
   resultSetContentSwitchTimer: 0 as number,
-
   onLoad(query: Record<string, string>) {
     this.pageActive = true;
     this.statusRouteRedirecting = false;
@@ -597,6 +848,7 @@ Page({
     if (!this.themeOff) {
       this.themeOff = bindThemeChange(() => {
         this.applyNavigationTheme();
+        this.invalidateResultExportCache();
         wx.setNavigationBarTitle({ title: "" });
       });
     }
@@ -651,10 +903,19 @@ Page({
     this.isSheetGenerating = false;
     this.scoreSheetTempFilePath = "";
     this.scoreSheetPreparingPromise = null;
+    this.resultPageImagePaths = [];
+    this.resultPageImageTheme = "";
+    this.resultPageImagePreparingPromise = null;
     if (this.resultSetContentSwitchTimer) {
       clearTimeout(this.resultSetContentSwitchTimer);
       this.resultSetContentSwitchTimer = 0;
     }
+  },
+
+  invalidateResultExportCache() {
+    this.resultPageImagePaths = [];
+    this.resultPageImageTheme = "";
+    this.resultPageImagePreparingPromise = null;
   },
 
   buildSetOptions(playedSets: number): number[] {
@@ -739,8 +1000,6 @@ Page({
         }
         return true;
       })
-      .slice()
-      .reverse()
       .map((item, idx) => {
         const rawNote = String(item.note || "");
         const normalizedNote = withTeamSuffixForDisplay(rawNote, teamAName, teamBName);
@@ -848,10 +1107,6 @@ Page({
             leftScoreBadgeText = String(scoreFromNote.a || "");
             leftScoreBadgeRgb = teamARGB;
             leftScoreBadgeAlpha = "1";
-            rightScoreBadgeText = String(scoreFromNote.b || "");
-            rightScoreBadgeRgb = teamBRGB;
-            rightScoreBadgeAlpha = "0.25";
-            rightScoreBadgeNeutral = true;
           } else if (isTimeoutStart) {
             const timeoutCount = extractTimeoutCountFromText(rawNote);
             leftNote = timeoutCount ? "暂停 (" + timeoutCount + "/2)" : "暂停";
@@ -882,10 +1137,6 @@ Page({
             rightScoreBadgeText = String(scoreFromNote.b || "");
             rightScoreBadgeRgb = teamBRGB;
             rightScoreBadgeAlpha = "1";
-            leftScoreBadgeText = String(scoreFromNote.a || "");
-            leftScoreBadgeRgb = teamARGB;
-            leftScoreBadgeAlpha = "0.25";
-            leftScoreBadgeNeutral = true;
           } else if (isTimeoutStart) {
             const timeoutCount = extractTimeoutCountFromText(rawNote);
             rightNote = timeoutCount ? "暂停 (" + timeoutCount + "/2)" : "暂停";
@@ -1166,11 +1417,10 @@ Page({
         }
         if (!this.statusRouteRedirecting) {
           this.statusRouteRedirecting = true;
-          wx.redirectTo({
+          wx.reLaunch({
             url: "/pages/match/match?roomId=" + roomId,
             fail: () => {
               this.statusRouteRedirecting = false;
-              wx.reLaunch({ url: "/pages/match/match?roomId=" + roomId });
             },
           });
         }
@@ -1276,6 +1526,7 @@ Page({
 
       this.resultExpireAt = Math.max(0, Number((room as any).resultExpireAt || 0));
       this.setSummaryMap = setSummaryMap;
+      this.invalidateResultExportCache();
 
       const currentSelected = Number(this.data.selectedSetNo || 0);
       const selectedSetNo = currentSelected >= 1 && currentSelected <= playedSets ? currentSelected : playedSets;
@@ -1328,6 +1579,14 @@ Page({
     };
   },
 
+  onDownloadPageTap() {
+    if (this.resultPageImagePreparingPromise) {
+      wx.showToast({ title: "导出中", icon: "none" });
+      return;
+    }
+    this.prepareResultPageImage(true).catch(() => {});
+  },
+
   onScoreSheetTap() {
     if (this.scoreSheetTempFilePath) {
       wx.previewImage({
@@ -1343,6 +1602,851 @@ Page({
     this.prepareScoreSheet(true).catch(() => {});
   },
 
+  buildResultExportSetView(setNo: number): ResultExportSetView {
+    const targetSet = toSetNo(setNo, 1);
+    const summary = this.setSummaryMap[targetSet];
+    const smallScoreAValue = summary ? Number(summary.smallScoreA) : NaN;
+    const smallScoreBValue = summary ? Number(summary.smallScoreB) : NaN;
+    const leadingTeam: "" | "A" | "B" =
+      Number.isFinite(smallScoreAValue) && Number.isFinite(smallScoreBValue)
+        ? smallScoreAValue > smallScoreBValue
+          ? "A"
+          : smallScoreBValue > smallScoreAValue
+            ? "B"
+            : ""
+        : "";
+    const progress = this.buildScoreProgressBySet(this.allLogs, targetSet);
+    return {
+      setNo: targetSet,
+      smallScoreA: summary ? summary.smallScoreA : "--",
+      smallScoreB: summary ? summary.smallScoreB : "--",
+      leadingTeam,
+      durationText: summary && summary.durationText && summary.durationText !== "00:00" ? "局时间 " + summary.durationText : "",
+      progress,
+      logs: this.getDisplayLogsBySet(this.allLogs, targetSet),
+    };
+  },
+
+  getResultExportPalette(): ResultExportPalette {
+    const isDark = String((wx.getSystemInfoSync().theme || "light")).toLowerCase() === "dark";
+    return isDark
+      ? {
+          pageBg: "#1b1d20",
+          surface: "#000000",
+          surfaceSoft: "#1b1d20",
+          strongSurface: "#1b1d20",
+          textMain: "#f5f6f8",
+          textSecondary: "#c1c6ce",
+          textMuted: "#a0a6b1",
+          lineSoft: "#2f3237",
+          badgeText: "#111315",
+          activeChipBg: "#f5f6f8",
+          activeChipText: "#111315",
+          inactiveTrack: "rgba(92, 98, 112, 0.05)",
+          signalUp: "#18be6a",
+          signalDown: "#f7464e",
+        }
+      : {
+          pageBg: "#ffffff",
+          surface: "#f5f6f8",
+          surfaceSoft: "#ececef",
+          strongSurface: "#ffffff",
+          textMain: "#111315",
+          textSecondary: "#5c6270",
+          textMuted: "#a0a6b1",
+          lineSoft: "#dfe1e6",
+          badgeText: "#f5f6f8",
+          activeChipBg: "#111315",
+          activeChipText: "#f5f6f8",
+          inactiveTrack: "rgba(92, 98, 112, 0.05)",
+          signalUp: "#18be6a",
+          signalDown: "#f7464e",
+        };
+  },
+
+  async prepareResultPageImage(previewAfterReady: boolean): Promise<string[]> {
+    const currentTheme = String((wx.getSystemInfoSync().theme || "light")).toLowerCase();
+    if (this.resultPageImagePaths.length && this.resultPageImageTheme === currentTheme) {
+      if (previewAfterReady) {
+        wx.previewImage({
+          current: this.resultPageImagePaths[0],
+          urls: this.resultPageImagePaths,
+        });
+      }
+      return Promise.resolve(this.resultPageImagePaths);
+    }
+    if (this.resultPageImagePreparingPromise) {
+      if (previewAfterReady) {
+        wx.showLoading({ title: "生成中", mask: true });
+      }
+      return this.resultPageImagePreparingPromise
+        .then((paths: string[]) => {
+          if (previewAfterReady && paths.length) {
+            wx.hideLoading();
+            wx.previewImage({
+              current: paths[0],
+              urls: paths,
+            });
+          }
+          return paths;
+        })
+        .catch((err: unknown) => {
+          if (previewAfterReady) {
+            wx.hideLoading();
+            console.error("prepareResultPageImage reuse failed", err);
+            wx.showToast({ title: getResultExportErrorText(err), icon: "none" });
+          }
+          throw err;
+        });
+    }
+    if (previewAfterReady) {
+      wx.showLoading({ title: "生成中", mask: true });
+    }
+    const promise: Promise<string[]> = this.generateLocalResultPageImages(currentTheme).then((imagePaths: string[]) => {
+      if (!imagePaths.length) {
+        throw new Error("write-result-image-failed");
+      }
+      this.resultPageImagePaths = imagePaths;
+      this.resultPageImageTheme = currentTheme;
+      return imagePaths;
+    });
+    this.resultPageImagePreparingPromise = promise;
+    return promise
+      .then((paths: string[]) => {
+        if (previewAfterReady) {
+          wx.hideLoading();
+          wx.previewImage({
+            current: paths[0],
+            urls: paths,
+          });
+        }
+        return paths;
+      })
+        .catch((err: unknown) => {
+        if (previewAfterReady) {
+          wx.hideLoading();
+          console.error("prepareResultPageImage failed", err);
+          wx.showToast({ title: getResultExportErrorText(err), icon: "none" });
+        }
+        throw err;
+      })
+      .finally(() => {
+        this.resultPageImagePreparingPromise = null;
+      });
+  },
+
+  async generateLocalResultPageImages(themeKey: string): Promise<string[]> {
+    void themeKey;
+    await this.loadScoreSheetFonts();
+    const renderRes = await this.renderResultPageImages();
+    if (!renderRes || !renderRes.imagePaths.length) {
+      throw new Error("write-result-image-failed");
+    }
+    return renderRes.imagePaths;
+  },
+
+  async renderResultPageImages(): Promise<{
+    imagePaths: string[];
+    themeKey: string;
+  }> {
+    const setNos = Array.isArray(this.data.setOptions) && this.data.setOptions.length ? this.data.setOptions : [1];
+    const exportSets = setNos.map((setNo) => this.buildResultExportSetView(setNo));
+    const palette = this.getResultExportPalette();
+    const themeKey = String((wx.getSystemInfoSync().theme || "light")).toLowerCase();
+    const maxColumnsPerImage = Math.max(1, exportSets.length);
+    const chunks: ResultExportSetView[][] = [];
+    for (let i = 0; i < exportSets.length; i += Math.max(1, maxColumnsPerImage)) {
+      chunks.push(exportSets.slice(i, i + Math.max(1, maxColumnsPerImage)));
+    }
+    const imagePaths: string[] = [];
+    for (const chunk of chunks) {
+      const chunkRes = await this.renderResultPageImageChunk(chunk, palette, themeKey);
+      if (chunkRes.imagePath) {
+        imagePaths.push(chunkRes.imagePath);
+      }
+    }
+    return {
+      imagePaths,
+      themeKey,
+    };
+  },
+
+  async renderResultPageImageChunk(
+    exportSets: ResultExportSetView[],
+    palette: ResultExportPalette,
+    themeKey: string
+  ): Promise<{
+    imagePath: string;
+    imageWidth: number;
+    imageHeight: number;
+    themeKey: string;
+  }> {
+    const columnWidth = 390;
+    const columnGap = 24;
+    const titleTop = 18;
+    const titleHeight = 28;
+    const titleBottomGap = 16;
+    const globalScorePanelHeight = 120;
+    const globalScorePanelBottomGap = 18;
+    const contentPadX = 33;
+    const contentBottom = 28;
+    const sectionTopGap = 20;
+    const sectionHeadFont = 16;
+    const sectionHeadGap = 8;
+    const progressBodyPaddingY = 21;
+    const progressBodyPaddingX = 21;
+    const progressTeamGap = 21;
+    const progressRowGap = 10;
+    const progressCellHeight = 16;
+    const progressEmptyHeight = 34;
+    const progressBodyRadius = 12;
+    const teamRowGap = 9;
+    const teamRowHeight = 18;
+    const logListTopGap = 4;
+    const logEmptyHeight = 28;
+    const logRowPaddingY = 6;
+    const logColLeftRightGap = 5;
+    const logPillMinHeight = 40;
+    const logPillPadH = 8;
+    const logPillInnerPad = 5;
+    const logPillBadgeSize = 22;
+    const logPillBadgeOffset = 7;
+    const logPillBadgeReserve = 32;
+    const logPillRadius = 999;
+    const pageWidth = exportSets.length * columnWidth + Math.max(0, exportSets.length - 1) * columnGap;
+    const panelWidth = columnWidth - contentPadX * 2;
+
+    const getProgressBodyHeight = (setView: ResultExportSetView): number => {
+      if (!setView.progress.hasData) {
+        return progressBodyPaddingY * 2 + progressEmptyHeight;
+      }
+      const rowsHeight = progressCellHeight * 2 + progressRowGap;
+      return progressBodyPaddingY * 2 + rowsHeight;
+    };
+
+    const getSmallScorePanelHeight = (setView: ResultExportSetView): number => {
+      return setView.durationText ? 105 : 87;
+    };
+
+    const getLogRowHeight = (row: DisplayLogRow): number => {
+      return row.hasLeftSub || row.hasRightSub ? 58 : 52;
+    };
+
+    const getColumnHeight = (setView: ResultExportSetView): number => {
+      let height = 0;
+      height += 42;
+      height += getSmallScorePanelHeight(setView);
+      height += sectionTopGap + sectionHeadFont + sectionHeadGap + getProgressBodyHeight(setView);
+      height += sectionTopGap + sectionHeadFont + teamRowGap + teamRowHeight + logListTopGap;
+      if (setView.logs.length) {
+        height += setView.logs.reduce((sum, row) => sum + getLogRowHeight(row) + logRowPaddingY * 2, 0);
+      } else {
+        height += logEmptyHeight;
+      }
+      return Math.ceil(height);
+    };
+
+    const columnHeights = exportSets.map((setView) => getColumnHeight(setView));
+    const imageWidth = pageWidth;
+    const headerHeight = titleTop + titleHeight + titleBottomGap + globalScorePanelHeight + globalScorePanelBottomGap;
+    const imageHeight = Math.max(headerHeight + Math.max(...columnHeights) + contentBottom, 844);
+
+    return new Promise((resolve, reject) => {
+      wx.nextTick(() => {
+        const query = wx.createSelectorQuery();
+        query
+          .select("#resultExportCanvas")
+          .fields({ node: true, size: true })
+          .exec((res) => {
+            const canvasRef = (res && res[0] && (res[0] as any).node) || null;
+            if (!canvasRef) {
+              reject(new Error("result export canvas node not ready"));
+              return;
+            }
+            const canvas = canvasRef as any;
+            const ctx = canvas.getContext("2d") as any;
+            // 真机原生层对导出位图缓冲有体积限制，结果页在多局并排时需要主动压到安全像素范围内。
+            const preferredScale = exportSets.length === 1 ? 3.8 : 3.1;
+            const maxExportPixels = exportSets.length === 1 ? 9_500_000 : 26_000_000;
+            const maxCanvasEdge = exportSets.length === 1 ? 5120 : 8192;
+            const pixelLimitedScale = Math.sqrt(maxExportPixels / Math.max(1, imageWidth * imageHeight));
+            const widthLimitedScale = maxCanvasEdge / Math.max(1, imageWidth);
+            const heightLimitedScale = maxCanvasEdge / Math.max(1, imageHeight);
+            const resolvedScale = Math.min(preferredScale, pixelLimitedScale, widthLimitedScale, heightLimitedScale);
+            const renderScale = Math.max(0.55, Number.isFinite(resolvedScale) ? resolvedScale : 1);
+            const exportPixelWidth = Math.max(1, Math.round(imageWidth * renderScale));
+            const exportPixelHeight = Math.max(1, Math.round(imageHeight * renderScale));
+            const actualScaleX = exportPixelWidth / Math.max(1, imageWidth);
+            const actualScaleY = exportPixelHeight / Math.max(1, imageHeight);
+            const systemFontFamily = RESULT_EXPORT_UI_FONT_FAMILY;
+            canvas.width = exportPixelWidth;
+            canvas.height = exportPixelHeight;
+            ctx.scale(actualScaleX, actualScaleY);
+            ctx.clearRect(0, 0, imageWidth, imageHeight);
+            ctx.fillStyle = palette.pageBg;
+            ctx.fillRect(0, 0, imageWidth, imageHeight);
+
+            const drawText = (
+              text: string,
+              x: number,
+              y: number,
+              options: {
+                align?: "left" | "right" | "center" | "start" | "end";
+                baseline?: "top" | "hanging" | "middle" | "alphabetic" | "ideographic" | "bottom";
+                color?: string;
+                fontSize?: number;
+                fontWeight?: string;
+                fontFamily?: string;
+                maxWidth?: number;
+              }
+            ) => {
+              ctx.save();
+              ctx.textAlign = options.align || "left";
+              ctx.textBaseline = options.baseline || "middle";
+              ctx.fillStyle = options.color || palette.textMain;
+              ctx.font =
+                String(options.fontWeight || "400") +
+                " " +
+                String(options.fontSize || 14) +
+                "px " +
+                String(options.fontFamily || systemFontFamily);
+              const finalText =
+                typeof options.maxWidth === "number" ? fitTextWithEllipsis(ctx, text, options.maxWidth) : String(text || "");
+              ctx.fillText(finalText, x, y);
+              ctx.restore();
+            };
+
+            const drawTextBlock = (
+              lines: Array<{
+                text: string;
+                fontSize: number;
+                fontWeight: string;
+                color: string;
+                lineHeight: number;
+                fontFamily?: string;
+                maxWidth?: number;
+              }>,
+              x: number,
+              y: number,
+              height: number,
+              align: "left" | "right" | "center"
+            ) => {
+              const visibleLines = lines.filter((item) => String(item.text || "").trim().length > 0);
+              if (!visibleLines.length) {
+                return;
+              }
+              const totalHeight = visibleLines.reduce((sum, item) => sum + item.lineHeight, 0);
+              let cursorY = y + (height - totalHeight) / 2;
+              visibleLines.forEach((item) => {
+                drawText(item.text, x, cursorY + item.lineHeight / 2, {
+                  align,
+                  color: item.color,
+                  fontSize: item.fontSize,
+                  fontWeight: item.fontWeight,
+                  fontFamily: item.fontFamily || systemFontFamily,
+                  maxWidth: item.maxWidth,
+                });
+                cursorY += item.lineHeight;
+              });
+            };
+
+            const drawScorePanel = (
+              x: number,
+              y: number,
+              width: number,
+              label: string,
+              scoreA: string,
+              scoreB: string,
+              large: boolean,
+              durationText: string
+            ) => {
+              const panelHeight = large ? 120 : durationText ? 105 : 87;
+              fillCanvasRoundRect(ctx, x, y, width, panelHeight, 12, palette.surface);
+              const panelCenterX = x + width / 2;
+              drawText(label, panelCenterX, y + 18, {
+                align: "center",
+                color: palette.textSecondary,
+                fontSize: 14,
+                fontWeight: "700",
+              });
+              const compareY = y + 40;
+              const compareInset = 14;
+              const middleWidth = 20;
+              const sideWidth = (width - compareInset * 2 - middleWidth) / 2;
+              drawText(String(this.data.teamAName || "甲"), x + compareInset + sideWidth, compareY, {
+                align: "right",
+                color: palette.textSecondary,
+                fontSize: 14,
+                fontWeight: "600",
+                maxWidth: sideWidth - 6,
+              });
+              drawText("vs", panelCenterX, compareY, {
+                align: "center",
+                color: palette.textSecondary,
+                fontSize: 14,
+                fontWeight: "600",
+              });
+              drawText(String(this.data.teamBName || "乙"), x + width - compareInset - sideWidth, compareY, {
+                align: "left",
+                color: palette.textSecondary,
+                fontSize: 14,
+                fontWeight: "600",
+                maxWidth: sideWidth - 6,
+              });
+              const scoreFontSize = large ? 58 : 27;
+              const scoreSepSize = large ? 32 : 22;
+              const scoreY = y + (large ? 84 : 70);
+              const scoreAText = String(scoreA || "--");
+              const scoreBText = String(scoreB || "--");
+              const sepText = "-";
+              const gap = 10;
+              const scoreAWidth = getBebasTextMetrics(scoreAText).width * scoreFontSize;
+              const scoreBWidth = getBebasTextMetrics(scoreBText).width * scoreFontSize;
+              const sepWidth = getBebasTextMetrics(sepText).width * scoreSepSize;
+              const totalWidth = scoreAWidth + gap + sepWidth + gap + scoreBWidth;
+              let cursorX = panelCenterX - totalWidth / 2;
+              drawBebasText(ctx, scoreAText, cursorX, scoreY, {
+                align: "left",
+                color: palette.textMain,
+                fontSize: scoreFontSize,
+              });
+              cursorX += scoreAWidth + gap;
+              drawBebasText(ctx, sepText, cursorX, scoreY, {
+                align: "left",
+                color: palette.textMain,
+                fontSize: scoreSepSize,
+              });
+              cursorX += sepWidth + gap;
+              drawBebasText(ctx, scoreBText, cursorX, scoreY, {
+                align: "left",
+                color: palette.textMain,
+                fontSize: scoreFontSize,
+              });
+              if (durationText) {
+                drawText(durationText, panelCenterX, y + panelHeight - 14, {
+                  align: "center",
+                  color: palette.textMain,
+                  fontSize: 14,
+                  fontWeight: "600",
+                });
+              }
+            };
+
+            const drawSetHeader = (x: number, y: number, setNo: number) => {
+              const chipWidth = 30;
+              const chipHeight = 30;
+              fillCanvasRoundRect(ctx, x, y, chipWidth, chipHeight, 15, palette.activeChipBg);
+              drawBebasText(ctx, String(setNo), x + chipWidth / 2, y + chipHeight / 2 + 1, {
+                align: "center",
+                color: palette.activeChipText,
+                fontSize: 12,
+              });
+              drawText("局", x + chipWidth + 8, y + chipHeight / 2 + 1, {
+                color: palette.textMuted,
+                fontSize: 13,
+                fontWeight: "400",
+              });
+            };
+
+            const drawProgressCard = (x: number, y: number, setView: ResultExportSetView) => {
+              drawText("得分进程", x, y + sectionHeadFont / 2, {
+                color: palette.textMain,
+                fontSize: sectionHeadFont,
+                fontWeight: "700",
+              });
+              const bodyY = y + sectionHeadFont + sectionHeadGap;
+              const bodyHeight = getProgressBodyHeight(setView);
+              fillCanvasRoundRect(ctx, x, bodyY, panelWidth, bodyHeight, progressBodyRadius, palette.surface);
+              if (!setView.progress.hasData) {
+                drawText("本局暂无得分进程", x + panelWidth / 2, bodyY + bodyHeight / 2, {
+                  align: "center",
+                  color: palette.textSecondary,
+                  fontSize: 13,
+                  fontWeight: "500",
+                });
+                return bodyY + bodyHeight;
+              }
+              const teamNameMaxWidth = 56;
+              const trackX = x + progressBodyPaddingX + teamNameMaxWidth + progressTeamGap;
+              const trackWidth = panelWidth - progressBodyPaddingX * 2 - teamNameMaxWidth - progressTeamGap;
+              const rows = [
+                {
+                  teamName: String(this.data.teamAName || "甲"),
+                  data: setView.progress.a,
+                  color: "rgba(" + String(this.data.teamARGB || "131, 122, 229") + ", 1)",
+                },
+                {
+                  teamName: String(this.data.teamBName || "乙"),
+                  data: setView.progress.b,
+                  color: "rgba(" + String(this.data.teamBRGB || "76, 135, 222") + ", 1)",
+                },
+              ];
+              rows.forEach((row, rowIndex) => {
+                const rowY = bodyY + progressBodyPaddingY + rowIndex * (progressCellHeight + progressRowGap);
+                drawText(row.teamName, x + progressBodyPaddingX, rowY + progressCellHeight / 2, {
+                  color: palette.textMain,
+                  fontSize: 14,
+                  fontWeight: "700",
+                  maxWidth: teamNameMaxWidth,
+                });
+                const cols = Math.max(1, row.data.length);
+                const gap = 2.6;
+                const cellWidth = cols > 1 ? (trackWidth - gap * (cols - 1)) / cols : trackWidth;
+                row.data.forEach((cell, cellIndex) => {
+                  const cellX = trackX + cellIndex * (cellWidth + gap);
+                  fillCanvasRoundRect(
+                    ctx,
+                    cellX,
+                    rowY,
+                    cellWidth,
+                    progressCellHeight,
+                    0,
+                    Number(cell) > 0 ? row.color : palette.inactiveTrack
+                  );
+                });
+              });
+              return bodyY + bodyHeight;
+            };
+
+            const drawSwapArrow = (centerX: number, centerY: number, color: string, direction: "up" | "down") => {
+              ctx.save();
+              ctx.fillStyle = color;
+              ctx.beginPath();
+              if (direction === "up") {
+                ctx.moveTo(centerX, centerY - 5);
+                ctx.lineTo(centerX - 5, centerY + 4);
+                ctx.lineTo(centerX + 5, centerY + 4);
+              } else {
+                ctx.moveTo(centerX, centerY + 5);
+                ctx.lineTo(centerX - 5, centerY - 4);
+                ctx.lineTo(centerX + 5, centerY - 4);
+              }
+              ctx.closePath();
+              ctx.fill();
+              ctx.restore();
+            };
+
+            const drawLogPill = (
+              x: number,
+              y: number,
+              width: number,
+              height: number,
+              row: DisplayLogRow,
+              side: "left" | "right"
+            ) => {
+              const hasNote = side === "left" ? row.hasLeftNote : row.hasRightNote;
+              const hasPlaceholder = side === "left" ? row.hasLeftPlaceholder : row.hasRightPlaceholder;
+              const hasBadge = side === "left" ? row.showLeftBadge : row.showRightBadge;
+              if (!hasNote && !hasPlaceholder && !hasBadge) {
+                return;
+              }
+              fillCanvasRoundRect(ctx, x, y, width, height, logPillRadius, palette.surface);
+              if (!hasNote) {
+                if (hasBadge) {
+                  const badgeText = side === "left" ? row.leftScoreBadgeText : row.rightScoreBadgeText;
+                  const badgeRgb = side === "left" ? row.leftScoreBadgeRgb : row.rightScoreBadgeRgb;
+                  const badgeAlpha = side === "left" ? row.leftScoreBadgeAlpha : row.rightScoreBadgeAlpha;
+                  const isNeutral = side === "left" ? row.leftScoreBadgeNeutral : row.rightScoreBadgeNeutral;
+                  const badgeX = side === "left" ? x + width - logPillBadgeOffset - logPillBadgeSize : x + logPillBadgeOffset;
+                  const badgeY = y + (height - logPillBadgeSize) / 2;
+                  const badgeBg = isNeutral
+                    ? "rgba(92, 98, 112, 0.25)"
+                    : "rgba(" + String(badgeRgb || "92, 98, 112") + ", " + String(badgeAlpha || "1") + ")";
+                  fillCanvasRoundRect(ctx, badgeX, badgeY, logPillBadgeSize, logPillBadgeSize, logPillBadgeSize / 2, badgeBg);
+                  drawBebasText(ctx, badgeText, badgeX + logPillBadgeSize / 2, badgeY + logPillBadgeSize / 2 + 0.5, {
+                    align: "center",
+                    color: palette.badgeText,
+                    fontSize: 10,
+                  });
+                }
+                return;
+              }
+              const mainText = side === "left" ? row.leftNote : row.rightNote;
+              const subText = side === "left" ? row.leftSubNote : row.rightSubNote;
+              const hasSub = side === "left" ? row.hasLeftSub : row.hasRightSub;
+              const isNeutral = side === "left" ? row.leftScoreBadgeNeutral : row.rightScoreBadgeNeutral;
+              const badgeText = side === "left" ? row.leftScoreBadgeText : row.rightScoreBadgeText;
+              const badgeRgb = side === "left" ? row.leftScoreBadgeRgb : row.rightScoreBadgeRgb;
+              const badgeAlpha = side === "left" ? row.leftScoreBadgeAlpha : row.rightScoreBadgeAlpha;
+              const isSwap = side === "left" ? row.leftSubSwap : row.rightSubSwap;
+              const upNo = side === "left" ? row.leftSubUpNo : row.rightSubUpNo;
+              const downNo = side === "left" ? row.leftSubDownNo : row.rightSubDownNo;
+              const textX = side === "left" ? x + logPillPadH + logPillInnerPad : x + width - logPillPadH - logPillInnerPad;
+              const textMaxWidth = width - logPillPadH * 2 - logPillInnerPad - (hasBadge ? logPillBadgeReserve : 0);
+              const align = side === "left" ? "left" : "right";
+              const mainLineHeight = 17;
+              const subLineHeight = 14;
+              const swapLineHeight = 14;
+              if (!hasSub) {
+                drawTextBlock(
+                  [
+                    {
+                      text: mainText,
+                      fontSize: 14,
+                      fontWeight: "700",
+                      color: palette.textMain,
+                      lineHeight: mainLineHeight,
+                      maxWidth: textMaxWidth,
+                    },
+                  ],
+                  textX,
+                  y,
+                  height,
+                  align
+                );
+              } else if (!isSwap) {
+                drawTextBlock(
+                  [
+                    {
+                      text: mainText,
+                      fontSize: 14,
+                      fontWeight: "700",
+                      color: palette.textMain,
+                      lineHeight: mainLineHeight,
+                      maxWidth: textMaxWidth,
+                    },
+                    {
+                      text: subText,
+                      fontSize: 12,
+                      fontWeight: "500",
+                      color: palette.textSecondary,
+                      lineHeight: subLineHeight,
+                      maxWidth: textMaxWidth,
+                    },
+                  ],
+                  textX,
+                  y,
+                  height,
+                  align
+                );
+              } else {
+                drawTextBlock(
+                  [
+                    {
+                      text: mainText,
+                      fontSize: 14,
+                      fontWeight: "700",
+                      color: palette.textMain,
+                      lineHeight: mainLineHeight,
+                      maxWidth: textMaxWidth,
+                    },
+                  ],
+                  textX,
+                  y + (height - (mainLineHeight + swapLineHeight)) / 2 - 1,
+                  mainLineHeight,
+                  align
+                );
+              }
+              if (hasBadge) {
+                const badgeX = side === "left" ? x + width - logPillBadgeOffset - logPillBadgeSize : x + logPillBadgeOffset;
+                const badgeY = y + (height - logPillBadgeSize) / 2;
+                const badgeBg = isNeutral
+                  ? "rgba(92, 98, 112, 0.25)"
+                  : "rgba(" + String(badgeRgb || "92, 98, 112") + ", " + String(badgeAlpha || "1") + ")";
+                fillCanvasRoundRect(ctx, badgeX, badgeY, logPillBadgeSize, logPillBadgeSize, logPillBadgeSize / 2, badgeBg);
+                drawBebasText(ctx, badgeText, badgeX + logPillBadgeSize / 2, badgeY + logPillBadgeSize / 2 + 0.5, {
+                  align: "center",
+                  color: palette.badgeText,
+                  fontSize: 10,
+                });
+              }
+              if (!hasSub) {
+                return;
+              }
+              if (isSwap) {
+                const baseY = y + height / 2 + (mainLineHeight + swapLineHeight) / 2 - 7;
+                const firstArrowX = side === "left" ? x + logPillPadH + logPillInnerPad + 6 : x + width - logPillPadH - logPillInnerPad - 6;
+                const gapX = 24;
+                const numberWidth = Math.max(28, (textMaxWidth - 20) / 2);
+                if (side === "left") {
+                  drawSwapArrow(firstArrowX, baseY, palette.signalUp, "up");
+                  drawText(upNo, firstArrowX + 10, baseY, {
+                    color: palette.textSecondary,
+                    fontSize: 12,
+                    fontWeight: "500",
+                    maxWidth: numberWidth,
+                  });
+                  drawSwapArrow(firstArrowX + gapX + numberWidth, baseY, palette.signalDown, "down");
+                  drawText(downNo, firstArrowX + gapX + numberWidth + 10, baseY, {
+                    color: palette.textSecondary,
+                    fontSize: 12,
+                    fontWeight: "500",
+                    maxWidth: numberWidth,
+                  });
+                } else {
+                  drawSwapArrow(firstArrowX, baseY, palette.signalUp, "up");
+                  drawText(upNo, firstArrowX - 10, baseY, {
+                    align: "right",
+                    color: palette.textSecondary,
+                    fontSize: 12,
+                    fontWeight: "500",
+                    maxWidth: numberWidth,
+                  });
+                  drawSwapArrow(firstArrowX - gapX - numberWidth, baseY, palette.signalDown, "down");
+                  drawText(downNo, firstArrowX - gapX - numberWidth - 10, baseY, {
+                    align: "right",
+                    color: palette.textSecondary,
+                    fontSize: 12,
+                    fontWeight: "500",
+                    maxWidth: numberWidth,
+                  });
+                }
+              }
+            };
+
+            const drawLogSection = (x: number, y: number, setView: ResultExportSetView) => {
+              drawText("比赛记录", x, y + sectionHeadFont / 2, {
+                color: palette.textMain,
+                fontSize: sectionHeadFont,
+                fontWeight: "700",
+              });
+              const teamRowY = y + sectionHeadFont + teamRowGap;
+              const leftWidth = panelWidth * 0.4;
+              const timeWidth = panelWidth * 0.2;
+              const rightWidth = panelWidth * 0.4;
+              drawText(String(this.data.teamAName || "甲"), x + leftWidth / 2, teamRowY + teamRowHeight / 2, {
+                align: "center",
+                color: palette.textMain,
+                fontSize: 14,
+                fontWeight: "700",
+                maxWidth: leftWidth - 10,
+              });
+              drawText(String(this.data.teamBName || "乙"), x + leftWidth + timeWidth + rightWidth / 2, teamRowY + teamRowHeight / 2, {
+                align: "center",
+                color: palette.textMain,
+                fontSize: 14,
+                fontWeight: "700",
+                maxWidth: rightWidth - 10,
+              });
+              let cursorY = teamRowY + teamRowHeight + logListTopGap;
+              if (!setView.logs.length) {
+                drawText("暂无记录", x + panelWidth / 2, cursorY + logEmptyHeight / 2, {
+                  align: "center",
+                  color: palette.textSecondary,
+                  fontSize: 13,
+                  fontWeight: "400",
+                });
+                return cursorY + logEmptyHeight;
+              }
+              setView.logs.forEach((row) => {
+                const rowHeight = getLogRowHeight(row);
+                const pillHeight = Math.max(logPillMinHeight, rowHeight - 6);
+                const pillY = cursorY + (rowHeight + logRowPaddingY * 2 - pillHeight) / 2;
+                const leftX = x;
+                const timeX = x + leftWidth;
+                const rightX = timeX + timeWidth;
+                const pillWidth = leftWidth - logColLeftRightGap * 2;
+                drawLogPill(leftX, pillY, pillWidth, pillHeight, row, "left");
+                drawLogPill(rightX + logColLeftRightGap * 2, pillY, pillWidth, pillHeight, row, "right");
+                drawTextBlock(
+                  [
+                    {
+                      text: row.timeText,
+                      fontSize: 12,
+                      fontWeight: "400",
+                      color: palette.textSecondary,
+                      lineHeight: 14,
+                    },
+                    {
+                      text: row.setTimeText,
+                      fontSize: 11,
+                      fontWeight: "400",
+                      color: palette.textSecondary,
+                      lineHeight: 13,
+                    },
+                  ],
+                  timeX + timeWidth / 2,
+                  cursorY,
+                  rowHeight,
+                  "center"
+                );
+                cursorY += rowHeight + logRowPaddingY * 2;
+              });
+              return cursorY;
+            };
+
+            exportSets.forEach((setView, index) => {
+              const columnX = index * (columnWidth + columnGap);
+              const contentX = columnX + contentPadX;
+              let cursorY = headerHeight;
+              drawSetHeader(contentX, cursorY, setView.setNo);
+              cursorY += 42;
+              drawScorePanel(
+                contentX,
+                cursorY,
+                panelWidth,
+                "本局比分",
+                setView.smallScoreA,
+                setView.smallScoreB,
+                false,
+                setView.durationText
+              );
+              cursorY += getSmallScorePanelHeight(setView);
+              cursorY = drawProgressCard(contentX, cursorY + sectionTopGap, setView);
+              cursorY = drawLogSection(contentX, cursorY + sectionTopGap, setView);
+              if (index < exportSets.length - 1) {
+                ctx.save();
+                ctx.strokeStyle = palette.lineSoft;
+                ctx.lineWidth = 1;
+                const dividerX = columnX + columnWidth + columnGap / 2;
+                const dividerTop = titleTop + titleHeight + titleBottomGap + globalScorePanelHeight + 8;
+                ctx.beginPath();
+                ctx.moveTo(dividerX, dividerTop);
+                ctx.lineTo(dividerX, imageHeight - 12);
+                ctx.stroke();
+                ctx.restore();
+              }
+            });
+
+            drawText("比赛结果", imageWidth / 2, titleTop + titleHeight / 2, {
+              align: "center",
+              color: palette.textMain,
+              fontSize: 18,
+              fontWeight: "600",
+            });
+            drawScorePanel(
+              contentPadX,
+              titleTop + titleHeight + titleBottomGap,
+              imageWidth - contentPadX * 2,
+              "比局",
+              String(this.data.bigScoreA || "0"),
+              String(this.data.bigScoreB || "0"),
+              true,
+              ""
+            );
+
+            wx.canvasToTempFilePath(
+              {
+                canvas,
+                x: 0,
+                y: 0,
+                width: imageWidth,
+                height: imageHeight,
+                destWidth: exportPixelWidth,
+                destHeight: exportPixelHeight,
+                fileType: "png",
+                quality: 1,
+                success: (out) => {
+                  const path = String((out && out.tempFilePath) || "");
+                  if (!path) {
+                    reject(new Error("empty export image path"));
+                    return;
+                  }
+                  resolve({
+                    imagePath: path,
+                    imageWidth,
+                    imageHeight,
+                    themeKey,
+                  });
+                },
+                fail: (err) => reject(err || new Error("export page image failed")),
+              }
+            );
+          });
+      });
+    });
+  },
+
   async loadScoreSheetFonts() {
     if (this.scoreSheetFontsReady) {
       return;
@@ -1351,9 +2455,16 @@ Page({
       return this.scoreSheetFontLoadPromise;
     }
     this.scoreSheetFontLoadPromise = (async () => {
-      // 仅使用系统字体，不再加载云端/本地嵌入字体。
       this.scoreSheetFontFamily = this.scoreSheetSystemFamily;
       this.scoreSheetSetNoFamily = this.scoreSheetSystemFamily;
+      this.scoreSheetScoreFamily = "Arial";
+      for (const source of RESULT_EXPORT_BEBAS_FONT_SOURCES) {
+        const loaded = await loadFontFaceAsync("BebasNeue", source);
+        if (loaded) {
+          this.scoreSheetScoreFamily = "BebasNeue";
+          break;
+        }
+      }
       this.scoreSheetFontsReady = true;
     })().finally(() => {
       this.scoreSheetFontLoadPromise = null;

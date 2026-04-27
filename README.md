@@ -2,21 +2,23 @@
 
 A WeChat Mini Program for collaborative volleyball officiating, covering room creation, live match control, substitutions, between-set setup, and post-match review.
 
-Current home build label: `V1.5.3 | VolleyballRotation@163.com`
+Current home build label: `V1.5.6 | VolleyballRotation@163.com`
 
 ## What the app supports
 
 - 6-digit referee room ID + 6-digit password create/join flow
-- Team setup (match format, team names, team colors, permanent captain, 6+2 roster)
+- Team setup (match format, team names, team colors, optional captain setup, 6+2 roster)
 - Live scoring with auto/manual rotation, timeout management, side switching, and undo
 - In-match substitution panel with validation rules and records
 - In-page **Edit Players** mode for correcting lineup input mistakes (not counted as substitutions)
 - In-page **Between Sets** mode (including deciding-set controls)
-- Captain confirmation modal before start and in re-confirm scenarios
+- Captain confirmation modal before start and in re-confirm scenarios when captain setup is enabled
+- Guide page with anchored quick-start sections
 - Result page with:
   - set summaries,
   - score progress track,
-  - three-column match record timeline,
+  - per-set match record timeline,
+  - full result-page image export from a 2D canvas,
   - score-sheet image export from a 2D canvas
 - Light/Dark theme support
 - Multi-referee collaboration with operator/observer takeover
@@ -26,6 +28,7 @@ Current home build label: `V1.5.3 | VolleyballRotation@163.com`
 Only these pages are in the active route list:
 
 - `pages/home/home`
+- `pages/guide/guide`
 - `pages/join-match/join-match`
 - `pages/create-room/create-room`
 - `pages/match/match`
@@ -36,22 +39,26 @@ Only these pages are in the active route list:
 1. `home`
 - Enter **Create Match** or **Join Match**.
 - Shows a quick resume card when cached room credentials are still valid.
+- Opens `guide` from the version/meta entry.
 
-2. `create-room`
+2. `guide`
+- Provides a short, section-based onboarding for room setup, collaboration, substitutions, libero use, and result handling.
+
+3. `create-room`
 - Configure match format and both teams.
-- Validate lineup and captain inputs.
+- Validate lineup input and optional captain setup.
 - Save room and enter `match`.
 
-3. `match`
-- Pre-start state requires on-court captain confirmation.
+4. `match`
+- Pre-start state requires on-court captain confirmation when captain setup is enabled.
 - Start match and run normal live officiating.
 - Optional mode switch to:
   - `edit_players` (input correction mode),
   - `between_sets` (set transition mode).
 
-4. `result`
+5. `result`
 - Shows final match data and per-set details.
-- Exports the score sheet image from local canvas rendering.
+- Exports the result page image and score sheet image from local canvas rendering.
 
 ## Collaboration model (A/B referees)
 
@@ -152,4 +159,3 @@ npx tsc -p tsconfig.json --noEmit
 ## Notes
 
 - This project currently keeps most match orchestration inside `pages/match/match.ts`.
-- If UI/flow behavior is changed, update this README together with route and mode descriptions.

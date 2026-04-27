@@ -97,7 +97,7 @@
             <view class="x-room-count-pill center-set-pill stat-num-pill score-switch-pill {{(canStartMatch && hasOperationAuthority) ? 'pill-hidden' : 'pill-visible'}}">{{setWinsText}}</view>
             <view wx:if="{{hasOperationAuthority}}" class="start-match-entry-row score-switch-pill {{canStartMatch ? 'pill-visible' : 'pill-hidden'}}">
               <view
-                wx:if="{{!preStartCaptainConfirmed}}"
+                wx:if="{{captainModeEnabled && !preStartCaptainConfirmed}}"
                 class="x-room-count-pill center-set-pill captain-select-entry-pill pressable"
                 hover-class="tap-active"
                 bindtap="onOpenCaptainConfirmModal"
@@ -626,7 +626,7 @@
             </view>
             <view class="set-end-score-line">
               <text class="set-end-score">{{setEndSmallScoreA}}</text>
-              <text class="set-end-score-sep">:</text>
+              <text class="set-end-score-sep">-</text>
               <text class="set-end-score">{{setEndSmallScoreB}}</text>
             </view>
           </view>
@@ -639,7 +639,7 @@
             </view>
             <view class="set-end-score-line">
               <text class="set-end-score">{{setEndBigScoreA}}</text>
-              <text class="set-end-score-sep">:</text>
+              <text class="set-end-score-sep">-</text>
               <text class="set-end-score">{{setEndBigScoreB}}</text>
             </view>
           </view>
@@ -717,8 +717,8 @@
           </view>
         </view>
       </view>
-      <scroll-view class="log-list {{logContentSwitching ? 'switching' : ''}}" scroll-y="true">
-        <view class="log-item" wx:for="{{logs}}" wx:key="id" wx:for-item="item">
+      <scroll-view class="log-list {{logContentSwitching ? 'switching' : ''}}" scroll-y="true" scroll-into-view="{{logScrollIntoView}}">
+        <view class="log-item" wx:for="{{logs}}" wx:key="id" wx:for-item="item" wx:for-index="index" id="match-log-item-{{index}}">
           <text class="log-time">{{item.timeText}}</text>
           <text class="log-note">{{item.note}}</text>
         </view>
@@ -978,7 +978,7 @@
     </view>
   </view>
 
-  <view class="log-mask modal-mask {{showCaptainConfirmModal ? 'modal-enter' : 'modal-leave'}}" wx:if="{{showCaptainConfirmModal || captainConfirmModalClosing}}" bindtap="onCloseCaptainConfirmModal">
+  <view class="log-mask modal-mask {{showCaptainConfirmModal ? 'modal-enter' : 'modal-leave'}}" wx:if="{{captainModeEnabled && (showCaptainConfirmModal || captainConfirmModalClosing)}}" bindtap="onCloseCaptainConfirmModal">
     <view class="log-panel captain-confirm-panel modal-panel {{showCaptainConfirmModal ? 'modal-panel-enter' : 'modal-panel-leave'}} {{captainConfirmContentSwitching ? 'captain-confirm-content-switching' : ''}}" style="{{captainConfirmPanelInlineStyle}}" catchtap="onCaptainConfirmModalTap">
       <view class="log-head">
         <view class="sub-panel-title-wrap">

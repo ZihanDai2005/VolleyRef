@@ -10,6 +10,7 @@ export interface MatchSettings {
   wins: number;
   maxScore: number;
   tiebreakScore: number;
+  captainEnabled?: boolean;
 }
 
 export interface TeamState {
@@ -509,6 +510,11 @@ function normalizeRoom(roomId: string, raw: unknown): RoomState {
   base.settings.wins = Number(input.settings && input.settings.wins) || 3;
   base.settings.maxScore = Number(input.settings && input.settings.maxScore) || 25;
   base.settings.tiebreakScore = Number(input.settings && input.settings.tiebreakScore) || 15;
+  if (input.settings && Object.prototype.hasOwnProperty.call(input.settings, "captainEnabled")) {
+    base.settings.captainEnabled = (input.settings as MatchSettings).captainEnabled !== false;
+  } else {
+    delete base.settings.captainEnabled;
+  }
 
   base.teamA.name = (input.teamA && input.teamA.name) || "甲";
   base.teamB.name = (input.teamB && input.teamB.name) || "乙";
@@ -1078,6 +1084,9 @@ export function createRoom(input: {
     maxScore: Number(input.settings.maxScore) || 25,
     tiebreakScore: Number(input.settings.tiebreakScore) || 15,
   };
+  if (input.settings.captainEnabled === false) {
+    room.settings.captainEnabled = false;
+  }
   room.teamA = {
     name: input.teamAName || "甲",
     captainNo: String(input.teamACaptainNo || ""),
@@ -1341,6 +1350,9 @@ export async function createRoomAsync(input: {
     maxScore: Number(input.settings.maxScore) || 25,
     tiebreakScore: Number(input.settings.tiebreakScore) || 15,
   };
+  if (input.settings.captainEnabled === false) {
+    room.settings.captainEnabled = false;
+  }
   room.teamA = {
     name: input.teamAName || "甲",
     captainNo: String(input.teamACaptainNo || ""),

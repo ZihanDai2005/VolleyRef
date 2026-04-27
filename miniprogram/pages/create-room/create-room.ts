@@ -33,12 +33,20 @@ type MatchModeChar = {
   kind: "digit" | "text";
   offsetY: number;
 };
+type SetupCaptainOption = {
+  label: string;
+  value: "yes" | "no";
+};
 
 const MATCH_MODE_OPTIONS: MatchModeOption[] = [
   { label: "5局3胜", sets: 5, wins: 3, maxScore: 25, tiebreakScore: 15 },
   { label: "3局2胜", sets: 3, wins: 2, maxScore: 25, tiebreakScore: 15 },
   { label: "1局1胜（15分）", sets: 1, wins: 1, maxScore: 15, tiebreakScore: 15 },
   { label: "1局1胜（25分）", sets: 1, wins: 1, maxScore: 25, tiebreakScore: 25 },
+];
+const SETUP_CAPTAIN_OPTIONS: SetupCaptainOption[] = [
+  { label: "是", value: "yes" },
+  { label: "否", value: "no" },
 ];
 const MATCH_MODE_CHAR_OFFSET_Y: Record<string, number> = {
   局: 2,
@@ -163,6 +171,11 @@ function buildMatchModeChars(label: string): MatchModeChar[] {
   });
 }
 
+function isCaptainSetupEnabledByIndex(index: number): boolean {
+  const option = SETUP_CAPTAIN_OPTIONS[Math.max(0, Math.min(SETUP_CAPTAIN_OPTIONS.length - 1, Number(index) || 0))];
+  return !option || option.value !== "no";
+}
+
 function validateTeamPlayers(players: PlayerSlot[], teamName: string): string | null {
   const main = players.slice(0, 6);
   const missingMain = main.find(function (p) {
@@ -260,6 +273,8 @@ Page({
     matchModes: MATCH_MODE_OPTIONS,
     matchModeIndex: 0,
     matchModeChars: buildMatchModeChars(MATCH_MODE_OPTIONS[0].label),
+    setupCaptainOptions: SETUP_CAPTAIN_OPTIONS,
+    setupCaptainIndex: 0,
     passwordFocused: false,
     teamANameFocused: false,
     teamBNameFocused: false,
@@ -726,6 +741,7 @@ Page({
             )
           ] || MATCH_MODE_OPTIONS[0]).label
         ),
+        setupCaptainIndex: room.settings && (room.settings as { captainEnabled?: boolean }).captainEnabled === false ? 1 : 0,
         teamAName: room.teamA.name,
         teamBName: room.teamB.name,
         teamACaptainNo: String((room.teamA as any).captainNo || ""),
@@ -800,6 +816,31 @@ Page({
       matchModeChars: buildMatchModeChars((this.data.matchModes[nextIdx] || this.data.matchModes[0]).label),
     });
     this.persistDraft();
+  },
+
+  applySetupCaptainIndex(nextRaw: number) {
+    const maxIdx = this.data.setupCaptainOptions.length - 1;
+    const nextIdx = Number.isFinite(nextRaw) ? Math.max(0, Math.min(maxIdx, nextRaw)) : 0;
+    const shouldDisableCaptain = !isCaptainSetupEnabledByIndex(nextIdx);
+    const shouldClearCaptainFocus =
+      shouldDisableCaptain &&
+      (this.data.activeCreateInputKey === "teamACaptainNo" || this.data.activeCreateInputKey === "teamBCaptainNo");
+    this.setData({
+      setupCaptainIndex: nextIdx,
+      activeCreateInputKey: shouldClearCaptainFocus ? "" : this.data.activeCreateInputKey,
+    });
+    if (shouldClearCaptainFocus) {
+      wx.hideKeyboard({
+        fail: () => {},
+      });
+    }
+  },
+
+  onSetupCaptainChange(e: WechatMiniprogram.CustomEvent) {
+    if (!this.data.createMode) {
+      return;
+    }
+    this.applySetupCaptainIndex(Number(e.detail.value));
   },
 
   onPasswordFocus() {
@@ -1234,6 +1275,7 @@ Page({
     const teamAPlayers = teamAPlayersArg || this.data.teamAPlayers;
     const teamBPlayers = teamBPlayersArg || this.data.teamBPlayers;
     const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
+    const captainEnabled = isCaptainSetupEnabledByIndex(this.data.setupCaptainIndex);
     updateRoomAsync(roomId, (room) => {
       room.password = this.data.roomPassword.trim();
       room.settings = {
@@ -1242,18 +1284,25 @@ Page({
         maxScore: mode.maxScore,
         tiebreakScore: mode.tiebreakScore,
       };
+      if (!captainEnabled) {
+        room.settings.captainEnabled = false;
+      }
       room.teamA = {
         name: this.data.teamAName.trim() || "甲",
-        captainNo: this.data.teamACaptainNo.trim(),
+        captainNo: captainEnabled ? this.data.teamACaptainNo.trim() : "",
         color: this.data.teamAColor,
         players: teamAPlayers.slice(),
       };
       room.teamB = {
         name: this.data.teamBName.trim() || "乙",
-        captainNo: this.data.teamBCaptainNo.trim(),
+        captainNo: captainEnabled ? this.data.teamBCaptainNo.trim() : "",
         color: this.data.teamBColor,
         players: teamBPlayers.slice(),
       };
+      if (!captainEnabled) {
+        room.match.teamACurrentCaptainNo = "";
+        room.match.teamBCurrentCaptainNo = "";
+      }
       room.match.servingTeam = this.data.servingTeam;
       room.match.isSwapped = this.data.teamASide === "B";
       return room;
@@ -1342,8 +1391,9 @@ Page({
     const teamBName = this.data.teamBName.trim() || "乙";
     const roomPassword = this.data.roomPassword.trim();
     const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
-    const permanentTeamACaptainNo = normalizeNumberInput(this.data.teamACaptainNo);
-    const permanentTeamBCaptainNo = normalizeNumberInput(this.data.teamBCaptainNo);
+    const captainEnabled = isCaptainSetupEnabledByIndex(this.data.setupCaptainIndex);
+    const permanentTeamACaptainNo = captainEnabled ? normalizeNumberInput(this.data.teamACaptainNo) : "";
+    const permanentTeamBCaptainNo = captainEnabled ? normalizeNumberInput(this.data.teamBCaptainNo) : "";
 
     if (roomPassword.length !== 6) {
       showBlockHint("房间密码需6位数字");
@@ -1359,11 +1409,11 @@ Page({
       showBlockHint(teamNameErr);
       return;
     }
-    if (!permanentTeamACaptainNo) {
+    if (captainEnabled && !permanentTeamACaptainNo) {
       showBlockHint("请填写甲队队长号码");
       return;
     }
-    if (!permanentTeamBCaptainNo) {
+    if (captainEnabled && !permanentTeamBCaptainNo) {
       showBlockHint("请填写乙队队长号码");
       return;
     }
@@ -1402,6 +1452,7 @@ Page({
           wins: mode.wins,
           maxScore: mode.maxScore,
           tiebreakScore: mode.tiebreakScore,
+          ...(captainEnabled ? {} : { captainEnabled: false }),
         },
         teamAName: teamAName,
         teamACaptainNo: permanentTeamACaptainNo,
@@ -1465,6 +1516,9 @@ Page({
         maxScore: mode.maxScore,
         tiebreakScore: mode.tiebreakScore,
       };
+      if (!captainEnabled) {
+        room.settings.captainEnabled = false;
+      }
       room.teamA = {
         name: teamAName,
         captainNo: permanentTeamACaptainNo,
