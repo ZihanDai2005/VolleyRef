@@ -13,11 +13,11 @@
   <view class="result-nav-spacer" style="height: calc({{customNavOffset}} + 24rpx);"></view>
 
   <view class="result-content">
-    <view class="result-score-panel">
+    <view class="result-action-row">
       <view class="result-panel-action-btn result-share-btn pressable" hover-class="tap-active" bindtap="onDownloadPageTap">
         <view class="result-panel-action-content">
           <view class="result-panel-action-icon result-share-icon"></view>
-          <text class="result-panel-action-text">导出页面</text>
+          <text class="result-panel-action-text">导出图片</text>
         </view>
       </view>
       <view class="result-panel-action-btn result-sheet-btn pressable" hover-class="tap-active" bindtap="onScoreSheetTap">
@@ -26,6 +26,8 @@
           <text class="result-panel-action-text">记分表</text>
         </view>
       </view>
+    </view>
+    <view class="result-score-panel">
       <text class="result-section-label">比局</text>
       <view class="result-compare-line">
         <text class="result-compare-left">{{teamAName}}</text>

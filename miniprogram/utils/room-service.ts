@@ -909,6 +909,15 @@ function saveCloudRoomRaw(raw: any): RoomState {
   const room = normalizeRoom(roomId, raw || {});
   const current = getStore()[roomId];
   if (current) {
+    const currentStatus = String((current as any).status || "");
+    const nextStatus = String((room as any).status || "");
+    if (nextStatus === "result" && currentStatus !== "result") {
+      saveRoomToStore(room);
+      return room;
+    }
+    if (currentStatus === "result" && nextStatus !== "result") {
+      return cloneRoom(current);
+    }
     const currentVersion = Math.max(1, Number((current as any).syncVersion) || 1);
     const nextVersion = Math.max(1, Number((room as any).syncVersion) || 1);
     if (nextVersion < currentVersion) {
@@ -1497,7 +1506,12 @@ export async function updateRoomAsync(
     try {
       const res = await callRoomApi<{ room?: any }>("upsertRoom", { room: next });
       if (res && res.room) {
-        return cloneRoom(saveCloudRoomRaw(res.room));
+        const remoteRoom = normalizeRoom(roomId, res.room);
+        const savedRoom = saveCloudRoomRaw(res.room);
+        if (requireCloudAck && String(remoteRoom.status || "") !== String(next.status || "")) {
+          return null;
+        }
+        return cloneRoom(savedRoom);
       }
       if (requireCloudAck) {
         return null;

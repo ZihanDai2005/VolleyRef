@@ -2,7 +2,7 @@
 
 A WeChat Mini Program for collaborative volleyball officiating, covering room creation, live match control, substitutions, between-set setup, and post-match review.
 
-Current home build label: `V1.5.6 | VolleyballRotation@163.com`
+Current home build label: `V1.5.7 | VolleyballRotation@163.com`
 
 ## What the app supports
 

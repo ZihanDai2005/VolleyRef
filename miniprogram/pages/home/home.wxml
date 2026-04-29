@@ -55,7 +55,7 @@
     <view class="version-row">
       <button class="version-link version-meta-btn" bindtap="onVersionMetaTap">
         <view class="version-meta">
-          <text class="version-tag">V1.5.6</text>
+          <text class="version-tag">V1.5.7</text>
           <text class="version-sep">|</text>
         </view>
       </button>

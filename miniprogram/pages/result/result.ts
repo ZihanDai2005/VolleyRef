@@ -1,4 +1,4 @@
-import { getRoomAsync } from "../../utils/room-service";
+import { forcePullRoomAsync } from "../../utils/room-service";
 import { applyNavigationBarTheme, bindThemeChange } from "../../utils/theme";
 import { buildJoinSharePath, buildShareCardTitle, SHARE_IMAGE_URL, showMiniProgramShareMenu } from "../../utils/share";
 import { BEBAS_GLYPHS, type BebasCommand } from "./bebasGlyphs";
@@ -137,6 +137,7 @@ const RESULT_EXPORT_BEBAS_FONT_SOURCES = [
   "url('./assets/fonts/BebasNeue-NumRomanL-subset.ttf')",
 ];
 const RESULT_EXPORT_BEBAS_FALLBACK_ADVANCE = 0.42;
+const RESULT_STATUS_RETRY_DELAYS_MS = [320, 900, 1600];
 
 function getBebasTextMetrics(text: string, letterSpacing = 0) {
   const chars = Array.from(String(text || ""));
@@ -405,14 +406,20 @@ function isSubstitutionAction(action: string, noteRaw: string): boolean {
   const note = String(noteRaw || "");
   return (
     actionText === "libero_swap" ||
+    actionText === "libero_swap_auto_front" ||
     actionText.indexOf("sub_") === 0 ||
     actionText.indexOf("substitution_") === 0 ||
-    note.indexOf("换人") >= 0
+    note.indexOf("换人") >= 0 ||
+    note.indexOf("自由人前排自动换回") >= 0
   );
 }
 
-function getSubstitutionTypeLabel(noteRaw: string): string {
+function getSubstitutionTypeLabel(noteRaw: string, actionRaw = ""): string {
   const note = String(noteRaw || "");
+  const action = String(actionRaw || "");
+  if (action === "libero_swap_auto_front" || note.indexOf("自由人前排自动换回") >= 0) {
+    return "自由人前排换回";
+  }
   if (note.indexOf("自由人普通换人") >= 0 || note.indexOf("自由人常规换人") >= 0 || note.indexOf("自由人前排自动换回") >= 0) {
     return "自由人常规换人";
   }
@@ -830,6 +837,8 @@ Page({
   roomEnsureInFlight: false as boolean,
   roomEnsurePending: false as boolean,
   statusRouteRedirecting: false as boolean,
+  resultStatusRetryTimer: 0 as number,
+  resultStatusRetryCount: 0 as number,
   resultSetContentSwitchTimer: 0 as number,
   onLoad(query: Record<string, string>) {
     this.pageActive = true;
@@ -888,6 +897,7 @@ Page({
 
   onHide() {
     this.pageActive = false;
+    this.clearResultStatusRetry();
     this.stopCountdown();
   },
 
@@ -895,6 +905,7 @@ Page({
     this.pageActive = false;
     this.roomEnsurePending = false;
     this.roomEnsureInFlight = false;
+    this.clearResultStatusRetry();
     this.stopCountdown();
     if (this.themeOff) {
       this.themeOff();
@@ -916,6 +927,34 @@ Page({
     this.resultPageImagePaths = [];
     this.resultPageImageTheme = "";
     this.resultPageImagePreparingPromise = null;
+  },
+
+  clearResultStatusRetry() {
+    if (!this.resultStatusRetryTimer) {
+      return;
+    }
+    clearTimeout(this.resultStatusRetryTimer);
+    this.resultStatusRetryTimer = 0;
+  },
+
+  scheduleResultStatusRetry(roomId: string): boolean {
+    const id = String(roomId || "");
+    if (!id || this.resultStatusRetryTimer) {
+      return false;
+    }
+    if (this.resultStatusRetryCount >= RESULT_STATUS_RETRY_DELAYS_MS.length) {
+      return false;
+    }
+    const delay = RESULT_STATUS_RETRY_DELAYS_MS[this.resultStatusRetryCount];
+    this.resultStatusRetryCount += 1;
+    this.resultStatusRetryTimer = setTimeout(() => {
+      this.resultStatusRetryTimer = 0;
+      if (!this.pageActive || !this.isResultPageTop()) {
+        return;
+      }
+      void this.ensureRoom(id);
+    }, delay) as unknown as number;
+    return true;
   },
 
   buildSetOptions(playedSets: number): number[] {
@@ -956,10 +995,34 @@ Page({
         hiddenOpIds.add(revertedOpId);
       }
     });
+    let latestResultLockedKey = "";
+    (logs || []).forEach((item, idx) => {
+      const action = String(item && item.action ? item.action : "");
+      const noteText = String(item && item.note ? item.note : "");
+      const isResultLocked = action === "result_locked" || noteText.indexOf("比赛结束") >= 0;
+      if (!isResultLocked) {
+        return;
+      }
+      const opId = String((item as any).opId || "");
+      if (opId && hiddenOpIds.has(opId)) {
+        return;
+      }
+      const noteSetNo = extractSetNoFromText(noteText);
+      const itemSetNo = toSetNo(item && (item as any).setNo, noteSetNo || 1);
+      if (itemSetNo !== targetSet) {
+        return;
+      }
+      latestResultLockedKey =
+        opId || String((item as any).id || "") || String(Math.max(0, Number((item as any).ts) || 0)) + "-" + String(idx);
+    });
     return (logs || [])
-      .filter((item) => {
+      .filter((item, idx) => {
         const action = String(item.action || "");
         const noteText = String(item.note || "");
+        const opId = String((item as any).opId || "");
+        const itemKey =
+          opId || String((item as any).id || "") || String(Math.max(0, Number((item as any).ts) || 0)) + "-" + String(idx);
+        const isResultLocked = action === "result_locked" || noteText.indexOf("比赛结束") >= 0;
         const isSubstitutionAction =
           action === "libero_swap" ||
           action.indexOf("sub_") === 0 ||
@@ -982,8 +1045,10 @@ Page({
           // 局间配置换边不展示。
           return false;
         }
-        const opId = String((item as any).opId || "");
         if (opId && hiddenOpIds.has(opId)) {
+          return false;
+        }
+        if (isResultLocked && latestResultLockedKey && itemKey !== latestResultLockedKey) {
           return false;
         }
         const noteSetNo = extractSetNoFromText(String(item.note || ""));
@@ -1116,7 +1181,7 @@ Page({
             leftSubNote = "";
           } else if (isSubstitutionAction(action, renderedNote)) {
             const sub = parseSubstitutionSwap(renderedNote);
-            leftNote = getSubstitutionTypeLabel(renderedNote);
+            leftNote = getSubstitutionTypeLabel(renderedNote, action);
             if (sub) {
               leftSubSwap = true;
               leftSubType = sub.hideType ? "" : sub.typeLabel;
@@ -1146,7 +1211,7 @@ Page({
             rightSubNote = "";
           } else if (isSubstitutionAction(action, renderedNote)) {
             const sub = parseSubstitutionSwap(renderedNote);
-            rightNote = getSubstitutionTypeLabel(renderedNote);
+            rightNote = getSubstitutionTypeLabel(renderedNote, action);
             if (sub) {
               rightSubSwap = true;
               rightSubType = sub.hideType ? "" : sub.typeLabel;
@@ -1389,7 +1454,7 @@ Page({
     }
     this.roomEnsureInFlight = true;
     try {
-      const room = await getRoomAsync(roomId);
+      const room = await forcePullRoomAsync(roomId);
       if (!room) {
         if (!this.pageActive || !this.isResultPageTop()) {
           return;
@@ -1412,6 +1477,9 @@ Page({
         return;
       }
       if (room.status !== "result") {
+        if (this.scheduleResultStatusRetry(roomId)) {
+          return;
+        }
         if (!this.pageActive || !this.isResultPageTop()) {
           return;
         }
@@ -1426,6 +1494,8 @@ Page({
         }
         return;
       }
+      this.clearResultStatusRetry();
+      this.resultStatusRetryCount = 0;
 
       const teamAName = String(room.teamA && room.teamA.name ? room.teamA.name : "甲");
       const teamBName = String(room.teamB && room.teamB.name ? room.teamB.name : "乙");
@@ -1866,9 +1936,9 @@ Page({
             const canvas = canvasRef as any;
             const ctx = canvas.getContext("2d") as any;
             // 真机原生层对导出位图缓冲有体积限制，结果页在多局并排时需要主动压到安全像素范围内。
-            const preferredScale = exportSets.length === 1 ? 3.8 : 3.1;
-            const maxExportPixels = exportSets.length === 1 ? 9_500_000 : 26_000_000;
-            const maxCanvasEdge = exportSets.length === 1 ? 5120 : 8192;
+            const preferredScale = (exportSets.length === 1 ? 3.8 : 3.1) * 1.5;
+            const maxExportPixels = (exportSets.length === 1 ? 9_500_000 : 26_000_000) * 2.25;
+            const maxCanvasEdge = (exportSets.length === 1 ? 5120 : 8192) * 1.5;
             const pixelLimitedScale = Math.sqrt(maxExportPixels / Math.max(1, imageWidth * imageHeight));
             const widthLimitedScale = maxCanvasEdge / Math.max(1, imageWidth);
             const heightLimitedScale = maxCanvasEdge / Math.max(1, imageHeight);
@@ -1993,8 +2063,8 @@ Page({
                 fontWeight: "600",
                 maxWidth: sideWidth - 6,
               });
-              const scoreFontSize = large ? 58 : 27;
-              const scoreSepSize = large ? 32 : 22;
+              const scoreFontSize = large ? 58 : 24;
+              const scoreSepSize = large ? 32 : 20;
               const scoreY = y + (large ? 84 : 70);
               const scoreAText = String(scoreA || "--");
               const scoreBText = String(scoreB || "--");
@@ -2090,15 +2160,30 @@ Page({
                   maxWidth: teamNameMaxWidth,
                 });
                 const cols = Math.max(1, row.data.length);
-                const gap = 2.6;
+                const maxGap = 2.6;
+                const minVisibleCellWidth = 1.35;
+                const minPixelWidth = 1 / Math.max(1, actualScaleX);
+                const minCellWidth = Math.max(minVisibleCellWidth, minPixelWidth);
+                const fitGap =
+                  cols > 1 ? Math.max(0, (trackWidth - minCellWidth * cols) / (cols - 1)) : 0;
+                const gap = cols > 1 ? Math.min(maxGap, fitGap) : 0;
                 const cellWidth = cols > 1 ? (trackWidth - gap * (cols - 1)) / cols : trackWidth;
+                const useContinuousBand = cellWidth < minCellWidth;
                 row.data.forEach((cell, cellIndex) => {
-                  const cellX = trackX + cellIndex * (cellWidth + gap);
+                  const cellX = useContinuousBand
+                    ? trackX + (trackWidth * cellIndex) / cols
+                    : trackX + cellIndex * (cellWidth + gap);
+                  const nextCellX = useContinuousBand
+                    ? trackX + (trackWidth * (cellIndex + 1)) / cols
+                    : cellX + cellWidth;
+                  const pixelLeft = Math.round(cellX * actualScaleX) / actualScaleX;
+                  const pixelRight = Math.round(nextCellX * actualScaleX) / actualScaleX;
+                  const resolvedWidth = Math.max(minPixelWidth, pixelRight - pixelLeft);
                   fillCanvasRoundRect(
                     ctx,
-                    cellX,
+                    pixelLeft,
                     rowY,
-                    cellWidth,
+                    resolvedWidth,
                     progressCellHeight,
                     0,
                     Number(cell) > 0 ? row.color : palette.inactiveTrack
@@ -2111,16 +2196,25 @@ Page({
             const drawSwapArrow = (centerX: number, centerY: number, color: string, direction: "up" | "down") => {
               ctx.save();
               ctx.fillStyle = color;
-              ctx.beginPath();
-              if (direction === "up") {
-                ctx.moveTo(centerX, centerY - 5);
-                ctx.lineTo(centerX - 5, centerY + 4);
-                ctx.lineTo(centerX + 5, centerY + 4);
-              } else {
-                ctx.moveTo(centerX, centerY + 5);
-                ctx.lineTo(centerX - 5, centerY - 4);
-                ctx.lineTo(centerX + 5, centerY - 4);
+              ctx.translate(centerX, centerY);
+              if (direction === "down") {
+                ctx.rotate(Math.PI);
               }
+              const arrowWidth = 11;
+              const arrowHeight = 10;
+              const scale = Math.min(arrowWidth / 580.99, arrowHeight / 532.35);
+              const xOffset = -580.99 / 2;
+              const yOffset = -532.35 / 2;
+              const px = (xValue: number) => (xValue + xOffset) * scale;
+              const py = (yValue: number) => (yValue + yOffset) * scale;
+              ctx.beginPath();
+              ctx.moveTo(px(195.22), py(55.01));
+              ctx.lineTo(px(14.91), py(367.32));
+              ctx.bezierCurveTo(px(-27.44), py(440.66), px(25.49), py(532.32), px(110.19), py(532.32));
+              ctx.lineTo(px(470.81), py(532.32));
+              ctx.bezierCurveTo(px(555.51), py(532.32), px(608.44), py(440.63), px(566.09), py(367.32));
+              ctx.lineTo(px(385.78), py(55.01));
+              ctx.bezierCurveTo(px(343.44), py(-18.34), px(237.57), py(-18.34), px(195.22), py(55.01));
               ctx.closePath();
               ctx.fill();
               ctx.restore();
@@ -2255,40 +2349,63 @@ Page({
               }
               if (isSwap) {
                 const baseY = y + height / 2 + (mainLineHeight + swapLineHeight) / 2 - 7;
-                const firstArrowX = side === "left" ? x + logPillPadH + logPillInnerPad + 6 : x + width - logPillPadH - logPillInnerPad - 6;
-                const gapX = 24;
-                const numberWidth = Math.max(28, (textMaxWidth - 20) / 2);
-                if (side === "left") {
-                  drawSwapArrow(firstArrowX, baseY, palette.signalUp, "up");
-                  drawText(upNo, firstArrowX + 10, baseY, {
+                const arrowSize = 11;
+                const actionGap = 2;
+                const actionPairGap = 15;
+                const numberFontSize = 12;
+                const numberFont = "500 " + String(numberFontSize) + "px " + systemFontFamily;
+                ctx.save();
+                ctx.font = numberFont;
+                const upText = fitTextWithEllipsis(ctx, upNo, Math.max(0, textMaxWidth - arrowSize - actionGap));
+                const downText = fitTextWithEllipsis(ctx, downNo, Math.max(0, textMaxWidth - arrowSize - actionGap));
+                let upWidth = ctx.measureText(upText).width;
+                let downWidth = ctx.measureText(downText).width;
+                const fixedWidth = arrowSize * 2 + actionGap * 2 + actionPairGap;
+                const availableNumberWidth = Math.max(8, textMaxWidth - fixedWidth);
+                if (upWidth + downWidth > availableNumberWidth) {
+                  const halfWidth = Math.max(8, availableNumberWidth / 2);
+                  const nextUpText = fitTextWithEllipsis(ctx, upText, halfWidth);
+                  const nextDownText = fitTextWithEllipsis(ctx, downText, halfWidth);
+                  upWidth = ctx.measureText(nextUpText).width;
+                  downWidth = ctx.measureText(nextDownText).width;
+                  const groupWidth = fixedWidth + upWidth + downWidth;
+                  const groupX =
+                    side === "left"
+                      ? x + logPillPadH + logPillInnerPad
+                      : x + width - logPillPadH - logPillInnerPad - groupWidth;
+                  ctx.restore();
+                  drawSwapArrow(groupX + arrowSize / 2, baseY, palette.signalUp, "up");
+                  drawText(nextUpText, groupX + arrowSize + actionGap, baseY, {
                     color: palette.textSecondary,
-                    fontSize: 12,
+                    fontSize: numberFontSize,
                     fontWeight: "500",
-                    maxWidth: numberWidth,
                   });
-                  drawSwapArrow(firstArrowX + gapX + numberWidth, baseY, palette.signalDown, "down");
-                  drawText(downNo, firstArrowX + gapX + numberWidth + 10, baseY, {
+                  const downArrowX = groupX + arrowSize + actionGap + upWidth + actionPairGap;
+                  drawSwapArrow(downArrowX + arrowSize / 2, baseY, palette.signalDown, "down");
+                  drawText(nextDownText, downArrowX + arrowSize + actionGap, baseY, {
                     color: palette.textSecondary,
-                    fontSize: 12,
+                    fontSize: numberFontSize,
                     fontWeight: "500",
-                    maxWidth: numberWidth,
                   });
                 } else {
-                  drawSwapArrow(firstArrowX, baseY, palette.signalUp, "up");
-                  drawText(upNo, firstArrowX - 10, baseY, {
-                    align: "right",
+                  const groupWidth = fixedWidth + upWidth + downWidth;
+                  const groupX =
+                    side === "left"
+                      ? x + logPillPadH + logPillInnerPad
+                      : x + width - logPillPadH - logPillInnerPad - groupWidth;
+                  ctx.restore();
+                  drawSwapArrow(groupX + arrowSize / 2, baseY, palette.signalUp, "up");
+                  drawText(upText, groupX + arrowSize + actionGap, baseY, {
                     color: palette.textSecondary,
-                    fontSize: 12,
+                    fontSize: numberFontSize,
                     fontWeight: "500",
-                    maxWidth: numberWidth,
                   });
-                  drawSwapArrow(firstArrowX - gapX - numberWidth, baseY, palette.signalDown, "down");
-                  drawText(downNo, firstArrowX - gapX - numberWidth - 10, baseY, {
-                    align: "right",
+                  const downArrowX = groupX + arrowSize + actionGap + upWidth + actionPairGap;
+                  drawSwapArrow(downArrowX + arrowSize / 2, baseY, palette.signalDown, "down");
+                  drawText(downText, downArrowX + arrowSize + actionGap, baseY, {
                     color: palette.textSecondary,
-                    fontSize: 12,
+                    fontSize: numberFontSize,
                     fontWeight: "500",
-                    maxWidth: numberWidth,
                   });
                 }
               }
@@ -2356,8 +2473,8 @@ Page({
                     },
                   ],
                   timeX + timeWidth / 2,
-                  cursorY,
-                  rowHeight,
+                  pillY,
+                  pillHeight,
                   "center"
                 );
                 cursorY += rowHeight + logRowPaddingY * 2;
