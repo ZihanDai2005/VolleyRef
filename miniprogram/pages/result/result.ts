@@ -355,6 +355,34 @@ function extractScoreFromText(text: string): { a: string; b: string } | null {
   return null;
 }
 
+function isFinishedSmallScore(scoreA: unknown, scoreB: unknown): boolean {
+  const a = Math.max(0, Number(scoreA) || 0);
+  const b = Math.max(0, Number(scoreB) || 0);
+  const high = Math.max(a, b);
+  const low = Math.min(a, b);
+  return high >= 15 && high - low >= 2;
+}
+
+function resolveLastSmallScoreFromLogs(logs: MatchLogItem[], setNo: number): { a: string; b: string } | null {
+  const targetSet = toSetNo(setNo, 1);
+  for (let i = (logs || []).length - 1; i >= 0; i -= 1) {
+    const item = logs[i];
+    const action = String(item && item.action ? item.action : "");
+    if (action !== "set_end") {
+      continue;
+    }
+    const itemSetNo = toSetNo(item && (item as any).setNo, 1);
+    if (itemSetNo !== targetSet) {
+      continue;
+    }
+    const score = extractScoreFromText(String(item && item.note ? item.note : ""));
+    if (score) {
+      return score;
+    }
+  }
+  return null;
+}
+
 function extractWinnerFromText(text: string, teamAName: string, teamBName: string): string {
   const raw = String(text || "");
   const m = raw.match(/[：:]\s*(.+?)\s*胜/);
@@ -833,6 +861,7 @@ Page({
   scoreSheetFontsReady: false as boolean,
   resultPageImagePaths: [] as string[],
   resultPageImageTheme: "",
+  resultDataReady: false as boolean,
   pageActive: false as boolean,
   roomEnsureInFlight: false as boolean,
   roomEnsurePending: false as boolean,
@@ -888,12 +917,9 @@ Page({
     if (roomId) {
       this.ensureRoom(roomId);
     }
-    void this.prepareScoreSheet(false).catch(() => {});
   },
 
-  onReady() {
-    void this.prepareScoreSheet(false).catch(() => {});
-  },
+  onReady() {},
 
   onHide() {
     this.pageActive = false;
@@ -927,6 +953,13 @@ Page({
     this.resultPageImagePaths = [];
     this.resultPageImageTheme = "";
     this.resultPageImagePreparingPromise = null;
+  },
+
+  invalidateScoreSheetCache() {
+    this.scoreSheetTempFilePath = "";
+    if (!this.isSheetGenerating) {
+      this.scoreSheetPreparingPromise = null;
+    }
   },
 
   clearResultStatusRetry() {
@@ -1354,12 +1387,24 @@ Page({
     if (!progress || !progress.hasData || progress.cols <= 0) {
       return [];
     }
+    const resolveGapRpx = (): number => {
+      const cols = Math.max(1, Number(progress.cols) || 1);
+      const maxGap = Math.max(0, Number(gapRpx) || 0);
+      if (cols <= 1) {
+        return 0;
+      }
+      const estimatedTrackWidthRpx = 360;
+      const minCellWidthRpx = 2;
+      const fitGap = (estimatedTrackWidthRpx - minCellWidthRpx * cols) / (cols - 1);
+      return Math.max(0, Math.min(maxGap, Number.isFinite(fitGap) ? fitGap : 0));
+    };
+    const resolvedGapRpx = resolveGapRpx();
     const buildRow = (rowKey: string, teamName: string, rowData: number[], teamRgb: string): ScoreProgressRowView => {
       const trackStyle =
         "grid-template-columns: repeat(" +
         String(progress.cols) +
-        ", minmax(0, 1fr)); column-gap: " +
-        String(Math.max(0, Number(gapRpx) || 0)) +
+        ", minmax(1px, 1fr)); column-gap: " +
+        String(resolvedGapRpx) +
         "rpx;";
       const cells: ScoreProgressCellView[] = (rowData || []).map((cell, idx) => {
         const isOn = Number(cell) > 0;
@@ -1522,12 +1567,17 @@ Page({
       Object.keys(storedSetSummaries || {}).forEach((key) => {
         const s = storedSetSummaries[key] || {};
         const setNo = toSetNo(s.setNo, toSetNo(key, 1));
+        const smallScoreA = Math.max(0, Number(s.smallScoreA) || 0);
+        const smallScoreB = Math.max(0, Number(s.smallScoreB) || 0);
+        if (!isFinishedSmallScore(smallScoreA, smallScoreB)) {
+          return;
+        }
         setSummaryMap[setNo] = {
           setNo,
           teamAName: String(s.teamAName || teamAName),
           teamBName: String(s.teamBName || teamBName),
-          smallScoreA: String(Math.max(0, Number(s.smallScoreA) || 0)),
-          smallScoreB: String(Math.max(0, Number(s.smallScoreB) || 0)),
+          smallScoreA: String(smallScoreA),
+          smallScoreB: String(smallScoreB),
           winnerName: String(s.winnerName || ""),
           durationText: String(s.durationText || ""),
         };
@@ -1572,6 +1622,7 @@ Page({
         .map((k) => toSetNo(k, 1))
         .reduce((max: number, n: number) => Math.max(max, n), 1);
       const setNoFromLogs = this.allLogs
+        .filter((item: MatchLogItem) => String(item && item.action) === "set_end")
         .map((item: MatchLogItem) => toSetNo(item.setNo, 1))
         .reduce((max: number, n: number) => Math.max(max, n), 1);
       const playedByWins = Math.max(
@@ -1581,22 +1632,31 @@ Page({
       const playedSets = Math.max(playedByWins, setNoFromSummaries, setNoFromLogs, 1);
 
       for (let i = 1; i <= playedSets; i += 1) {
+        const inferredScore = resolveLastSmallScoreFromLogs(this.allLogs, i);
         if (!setSummaryMap[i]) {
           setSummaryMap[i] = {
             setNo: i,
             teamAName,
             teamBName,
-            smallScoreA: "--",
-            smallScoreB: "--",
+            smallScoreA: inferredScore ? inferredScore.a : "--",
+            smallScoreB: inferredScore ? inferredScore.b : "--",
             winnerName: "",
             durationText: "",
           };
+        } else if (
+          inferredScore &&
+          (setSummaryMap[i].smallScoreA === "--" || setSummaryMap[i].smallScoreB === "--")
+        ) {
+          setSummaryMap[i].smallScoreA = inferredScore.a;
+          setSummaryMap[i].smallScoreB = inferredScore.b;
         }
       }
 
       this.resultExpireAt = Math.max(0, Number((room as any).resultExpireAt || 0));
       this.setSummaryMap = setSummaryMap;
       this.invalidateResultExportCache();
+      this.invalidateScoreSheetCache();
+      this.resultDataReady = true;
 
       const currentSelected = Number(this.data.selectedSetNo || 0);
       const selectedSetNo = currentSelected >= 1 && currentSelected <= playedSets ? currentSelected : playedSets;
@@ -1650,6 +1710,10 @@ Page({
   },
 
   onDownloadPageTap() {
+    if (!this.resultDataReady) {
+      wx.showToast({ title: "数据加载中", icon: "none" });
+      return;
+    }
     if (this.resultPageImagePreparingPromise) {
       wx.showToast({ title: "导出中", icon: "none" });
       return;
@@ -1658,6 +1722,10 @@ Page({
   },
 
   onScoreSheetTap() {
+    if (!this.resultDataReady) {
+      wx.showToast({ title: "数据加载中", icon: "none" });
+      return;
+    }
     if (this.scoreSheetTempFilePath) {
       wx.previewImage({
         current: this.scoreSheetTempFilePath,
@@ -1735,6 +1803,12 @@ Page({
   },
 
   async prepareResultPageImage(previewAfterReady: boolean): Promise<string[]> {
+    if (!this.resultDataReady) {
+      if (previewAfterReady) {
+        wx.showToast({ title: "数据加载中", icon: "none" });
+      }
+      return Promise.reject(new Error("result data not ready"));
+    }
     const currentTheme = String((wx.getSystemInfoSync().theme || "light")).toLowerCase();
     if (this.resultPageImagePaths.length && this.resultPageImageTheme === currentTheme) {
       if (previewAfterReady) {
@@ -1937,8 +2011,8 @@ Page({
             const ctx = canvas.getContext("2d") as any;
             // 真机原生层对导出位图缓冲有体积限制，结果页在多局并排时需要主动压到安全像素范围内。
             const preferredScale = (exportSets.length === 1 ? 3.8 : 3.1) * 1.5;
-            const maxExportPixels = (exportSets.length === 1 ? 9_500_000 : 26_000_000) * 2.25;
-            const maxCanvasEdge = (exportSets.length === 1 ? 5120 : 8192) * 1.5;
+            const maxExportPixels = exportSets.length === 1 ? 9_500_000 : 26_000_000;
+            const maxCanvasEdge = exportSets.length === 1 ? 5120 : 8192;
             const pixelLimitedScale = Math.sqrt(maxExportPixels / Math.max(1, imageWidth * imageHeight));
             const widthLimitedScale = maxCanvasEdge / Math.max(1, imageWidth);
             const heightLimitedScale = maxCanvasEdge / Math.max(1, imageHeight);
@@ -2727,6 +2801,12 @@ Page({
   },
 
   async prepareScoreSheet(previewAfterReady: boolean): Promise<string> {
+    if (!this.resultDataReady) {
+      if (previewAfterReady) {
+        wx.showToast({ title: "数据加载中", icon: "none" });
+      }
+      return Promise.reject(new Error("result data not ready"));
+    }
     if (this.scoreSheetTempFilePath) {
       if (previewAfterReady) {
         wx.previewImage({

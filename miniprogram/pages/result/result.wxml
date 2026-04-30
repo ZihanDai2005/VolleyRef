@@ -30,14 +30,10 @@
     <view class="result-score-panel">
       <text class="result-section-label">比局</text>
       <view class="result-compare-line">
-        <text class="result-compare-left">{{teamAName}}</text>
-        <text class="result-compare-colon">vs</text>
-        <text class="result-compare-right">{{teamBName}}</text>
+        <text class="result-compare-text">{{teamAName}} vs {{teamBName}}</text>
       </view>
       <view class="result-score-line">
-        <text class="result-score result-score-large result-score-left {{bigScoreLeadingTeam === 'A' ? 'result-score-hot' : ''}}">{{bigScoreA}}</text>
-        <text class="result-score-sep result-score-sep-large">-</text>
-        <text class="result-score result-score-large result-score-right {{bigScoreLeadingTeam === 'B' ? 'result-score-hot' : ''}}">{{bigScoreB}}</text>
+        <text class="result-score-text result-score-large">{{bigScoreA}} - {{bigScoreB}}</text>
       </view>
     </view>
 
@@ -62,15 +58,11 @@
     <view class="result-set-content">
       <view class="result-score-panel">
         <view class="result-compare-line">
-          <text class="result-compare-left">{{teamAName}}</text>
-          <text class="result-compare-colon">vs</text>
-          <text class="result-compare-right">{{teamBName}}</text>
+          <text class="result-compare-text">{{teamAName}} vs {{teamBName}}</text>
         </view>
         <view class="result-set-summary {{resultSetContentSwitching ? 'switching' : ''}}">
           <view class="result-score-line">
-            <text class="result-score result-score-left {{selectedSetLeadingTeam === 'A' ? 'result-score-hot' : ''}}">{{selectedSmallScoreA}}</text>
-            <text class="result-score-sep">-</text>
-            <text class="result-score result-score-right {{selectedSetLeadingTeam === 'B' ? 'result-score-hot' : ''}}">{{selectedSmallScoreB}}</text>
+            <text class="result-score-text">{{selectedSmallScoreA}} - {{selectedSmallScoreB}}</text>
           </view>
           <text class="result-duration" wx:if="{{selectedSetDurationText}}">{{selectedSetDurationText}}</text>
         </view>

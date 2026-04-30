@@ -243,14 +243,15 @@ function callRoomApi<T = any>(
         clearTimeout(timeout);
         const result = (res && res.result) || {};
         if (result && result.ok === false) {
-          safeReject(new Error(String(result.message || "cloud-api-failed")));
+          safeReject(new Error("roomApi " + action + ": " + String(result.message || "cloud-api-failed")));
           return;
         }
         safeResolve(result as T);
       })
       .catch((e: any) => {
         clearTimeout(timeout);
-        safeReject(e);
+        const message = String((e && e.message) || e || "cloud-call-failed");
+        safeReject(new Error("roomApi " + action + ": " + message));
       });
   });
 }
@@ -904,11 +905,26 @@ function saveRoomToStore(room: RoomState): void {
   saveStore(store);
 }
 
+function buildCloudRoomPayload(room: RoomState): RoomState {
+  const payload = cloneRoom(normalizeRoom(room.roomId, room));
+  payload.match.undoStack = [];
+  delete (payload.match as any).lineupAdjustDraft;
+  return payload;
+}
+
 function saveCloudRoomRaw(raw: any): RoomState {
   const roomId = String(raw && raw.roomId ? raw.roomId : raw && raw._id ? raw._id : "");
   const room = normalizeRoom(roomId, raw || {});
   const current = getStore()[roomId];
   if (current) {
+    if (
+      current.status !== "result" &&
+      Array.isArray(current.match && current.match.undoStack) &&
+      current.match.undoStack.length > 0 &&
+      (!Array.isArray(room.match && room.match.undoStack) || room.match.undoStack.length <= 0)
+    ) {
+      room.match.undoStack = cloneRoom(current).match.undoStack;
+    }
     const currentStatus = String((current as any).status || "");
     const nextStatus = String((room as any).status || "");
     if (nextStatus === "result" && currentStatus !== "result") {
@@ -1042,7 +1058,11 @@ function cloudUpsertRoom(room: RoomState): void {
   if (!canUseCloud() || !room || !room.roomId) {
     return;
   }
-  callRoomApi("upsertRoom", { room: room }).catch(() => {});
+  callRoomApi("upsertRoom", { room: buildCloudRoomPayload(room) }).catch((e) => {
+    try {
+      console.error("[room-service] upsertRoom failed", e);
+    } catch (err) {}
+  });
 }
 
 export function createInitialPlayers(): PlayerSlot[] {
@@ -1473,6 +1493,8 @@ export async function updateRoomAsync(
   updater: (room: RoomState) => RoomState,
   options?: { awaitCloud?: boolean; requireCloudAck?: boolean }
 ): Promise<RoomState | null> {
+  const awaitCloud = !!(options && options.awaitCloud);
+  const requireCloudAck = !!(options && options.requireCloudAck);
   let baseRoom = getRoom(roomId);
   try {
     if (!baseRoom) {
@@ -1493,24 +1515,32 @@ export async function updateRoomAsync(
   (nextComparable as any).updatedAt = 0;
   (nextComparable as any).syncVersion = 0;
   if (JSON.stringify(baseComparable) === JSON.stringify(nextComparable)) {
-    return cloneRoom(baseRoom);
+    if (awaitCloud && requireCloudAck) {
+      next.syncVersion = Math.max(1, Number((baseRoom as any).syncVersion) || 1) + 1;
+      next.updatedAt = now();
+    } else {
+      return cloneRoom(baseRoom);
+    }
   }
-  next.syncVersion = Math.max(1, Number((baseRoom as any).syncVersion) || 1) + 1;
-  next.updatedAt = now();
-  saveRoomToStore(next);
-
-  const awaitCloud = !!(options && options.awaitCloud);
-  const requireCloudAck = !!(options && options.requireCloudAck);
+  if (!next.updatedAt || Number(next.updatedAt || 0) === Number(baseRoom.updatedAt || 0)) {
+    next.syncVersion = Math.max(1, Number((baseRoom as any).syncVersion) || 1) + 1;
+    next.updatedAt = now();
+  }
+  const deferLocalSaveUntilCloudAck = awaitCloud && requireCloudAck;
+  if (!deferLocalSaveUntilCloudAck) {
+    saveRoomToStore(next);
+  }
 
   if (awaitCloud && canUseCloud()) {
     try {
-      const res = await callRoomApi<{ room?: any }>("upsertRoom", { room: next });
+      const res = await callRoomApi<{ room?: any }>("upsertRoom", { room: buildCloudRoomPayload(next) });
       if (res && res.room) {
         const remoteRoom = normalizeRoom(roomId, res.room);
-        const savedRoom = saveCloudRoomRaw(res.room);
         if (requireCloudAck && String(remoteRoom.status || "") !== String(next.status || "")) {
+          saveRoomToStore(remoteRoom);
           return null;
         }
+        const savedRoom = saveCloudRoomRaw(res.room);
         return cloneRoom(savedRoom);
       }
       if (requireCloudAck) {
@@ -1522,7 +1552,11 @@ export async function updateRoomAsync(
     }
   }
 
-  void callRoomApi<{ room?: any }>("upsertRoom", { room: next })
+  if (deferLocalSaveUntilCloudAck) {
+    return null;
+  }
+
+  void callRoomApi<{ room?: any }>("upsertRoom", { room: buildCloudRoomPayload(next) })
     .then((res) => {
       if (res && res.room) {
         saveCloudRoomRaw(res.room);
@@ -1530,6 +1564,11 @@ export async function updateRoomAsync(
     })
     .catch(() => {});
   return cloneRoom(next);
+}
+
+function shortenError(message: string): string {
+  const text = String(message || "").replace(/\s+/g, " ").trim();
+  return text.length > 220 ? text.slice(0, 220) + "..." : text;
 }
 
 export async function getParticipantCountAsync(roomId: string): Promise<number> {
@@ -1548,6 +1587,123 @@ export async function forcePullRoomAsync(roomId: string): Promise<RoomState | nu
     }
   } catch (e) {}
   return getRoom(roomId);
+}
+
+export async function lockResultRoomAsync(
+  roomId: string,
+  updater: (room: RoomState) => RoomState
+): Promise<RoomState | null> {
+  (lockResultRoomAsync as any).lastError = "";
+  if (!canUseCloud()) {
+    (lockResultRoomAsync as any).lastError = "cloud-not-ready";
+    return null;
+  }
+  let baseRoom = getRoom(roomId);
+  if (!baseRoom) {
+    try {
+      baseRoom = await forcePullRoomAsync(roomId);
+    } catch (e) {}
+  }
+  if (!baseRoom) {
+    (lockResultRoomAsync as any).lastError = "local-room-missing";
+    return null;
+  }
+  const localSetEndState = ((baseRoom.match as any).setEndState || null) as any;
+  const localSetEndSummary = localSetEndState && localSetEndState.summary ? localSetEndState.summary : null;
+  const storedSetSummaries = ((baseRoom.match as any).setSummaries || {}) as Record<string, any>;
+  const currentSetNo = Math.max(1, Number(baseRoom.match.setNo) || 1);
+  const storedFinalSummary = Object.keys(storedSetSummaries || {})
+    .map((key) => {
+      const summary = storedSetSummaries[key];
+      return summary && typeof summary === "object"
+        ? { ...summary, setNo: Math.max(1, Number(summary.setNo || key) || 1) }
+        : summary;
+    })
+    .filter((summary) => {
+      if (!summary || typeof summary !== "object") {
+        return false;
+      }
+      if (Math.max(1, Number(summary.setNo) || 1) !== currentSetNo) {
+        return false;
+      }
+      const hasScore = summary.smallScoreA !== undefined && summary.smallScoreB !== undefined;
+      const hasWinner = String(summary.winnerName || "").trim().length > 0;
+      return hasScore && hasWinner;
+    })
+    .sort((a, b) => (Number(b.setNo) || 0) - (Number(a.setNo) || 0))[0];
+  const finalSetSummary = localSetEndSummary || storedFinalSummary || null;
+  const next = normalizeRoom(roomId, updater(cloneRoom(baseRoom)));
+  next.status = "result";
+  next.match.isFinished = true;
+  delete (next.match as any).setEndState;
+  next.syncVersion = Math.max(1, Number((baseRoom as any).syncVersion) || 1) + 1;
+  next.updatedAt = now();
+  let lockError = "";
+  try {
+    const winnerTeam = Number(next.match.aSetWins || 0) > Number(next.match.bSetWins || 0) ? "A" : "B";
+    const resultLockedAt = Math.max(0, Number((next as any).resultLockedAt || 0)) || now();
+    const endedSetNo = Math.max(1, Number((finalSetSummary && finalSetSummary.setNo) || next.match.setNo || 1));
+    const smallScoreA = Math.max(
+      0,
+      Number(finalSetSummary && finalSetSummary.smallScoreA !== undefined ? finalSetSummary.smallScoreA : 0) || 0
+    );
+    const smallScoreB = Math.max(
+      0,
+      Number(finalSetSummary && finalSetSummary.smallScoreB !== undefined ? finalSetSummary.smallScoreB : 0) || 0
+    );
+    const res = await callRoomApi<{ room?: any }>(
+      "lockResultRoom",
+      {
+        roomId: roomId,
+        result: {
+          opId: String((next.match as any).lastActionOpId || (next.match as any).currentOpId || ""),
+          logTs: resultLockedAt,
+          resultLockedAt: resultLockedAt,
+          resultExpireAt: Math.max(0, Number((next as any).resultExpireAt || 0)) || resultLockedAt + RESULT_KEEP_MS,
+          expiresAt: Math.max(0, Number((next as any).expiresAt || 0)) || resultLockedAt + RESULT_KEEP_MS,
+          setNo: endedSetNo,
+          teamAName: String(next.teamA.name || "甲"),
+          teamBName: String(next.teamB.name || "乙"),
+          smallScoreA: smallScoreA,
+          smallScoreB: smallScoreB,
+          aSetWins: Math.max(0, Number(next.match.aSetWins || 0)),
+          bSetWins: Math.max(0, Number(next.match.bSetWins || 0)),
+          winnerTeam: winnerTeam,
+          winnerName:
+            String((finalSetSummary && finalSetSummary.winnerName) || "") ||
+            (winnerTeam === "A" ? String(next.teamA.name || "甲") : String(next.teamB.name || "乙")),
+          durationText: String((finalSetSummary && finalSetSummary.durationText) || ""),
+        },
+      },
+      20000
+    );
+    if (!res || !res.room) {
+      throw new Error("lockResultRoom empty response");
+    }
+    const saved = saveCloudRoomRaw(res.room);
+    if (String(saved.status || "") !== "result") {
+      throw new Error(
+        "lockResultRoom status mismatch: " +
+          String((saved as any).status || "") +
+          " v" +
+          String((saved as any).syncVersion || "")
+      );
+    }
+    return cloneRoom(saved);
+  } catch (e) {
+    lockError = String((e as any)?.message || e || "");
+  }
+  if (lockError) {
+    (lockResultRoomAsync as any).lastError = shortenError(lockError);
+    try {
+      console.error("[room-service] lockResultRoom failed", (lockResultRoomAsync as any).lastError);
+    } catch (e) {}
+  }
+  return null;
+}
+
+export function getLastResultSaveError(): string {
+  return String((lockResultRoomAsync as any).lastError || "");
 }
 
 export async function getRoomExistenceFromServerAsync(

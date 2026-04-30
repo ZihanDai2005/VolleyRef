@@ -149,6 +149,7 @@
       <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamAName">
         <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
           class="create-head-input-native"
+          maxlength="8"
           value="{{teamAName}}"
           focus="{{activeCreateInputKey === 'teamAName'}}"
           disabled="{{!createMode}}"
@@ -297,6 +298,7 @@
       <view class="create-head-input-wrap create-team-input-wrap" catchtap="onCreateFieldWrapTap" data-focus-key="teamBName">
         <input adjust-position="false" always-embed="true" hold-keyboard="true" cursor-spacing="0"
           class="create-head-input-native"
+          maxlength="8"
           value="{{teamBName}}"
           focus="{{activeCreateInputKey === 'teamBName'}}"
           disabled="{{!createMode}}"

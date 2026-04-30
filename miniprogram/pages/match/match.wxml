@@ -620,27 +620,19 @@
           <view class="set-end-score-panel">
             <text class="set-end-section-label">比分</text>
             <view class="set-end-compare-line">
-              <text class="set-end-compare-left">{{setEndTeamAName}}</text>
-              <text class="set-end-compare-colon">:</text>
-              <text class="set-end-compare-right">{{setEndTeamBName}}</text>
+              <text class="set-end-compare-text">{{setEndTeamAName}} vs {{setEndTeamBName}}</text>
             </view>
             <view class="set-end-score-line">
-              <text class="set-end-score">{{setEndSmallScoreA}}</text>
-              <text class="set-end-score-sep">-</text>
-              <text class="set-end-score">{{setEndSmallScoreB}}</text>
+              <text class="set-end-score-text">{{setEndSmallScoreA}} - {{setEndSmallScoreB}}</text>
             </view>
           </view>
           <view class="set-end-score-panel">
             <text class="set-end-section-label">比局</text>
             <view class="set-end-compare-line">
-              <text class="set-end-compare-left">{{setEndTeamAName}}</text>
-              <text class="set-end-compare-colon">:</text>
-              <text class="set-end-compare-right">{{setEndTeamBName}}</text>
+              <text class="set-end-compare-text">{{setEndTeamAName}} vs {{setEndTeamBName}}</text>
             </view>
             <view class="set-end-score-line">
-              <text class="set-end-score">{{setEndBigScoreA}}</text>
-              <text class="set-end-score-sep">-</text>
-              <text class="set-end-score">{{setEndBigScoreB}}</text>
+              <text class="set-end-score-text">{{setEndBigScoreA}} - {{setEndBigScoreB}}</text>
             </view>
           </view>
         </view>

@@ -774,19 +774,29 @@ Page({
     }
   },
 
-  onInputChange(e: WechatMiniprogram.Input) {
+  onInputChange(e: WechatMiniprogram.Input): string | void {
     const field = (e.currentTarget.dataset as { field: string }).field;
     const value = e.detail.value;
     if (field === "teamAName") {
       if (!this.data.createMode) {
         return;
       }
-      this.setData({ teamAName: value });
+      const next = Array.from(String(value || "")).slice(0, 8).join("");
+      this.setData({ teamAName: next });
+      setTimeout(() => {
+        this.persistDraft();
+      }, 0);
+      return next;
     } else if (field === "teamBName") {
       if (!this.data.createMode) {
         return;
       }
-      this.setData({ teamBName: value });
+      const next = Array.from(String(value || "")).slice(0, 8).join("");
+      this.setData({ teamBName: next });
+      setTimeout(() => {
+        this.persistDraft();
+      }, 0);
+      return next;
     } else if (field === "teamACaptainNo") {
       this.setData({ teamACaptainNo: normalizeNumberInput(value) });
     } else if (field === "teamBCaptainNo") {

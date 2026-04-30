@@ -1,6 +1,8 @@
 import {
   updateRoomAsync,
   forcePullRoomAsync,
+  lockResultRoomAsync,
+  getLastResultSaveError,
   getRoom,
   getRoomAsync,
   getRoomExistenceFromServerAsync,
@@ -5454,10 +5456,13 @@ Page({
     this.showSetEndLoading("处理中");
     try {
       const saveResultWithCloudAck = async () => {
-        return updateRoomAsync(
+        const savedLocal = await lockResultRoomAsync(
           roomId,
           (room) => {
             const opId = createLogId();
+            if (!room || !room.match || room.status === "result") {
+              return room;
+            }
             (room.match as any).currentOpId = opId;
             const lockTs = Date.now();
             room.status = "result";
@@ -5483,18 +5488,29 @@ Page({
             );
             (room.match as any).lastActionOpId = opId;
             return room;
-          },
-          { awaitCloud: true, requireCloudAck: true }
+          }
         );
+        if (!savedLocal || String((savedLocal as any).status || "") !== "result") {
+          return null;
+        }
+        return savedLocal;
       };
-      let saved = await saveResultWithCloudAck();
-      if (!saved || String((saved as any).status || "") !== "result") {
-        // 兜底：如果首次提交命中云端版本竞争，先强拉最新快照再重试一次。
-        await forcePullRoomAsync(roomId);
+      let saved = null as Awaited<ReturnType<typeof saveResultWithCloudAck>>;
+      for (let attempt = 0; attempt < 4; attempt += 1) {
         saved = await saveResultWithCloudAck();
+        if (saved && String((saved as any).status || "") === "result") {
+          break;
+        }
+        // 兜底：如果提交命中云端版本竞争，先用云端快照刷新版本号再重试。
+        await forcePullRoomAsync(roomId);
+        if (attempt < 3) {
+          await this.delayAsync(180 + attempt * 220);
+        }
       }
       if (!saved || String((saved as any).status || "") !== "result") {
-        showBlockHint("结果保存失败，请重试");
+        this.hideSetEndLoading();
+        this.setEndActionInFlight = false;
+        this.showResultSaveFailedRetry(getLastResultSaveError());
         return;
       }
       wx.reLaunch({ url: "/pages/result/result?roomId=" + roomId });
@@ -5502,6 +5518,27 @@ Page({
       this.hideSetEndLoading();
       this.setEndActionInFlight = false;
     }
+  },
+
+  showResultSaveFailedRetry(reason?: string) {
+    const detail = String(reason || "").trim();
+    wx.showModal({
+      title: "结果保存失败",
+      content: detail ? "请保持网络连接后重试\n错误：" + detail : "请保持网络连接后重试",
+      showCancel: true,
+      confirmText: "重试",
+      cancelText: "留在本页",
+      success: (res) => {
+        if (res && res.confirm) {
+          setTimeout(() => {
+            if (!this.pageActive || !this.isMatchPageTop()) {
+              return;
+            }
+            void this.onSetEndContinue();
+          }, 0);
+        }
+      },
+    });
   },
 
   async enterLineupAsOwner() {

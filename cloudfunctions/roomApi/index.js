@@ -1,5 +1,4 @@
 const cloud = require("wx-server-sdk");
-const { exportResultPdf } = require("./resultPdf");
 
 cloud.init({ env: cloud.DYNAMIC_CURRENT_ENV });
 
@@ -31,6 +30,80 @@ function err(message) {
   return { ok: false, message: String(message || "error") };
 }
 
+function stripDbReservedFields(value) {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripDbReservedFields(item));
+  }
+  if (!value || typeof value !== "object") {
+    return value;
+  }
+  const out = {};
+  Object.keys(value).forEach((key) => {
+    if (key === "_id") {
+      return;
+    }
+    out[key] = stripDbReservedFields(value[key]);
+  });
+  return out;
+}
+
+function asDbData(value) {
+  return stripDbReservedFields(value || {});
+}
+
+function createLogId() {
+  return String(now()) + "-" + String(Math.floor(Math.random() * 100000));
+}
+
+function isFinishedSmallScore(scoreA, scoreB) {
+  const a = Math.max(0, Number(scoreA) || 0);
+  const b = Math.max(0, Number(scoreB) || 0);
+  const high = Math.max(a, b);
+  const low = Math.min(a, b);
+  return high >= 15 && high - low >= 2;
+}
+
+function appendResultLockedLog(room, meta, ts) {
+  if (!room.match || typeof room.match !== "object") {
+    room.match = {};
+  }
+  if (!Array.isArray(room.match.logs)) {
+    room.match.logs = [];
+  }
+  const opId = String((meta && meta.opId) || "");
+  if (
+    opId &&
+    room.match.logs.some((item) => String(item && item.action) === "result_locked" && String(item && item.opId) === opId)
+  ) {
+    return;
+  }
+  const aSetWins = Math.max(0, Number((meta && meta.aSetWins) || room.match.aSetWins || 0));
+  const bSetWins = Math.max(0, Number((meta && meta.bSetWins) || room.match.bSetWins || 0));
+  const winnerTeam =
+    meta && meta.winnerTeam === "A" ? "A" : meta && meta.winnerTeam === "B" ? "B" : aSetWins > bSetWins ? "A" : "B";
+  const fallbackName =
+    winnerTeam === "A"
+      ? String((room.teamA && room.teamA.name) || "甲")
+      : String((room.teamB && room.teamB.name) || "乙");
+  const winnerName = String((meta && meta.winnerName) || fallbackName || "");
+  room.match.logs.push({
+    id: createLogId(),
+    ts: Math.max(0, Number((meta && meta.logTs) || ts)) || ts,
+    action: "result_locked",
+    team: winnerTeam,
+    note: "比赛结束 结果确认：" + winnerName + " 以 " + String(aSetWins) + ":" + String(bSetWins) + " 获胜",
+    setNo: Math.max(1, Number((meta && meta.setNo) || room.match.setNo || 1)),
+    opId: opId,
+    revertedOpId: "",
+  });
+  if (room.match.logs.length > 300) {
+    room.match.logs = room.match.logs.slice(room.match.logs.length - 300);
+  }
+  if (opId) {
+    room.match.lastActionOpId = opId;
+  }
+}
+
 async function archiveExpiredRoom(roomId, room, expiredAt, reason) {
   const id = String(roomId || "");
   if (!id || !room || typeof room !== "object") {
@@ -41,8 +114,7 @@ async function archiveExpiredRoom(roomId, room, expiredAt, reason) {
   const archiveId = id + "_" + String(expiredTs);
   try {
     await roomArchivesCol.doc(archiveId).set({
-      data: {
-        _id: archiveId,
+      data: asDbData({
         roomId: id,
         retainState: "expired_wait_delete",
         expiredAt: expiredTs,
@@ -53,7 +125,7 @@ async function archiveExpiredRoom(roomId, room, expiredAt, reason) {
         sourceExpiresAt: Math.max(0, Number(room.expiresAt || 0)),
         sourceResultExpireAt: Math.max(0, Number(room.resultExpireAt || 0)),
         room: JSON.parse(JSON.stringify(room)),
-      },
+      }),
     });
   } catch (e) {}
 }
@@ -108,7 +180,7 @@ async function getRoomDoc(roomId) {
       }
       if (changed) {
         room.updatedAt = ts;
-        await roomsCol.doc(roomId).set({ data: room });
+        await roomsCol.doc(roomId).set({ data: asDbData(room) });
       }
       return room;
     }
@@ -146,7 +218,7 @@ async function getRoomDoc(roomId) {
 
     if (changed) {
       room.updatedAt = ts;
-      await roomsCol.doc(roomId).set({ data: room });
+      await roomsCol.doc(roomId).set({ data: asDbData(room) });
     }
     return room;
   } catch (e) {
@@ -245,11 +317,11 @@ async function maybeRunGlobalCleanup(force) {
 
   try {
     await locksCol.doc(GLOBAL_CLEANUP_META_ID).set({
-      data: {
+      data: asDbData({
         lastRunAt: ts,
         runningUntil: ts + GLOBAL_CLEANUP_LOCK_MS,
         updatedAt: ts,
-      },
+      }),
     });
   } catch (e) {}
 
@@ -261,13 +333,13 @@ async function maybeRunGlobalCleanup(force) {
   } finally {
     try {
       await locksCol.doc(GLOBAL_CLEANUP_META_ID).set({
-        data: {
+        data: asDbData({
           lastRunAt: ts,
           runningUntil: 0,
           lastDeleted: deleted,
           lastArchiveDeleted: archiveDeleted,
           updatedAt: now(),
-        },
+        }),
       });
     } catch (e) {}
   }
@@ -302,7 +374,9 @@ async function putRoomDoc(room) {
     }
     const existingVersion = Math.max(1, Number(existing.syncVersion || 1));
     const incomingVersion = Math.max(1, Number(normalized.syncVersion || 1));
-    if (incomingVersion <= existingVersion) {
+    if (existingStatus !== "result" && incomingStatus === "result" && incomingVersion <= existingVersion) {
+      normalized.syncVersion = existingVersion + 1;
+    } else if (incomingVersion <= existingVersion) {
       return existing;
     }
   }
@@ -373,8 +447,82 @@ async function putRoomDoc(room) {
     roomId: roomId,
     updatedAt: ts,
   };
-  await roomsCol.doc(roomId).set({ data: next });
+  await roomsCol.doc(roomId).set({ data: asDbData(next) });
   return next;
+}
+
+async function lockResultRoomDoc(input) {
+  const roomId = String(input && input.roomId ? input.roomId : "");
+  if (!roomId) {
+    throw new Error("roomId required");
+  }
+  const ts = now();
+  const existing = await getRoomDoc(roomId);
+  if (!existing) {
+    throw new Error("room not found");
+  }
+  const meta = input && input.result && typeof input.result === "object" ? input.result : {};
+  const normalized = existing && typeof existing === "object" ? { ...existing } : {};
+  normalized.status = "result";
+  normalized.syncVersion = Math.max(1, Number(existing.syncVersion || 1)) + 1;
+  normalized.resultLockedAt = Math.max(0, Number(meta.resultLockedAt || 0)) || ts;
+  normalized.resultExpireAt =
+    Math.max(0, Number(meta.resultExpireAt || 0)) || normalized.resultLockedAt + RESULT_KEEP_MS;
+  normalized.expiresAt = Math.max(
+    Number(normalized.resultExpireAt || 0),
+    Math.max(0, Number(meta.expiresAt || 0)),
+    Math.max(0, Number(existing.expiresAt || 0)),
+    ts
+  );
+  if (!normalized.match || typeof normalized.match !== "object") {
+    normalized.match = existing.match && typeof existing.match === "object" ? { ...existing.match } : {};
+  }
+  if (meta.aSetWins !== undefined) {
+    normalized.match.aSetWins = Math.max(0, Number(meta.aSetWins) || 0);
+  }
+  if (meta.bSetWins !== undefined) {
+    normalized.match.bSetWins = Math.max(0, Number(meta.bSetWins) || 0);
+  }
+  const endedSetNo = Math.max(1, Number(meta.setNo || normalized.match.setNo || 1));
+  const smallScoreA = Math.max(0, Number(meta.smallScoreA || 0));
+  const smallScoreB = Math.max(0, Number(meta.smallScoreB || 0));
+  if (isFinishedSmallScore(smallScoreA, smallScoreB)) {
+    if (!normalized.match.setSummaries || typeof normalized.match.setSummaries !== "object") {
+      normalized.match.setSummaries = {};
+    }
+    const winnerTeam =
+      meta && meta.winnerTeam === "A"
+        ? "A"
+        : meta && meta.winnerTeam === "B"
+          ? "B"
+          : smallScoreA > smallScoreB
+            ? "A"
+            : "B";
+    normalized.match.setSummaries[String(endedSetNo)] = {
+      setNo: endedSetNo,
+      teamAName: String(meta.teamAName || (normalized.teamA && normalized.teamA.name) || "甲"),
+      teamBName: String(meta.teamBName || (normalized.teamB && normalized.teamB.name) || "乙"),
+      smallScoreA: smallScoreA,
+      smallScoreB: smallScoreB,
+      bigScoreA: Math.max(0, Number(normalized.match.aSetWins || 0)),
+      bigScoreB: Math.max(0, Number(normalized.match.bSetWins || 0)),
+      winnerName:
+        String(meta.winnerName || "") ||
+        (winnerTeam === "A"
+          ? String((normalized.teamA && normalized.teamA.name) || "甲")
+          : String((normalized.teamB && normalized.teamB.name) || "乙")),
+      durationText: String(meta.durationText || ""),
+      matchFinished: true,
+    };
+    normalized.match.aScore = smallScoreA;
+    normalized.match.bScore = smallScoreB;
+  }
+  normalized.match.isFinished = true;
+  appendResultLockedLog(normalized, meta, ts);
+  normalized.match.undoStack = [];
+  delete normalized.match.lineupAdjustDraft;
+  delete normalized.match.setEndState;
+  return putRoomDoc(normalized);
 }
 
 async function isRoomIdBlocked(roomId) {
@@ -413,11 +561,10 @@ async function reserveRoomId(roomId, ownerId) {
       const lock = await locksCol.doc(id).get();
       if (lock && lock.data && String(lock.data.ownerId || "") === owner) {
         await locksCol.doc(id).set({
-          data: {
-            _id: id,
+          data: asDbData({
             ownerId: owner,
             ts: now(),
-          },
+          }),
         });
         return true;
       }
@@ -425,11 +572,10 @@ async function reserveRoomId(roomId, ownerId) {
     return false;
   }
   await locksCol.doc(id).set({
-    data: {
-      _id: id,
+    data: asDbData({
       ownerId: owner,
       ts: now(),
-    },
+    }),
   });
   return true;
 }
@@ -650,34 +796,21 @@ exports.main = async (event) => {
       return { ok: true, room: room || null };
     }
 
-    if (action === "exportResultPdf") {
-      const roomId = String(event.roomId || "");
-      const theme = String(event.theme || "light");
-      if (!roomId) {
-        return err("missing roomId");
-      }
-      const room = await getRoomDoc(roomId);
-      if (!room) {
-        return err("room not found");
-      }
-      if (room.status !== "result") {
-        return err("room not in result status");
-      }
-      const exportRes = await exportResultPdf(roomId, room, theme);
-      return {
-        ok: true,
-        roomId: String(exportRes.roomId || roomId),
-        pdfBase64: String(exportRes.pdfBase64 || ""),
-        size: Number(exportRes.size || 0),
-      };
-    }
-
     if (action === "upsertRoom") {
       const room = event.room || null;
       if (!room || !room.roomId) {
         return err("missing room");
       }
       const saved = await putRoomDoc(room);
+      return { ok: true, room: saved };
+    }
+
+    if (action === "lockResultRoom") {
+      const roomId = String(event.roomId || (event.room && event.room.roomId) || "");
+      if (!roomId) {
+        return err("missing roomId");
+      }
+      const saved = await lockResultRoomDoc({ roomId: roomId, result: event.result || {} });
       return { ok: true, room: saved };
     }
 
@@ -766,7 +899,7 @@ exports.main = async (event) => {
       if (changed) {
         next.collaboration = room.collaboration;
       }
-      await roomsCol.doc(roomId).set({ data: next });
+      await roomsCol.doc(roomId).set({ data: asDbData(next) });
       return { ok: true, room: next, participantCount: Object.keys(participants).length };
     }
 
@@ -800,7 +933,7 @@ exports.main = async (event) => {
         participants: participants,
         updatedAt: now(),
       };
-      await roomsCol.doc(roomId).set({ data: next });
+      await roomsCol.doc(roomId).set({ data: asDbData(next) });
       return { ok: true, room: next, participantCount: Object.keys(participants).length };
     }
 

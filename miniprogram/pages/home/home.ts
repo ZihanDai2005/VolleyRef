@@ -356,7 +356,7 @@ Page({
         showBlockHint((check && check.message) || "该房间不可进入");
         return;
       }
-      const room = await getRoomAsync(cached.roomId);
+      const room = (await forcePullRoomAsync(cached.roomId)) || (await getRoomAsync(cached.roomId));
       const status = room && room.status === "result" ? "result" : room && room.status === "match" ? "match" : "";
       if (!room || !status) {
         clearLastRoomEntry();

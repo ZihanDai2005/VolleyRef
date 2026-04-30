@@ -1729,44 +1729,33 @@ page {
 
 .set-end-compare-line {
   width: 100%;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
-  gap: 8px;
+  justify-content: center;
+  min-width: 0;
 }
 
-.set-end-compare-left {
-  justify-self: end;
+.set-end-compare-text {
+  max-width: 100%;
+  min-width: 0;
   font-size: 15px;
   font-weight: 600;
   color: var(--text-main);
-}
-
-.set-end-compare-colon {
-  justify-self: center;
-  font-size: 18px;
-  font-weight: 700;
-  line-height: 1;
-  color: var(--text-tertiary);
-}
-
-.set-end-compare-right {
-  justify-self: start;
-  font-size: 15px;
-  font-weight: 600;
-  color: var(--text-main);
+  line-height: 1.35;
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .set-end-score-line {
   width: 100%;
-  display: grid;
-  grid-template-columns: 1fr auto 1fr;
+  display: flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
 }
 
-.set-end-score {
-  justify-self: end;
+.set-end-score-text {
   min-width: 0;
   font-size: 34px;
   font-weight: 700;
@@ -1774,18 +1763,8 @@ page {
   font-family: "BebasNeue", "Anton", sans-serif;
   font-variant-numeric: tabular-nums;
   color: var(--text-main);
-}
-
-.set-end-score-sep {
-  justify-self: center;
-  font-size: 30px;
-  font-weight: 600;
-  line-height: 1;
-  font-family: "BebasNeue", "Anton", sans-serif;
-  color: var(--text-main);
-}
-.set-end-score:last-child {
-  justify-self: start;
+  text-align: center;
+  white-space: nowrap;
 }
 
 .set-end-winner {
