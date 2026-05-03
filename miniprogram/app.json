@@ -7,11 +7,6 @@
     "pages/match/match",
     "pages/result/result"
   ],
-  "window": {
-    "navigationBarTextStyle": "black",
-    "navigationBarTitleText": "",
-    "navigationBarBackgroundColor": "#ffffff"
-  },
   "darkmode": true,
   "style": "v2",
   "rendererOptions": {

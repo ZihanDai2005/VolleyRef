@@ -68,6 +68,7 @@ const PLAYER_INDEX_BY_POS: Record<Position, number> = {
 };
 const PASSWORD_FOCUS_KEY = "__password__";
 const ROOM_MATCH_TTL_MS = 6 * 60 * 60 * 1000;
+const TEAM_NAME_MAX_LENGTH = 8;
 
 function createInitialPlayers(): PlayerSlot[] {
   return [
@@ -207,13 +208,21 @@ function normalizeNumberInput(value: string): string {
   return String(Number(digits));
 }
 
+function getStringLength(value: string): number {
+  return Array.from(String(value || "")).length;
+}
+
+function sliceStringByLength(value: string, maxLength: number): string {
+  return Array.from(String(value || "")).slice(0, maxLength).join("");
+}
+
 function getTeamNameError(teamANameRaw: string, teamBNameRaw: string): string | null {
   const teamAName = String(teamANameRaw || "").trim();
   const teamBName = String(teamBNameRaw || "").trim();
-  if (teamAName.length > 8) {
+  if (getStringLength(teamAName) > TEAM_NAME_MAX_LENGTH) {
     return "团队名称最多8个字";
   }
-  if (teamBName.length > 8) {
+  if (getStringLength(teamBName) > TEAM_NAME_MAX_LENGTH) {
     return "团队名称最多8个字";
   }
   if (teamAName && teamBName && teamAName === teamBName) {
@@ -781,21 +790,25 @@ Page({
       if (!this.data.createMode) {
         return;
       }
-      const next = Array.from(String(value || "")).slice(0, 8).join("");
+      const next = String(value || "");
       this.setData({ teamAName: next });
-      setTimeout(() => {
-        this.persistDraft();
-      }, 0);
+      if (getStringLength(next.trim()) <= TEAM_NAME_MAX_LENGTH) {
+        setTimeout(() => {
+          this.persistDraft();
+        }, 0);
+      }
       return next;
     } else if (field === "teamBName") {
       if (!this.data.createMode) {
         return;
       }
-      const next = Array.from(String(value || "")).slice(0, 8).join("");
+      const next = String(value || "");
       this.setData({ teamBName: next });
-      setTimeout(() => {
-        this.persistDraft();
-      }, 0);
+      if (getStringLength(next.trim()) <= TEAM_NAME_MAX_LENGTH) {
+        setTimeout(() => {
+          this.persistDraft();
+        }, 0);
+      }
       return next;
     } else if (field === "teamACaptainNo") {
       this.setData({ teamACaptainNo: normalizeNumberInput(value) });
@@ -950,17 +963,17 @@ Page({
     const field = ((e.currentTarget || {}).dataset as { field?: string }).field;
     const rawA = this.data.teamAName || "";
     const rawB = this.data.teamBName || "";
-    const wasTooLongA = rawA.length > 8;
-    const wasTooLongB = rawB.length > 8;
+    const wasTooLongA = getStringLength(rawA.trim()) > TEAM_NAME_MAX_LENGTH;
+    const wasTooLongB = getStringLength(rawB.trim()) > TEAM_NAME_MAX_LENGTH;
     if (field === "teamAName") {
-      const next = rawA.slice(0, 8);
+      const next = sliceStringByLength(rawA, TEAM_NAME_MAX_LENGTH);
       this.setData({
         teamANameFocused: false,
         teamAName: next,
       });
       this.deferClearActiveCreateInputKey("teamAName");
     } else if (field === "teamBName") {
-      const next = rawB.slice(0, 8);
+      const next = sliceStringByLength(rawB, TEAM_NAME_MAX_LENGTH);
       this.setData({
         teamBNameFocused: false,
         teamBName: next,
@@ -977,7 +990,10 @@ Page({
     } else if (field === "teamBName" && rawB.length > 0 && rawB.trim().length === 0) {
       showToastHint("名称不能仅为空格");
     }
-    const err = getTeamNameError(rawA.slice(0, 8), rawB.slice(0, 8));
+    const err = getTeamNameError(
+      sliceStringByLength(rawA, TEAM_NAME_MAX_LENGTH),
+      sliceStringByLength(rawB, TEAM_NAME_MAX_LENGTH)
+    );
     if (err) {
       showToastHint(err);
     }
@@ -1397,8 +1413,17 @@ Page({
         return;
       }
     }
-    const teamAName = this.data.teamAName.trim() || "甲";
-    const teamBName = this.data.teamBName.trim() || "乙";
+    const teamANameRaw = sliceStringByLength(this.data.teamAName, TEAM_NAME_MAX_LENGTH);
+    const teamBNameRaw = sliceStringByLength(this.data.teamBName, TEAM_NAME_MAX_LENGTH);
+    if (teamANameRaw !== this.data.teamAName || teamBNameRaw !== this.data.teamBName) {
+      this.setData({
+        teamAName: teamANameRaw,
+        teamBName: teamBNameRaw,
+      });
+      showToastHint("团队名称最多8个字");
+    }
+    const teamAName = teamANameRaw.trim() || "甲";
+    const teamBName = teamBNameRaw.trim() || "乙";
     const roomPassword = this.data.roomPassword.trim();
     const mode = this.data.matchModes[this.data.matchModeIndex] || this.data.matchModes[0];
     const captainEnabled = isCaptainSetupEnabledByIndex(this.data.setupCaptainIndex);
@@ -1409,12 +1434,12 @@ Page({
       showBlockHint("房间密码需6位数字");
       return;
     }
-    const teamNameSpaceOnlyErr = getTeamNameWhitespaceOnlyError(this.data.teamAName, this.data.teamBName);
+    const teamNameSpaceOnlyErr = getTeamNameWhitespaceOnlyError(teamANameRaw, teamBNameRaw);
     if (teamNameSpaceOnlyErr) {
       showBlockHint(teamNameSpaceOnlyErr);
       return;
     }
-    const teamNameErr = getTeamNameError(this.data.teamAName, this.data.teamBName);
+    const teamNameErr = getTeamNameError(teamANameRaw, teamBNameRaw);
     if (teamNameErr) {
       showBlockHint(teamNameErr);
       return;

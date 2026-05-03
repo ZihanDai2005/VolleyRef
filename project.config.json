@@ -24,18 +24,20 @@
     "es6": true,
     "compileWorklet": false,
     "uglifyFileName": false,
-    "uploadWithSourceMap": true,
+    "uploadWithSourceMap": false,
     "packNpmManually": false,
     "minifyWXSS": true,
     "minifyWXML": true,
     "localPlugins": false,
-    "condition": false,
+    "condition": true,
     "swc": false,
     "disableSWC": true,
     "disableUseStrict": false
   },
   "simulatorType": "wechat",
-  "simulatorPluginLibVersion": {},
+  "simulatorPluginLibVersion": {
+    "wxext14566970e7e9f62": "2.27.3"
+  },
   "condition": {},
   "srcMiniprogramRoot": "miniprogram/",
   "cloudfunctionRoot": "cloudfunctions/",
@@ -45,8 +47,38 @@
   },
   "libVersion": "2.32.3",
   "packOptions": {
-    "ignore": [],
+    "ignore": [
+      {
+        "type": "folder",
+        "value": "node_modules"
+      },
+      {
+        "type": "folder",
+        "value": "cloudfunctions/roomApi/node_modules"
+      },
+      {
+        "type": "folder",
+        "value": "repro-routeDone-webviewid"
+      },
+      {
+        "type": "suffix",
+        "value": ".tgz"
+      },
+      {
+        "type": "suffix",
+        "value": ".DS_Store"
+      },
+      {
+        "type": "suffix",
+        "value": ".bak-before-add-s"
+      },
+      {
+        "type": "suffix",
+        "value": ".bak-before-vertical-tune"
+      }
+    ],
     "include": []
   },
-  "appid": "wx83f91976f6791d9a"
+  "appid": "wx83f91976f6791d9a",
+  "projectArchitecture": "multiPlatform"
 }

@@ -1,6 +1,5 @@
 {
   "navigationBarTitleText": "",
   "navigationStyle": "custom",
-  "disableScroll": true,
-  "enableShareAppMessage": true
+  "disableScroll": true
 }
