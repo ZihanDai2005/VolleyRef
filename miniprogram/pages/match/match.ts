@@ -1996,6 +1996,16 @@ function markSetEndIsSwapped(room: any, setNoRaw: number): void {
   snapshot.endedAt = Date.now();
 }
 
+function getNextSetDefaultServingTeam(room: any, endedSetNoRaw: number): TeamCode {
+  const fallback: TeamCode = room && room.match && room.match.servingTeam === "B" ? "B" : "A";
+  const endedSetNo = Math.max(1, Number(endedSetNoRaw) || 1);
+  const lineupMap = getSetStartLineupsMap(room);
+  const snapshot = lineupMap[String(endedSetNo)];
+  const previousStartServingTeam: TeamCode =
+    snapshot && snapshot.servingTeam === "B" ? "B" : snapshot && snapshot.servingTeam === "A" ? "A" : fallback;
+  return previousStartServingTeam === "A" ? "B" : "A";
+}
+
 function normalizeLiberoReentryLock(raw: any): LiberoReentryLock | null {
   if (!raw || typeof raw !== "object") {
     return null;
@@ -5119,11 +5129,20 @@ Page({
       preStartCaptainConfirmSetNo: nextPreStartCaptainConfirmSetNo,
     };
     if (isPostSubReconfirm) {
+      this.clearSubstitutionDraft(roomId);
+      this.clearSubstitutionPanelCloseTimer();
+      this.clearSubMatchLogPopoverCloseTimer();
       nextData.subSelectedPos = "";
       nextData.subIncomingNoInput = "";
       nextData.subIncomingNo = "";
       nextData.subIncomingLocked = false;
       nextData.subIncomingLockedNo = "";
+      nextData.showSubstitutionPanel = false;
+      nextData.substitutionPanelClosing = false;
+      nextData.showSubMatchLogPopover = false;
+      nextData.subMatchLogPopoverClosing = false;
+      nextData.subLogPopoverInlineStyle = "";
+      nextData.showSubRecordTabMenu = false;
     }
     this.setData(nextData as any);
     this.closeCaptainConfirmModalAnimated();
@@ -8392,14 +8411,15 @@ Page({
               room.match.setTimerStartAt = 0;
               // 小局结束后先保持上一局局时间，等待中场配置页返回比赛后再清零。
               room.match.setTimerElapsedMs = finalElapsed;
-              room.match.servingTeam = setWinner;
+              const nextSetDefaultServingTeam = getNextSetDefaultServingTeam(room, endedSetNo);
+              room.match.servingTeam = nextSetDefaultServingTeam;
               room.match.isSwapped = false;
               room.match.decidingSetEightHandled = false;
               (room.match as any).decidingSetEightPending = false;
               (room.match as any).timeoutActive = false;
               (room.match as any).timeoutTeam = "";
               (room.match as any).timeoutEndAt = 0;
-              appendMatchLog(room, "next_set", "进入第" + String(room.match.setNo) + "局", setWinner, opId);
+              appendMatchLog(room, "next_set", "进入第" + String(room.match.setNo) + "局", nextSetDefaultServingTeam, opId);
             }
           }
           (room.match as any).lastActionOpId = opId;
@@ -10236,7 +10256,7 @@ Page({
     }
     await this.loadRoom(roomId, true);
     if (shouldForceCaptainReconfirmForTeam) {
-      this.openForcedCaptainConfirmAfterSubstitution(shouldForceCaptainReconfirmForTeam);
+      this.openForcedCaptainConfirmAfterSubstitution(shouldForceCaptainReconfirmForTeam, { switchFromSubPanel: true });
       return;
     }
     showToastHint("换人已记录");
